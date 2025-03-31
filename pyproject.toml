@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcpywrap"
+version = "0.1.0"
+description = "A wrapper for Minecraft China Edition Addons management"
+readme = "README.md"
+authors = [{name = "boybook", email = "boybook@easecation.net"}]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.6"
+dependencies = [
+    "click>=8.0.0",
+    "3to2>=1.1.1",
+    "watchdog>=2.0.0",
+    "twine>=3.4.0",
+    "tomli",
+    "tomli-w",
+    "setuptools"
+]
+
+[project.scripts]
+mcpywrap = "mcpywrap.__main__:main"
+mcpy = "mcpywrap.__main__:main"
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/mcpywrap"
+"Bug Tracker" = "https://github.com/yourusername/mcpywrap/issues"
