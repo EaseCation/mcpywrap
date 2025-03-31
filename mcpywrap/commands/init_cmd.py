@@ -68,7 +68,7 @@ def init():
     
     # 检查是否为Minecraft addon项目
     if is_minecraft_addon_project(base_dir):
-        click.echo(click.style('🔍 检测到已有Minecraft addon项目结构', fg='magenta'))
+        click.echo(click.style('🔍 检测到已有 Minecraft Addon 项目结构', fg='magenta'))
         behavior_pack_dir = find_behavior_pack_dir(base_dir)
         if behavior_pack_dir:
             click.echo(click.style(f'✅ 找到行为包目录: {behavior_pack_dir}', fg='green'))

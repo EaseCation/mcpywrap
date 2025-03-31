@@ -26,7 +26,7 @@ def is_minecraft_addon_project(dir_path):
         item_path = os.path.join(dir_path, item)
         
         # 检查resource_pack目录
-        if os.path.isdir(item_path) and item.startswith('resource_pack'):
+        if os.path.isdir(item_path) and (item.startswith('resource_pack') or item.startswith('ResourcePack')):
             resource_pack_found = True
             # 检查manifest文件
             if (os.path.isfile(os.path.join(item_path, 'manifest.json')) or 
@@ -34,7 +34,7 @@ def is_minecraft_addon_project(dir_path):
                 resource_pack_has_manifest = True
         
         # 检查behavior_pack目录
-        if os.path.isdir(item_path) and item.startswith('behavior_pack'):
+        if os.path.isdir(item_path) and (item.startswith('behavior_pack') or item.startswith('BehaviorPack')):
             behavior_pack_found = True
             # 检查manifest文件
             if (os.path.isfile(os.path.join(item_path, 'manifest.json')) or 
@@ -158,7 +158,7 @@ def find_behavior_pack_dir(base_dir):
     """
     for item in os.listdir(base_dir):
         item_path = os.path.join(base_dir, item)
-        if os.path.isdir(item_path) and item.startswith('behavior_pack'):
+        if os.path.isdir(item_path) and (item.startswith('behavior_pack') or item.startswith('BehaviorPack')):
             # 确认是有效的behavior pack目录（检查manifest文件）
             if (os.path.isfile(os.path.join(item_path, 'manifest.json')) or 
                 os.path.isfile(os.path.join(item_path, 'pack_manifest.json'))):
