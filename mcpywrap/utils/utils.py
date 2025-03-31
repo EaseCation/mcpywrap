@@ -24,6 +24,7 @@ def run_command(cmd, cwd=None):
         result = subprocess.run(
             cmd, 
             cwd=cwd, 
+            shell=True,
             check=True, 
             text=True, 
             capture_output=True
