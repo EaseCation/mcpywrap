@@ -93,7 +93,7 @@ def setup_minecraft_addon(base_dir, name, description, version):
     if os.path.exists(rp_manifest_path):
         rp_manifest_path = os.path.join(resource_pack_dir, "pack_manifest.json")
         
-    with open(rp_manifest_path, 'w') as f:
+    with open(rp_manifest_path, 'w', encoding='utf-8') as f:
         json.dump(rp_manifest, f, indent=4)
         
     result["resource_pack"] = {
@@ -113,7 +113,7 @@ def setup_minecraft_addon(base_dir, name, description, version):
     ensure_dir(scripts_dir)
     
     # 创建__init__.py文件，标记为Python包
-    with open(os.path.join(scripts_dir, "__init__.py"), 'w') as f:
+    with open(os.path.join(scripts_dir, "__init__.py"), 'w', encoding='utf-8') as f:
         f.write("# Python package initialization\n")
     
     # 将modules_dir记录为Python源代码目录
@@ -140,7 +140,7 @@ def setup_minecraft_addon(base_dir, name, description, version):
     if os.path.exists(bp_manifest_path):
         bp_manifest_path = os.path.join(behavior_pack_dir, "pack_manifest.json")
     
-    with open(bp_manifest_path, 'w') as f:
+    with open(bp_manifest_path, 'w', encoding='utf-8') as f:
         json.dump(bp_manifest, f, indent=4)
         
     result["behavior_pack"] = {

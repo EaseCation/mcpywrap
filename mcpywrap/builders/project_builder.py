@@ -217,7 +217,7 @@ def find_mcpywrap_dependencies(dependencies: list[str]) -> dict[str, AddonsPack]
         metadata_path = dist_info / "METADATA"
         if metadata_path.exists():
             pkg_name = None
-            with open(metadata_path, 'r') as f:
+            with open(metadata_path, 'r', encoding='utf-8') as f:
                 for line in f:
                     if line.startswith("Name:"):
                         pkg_name = line.split(":", 1)[1].strip()
@@ -229,7 +229,7 @@ def find_mcpywrap_dependencies(dependencies: list[str]) -> dict[str, AddonsPack]
             # 处理direct_url.json获取包路径
             direct_url_path = dist_info / "direct_url.json"
             if direct_url_path.exists():
-                with open(direct_url_path, 'r') as f:
+                with open(direct_url_path, 'r', encoding='utf-8') as f:
                     direct_url = json.load(f)
                     # 读取其中的url
                     if "url" in direct_url:
