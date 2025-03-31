@@ -1,3 +1,4 @@
+# -- coding: utf-8 -*-
 """
 mcpywrap 命令行工具的入口点
 """

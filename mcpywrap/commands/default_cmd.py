@@ -1,3 +1,5 @@
+# -- coding: utf-8 -*-
+
 import click
 import os
 from ..config import update_config, config_exists, read_config

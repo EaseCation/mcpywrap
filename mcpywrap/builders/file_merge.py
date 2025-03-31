@@ -1,3 +1,4 @@
+# -- coding: utf-8 -*-
 import os
 
 def try_merge_file(source_file, target_file):

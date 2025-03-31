@@ -1,3 +1,4 @@
+# -- coding: utf-8 -*-
 import os, shutil
 from setuptools.command.install import install as _install
 from setuptools.command.develop import develop as _develop

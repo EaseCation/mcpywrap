@@ -1,3 +1,5 @@
+# -- coding: utf-8 -*-
+
 import click
 from .commands.init_cmd import init_cmd
 from .commands.install_cmd import install_cmd

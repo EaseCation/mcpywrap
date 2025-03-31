@@ -1,3 +1,5 @@
+# -- coding: utf-8 -*-
+
 """
 Minecraft Addons 相关功能模块
 """
