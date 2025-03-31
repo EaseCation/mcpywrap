@@ -1,4 +1,4 @@
-# -- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 # 在这里导入和注册所有的命令模块
 from .init_cmd import init_cmd

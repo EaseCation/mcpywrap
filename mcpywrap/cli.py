@@ -1,4 +1,4 @@
-# -- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 import click
 from .commands.init_cmd import init_cmd

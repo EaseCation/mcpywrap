@@ -1,4 +1,4 @@
-# -- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 """
 安装网易ModSDK命令模块

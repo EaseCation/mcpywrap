@@ -1,4 +1,4 @@
-# -- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 """
 处理 mcpywrap 配置文件的模块
