@@ -89,7 +89,7 @@ def init():
             behavior_pack_dir = minecraft_addon_info["behavior_pack"]["path"]
 
     if behavior_pack_dir and click.confirm(click.style('❓ 是否配置构建目标目录？（指定生成的脚本文件应安装到的位置）', fg='magenta'), default=False):
-        target_dir = click.prompt(click.style('📂 请输入目标目录', fg='cyan'), default=behavior_pack_dir, type=str)
+        target_dir = click.prompt(click.style('📂 请输入目标目录', fg='cyan'), default='./build', type=str)
         ensure_dir(target_dir)
     
     # 构建符合 PEP 621 标准的配置
