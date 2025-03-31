@@ -26,7 +26,7 @@ def read_config(config_path=None) -> dict:
     if not os.path.exists(config_path):
         return {}
     
-    with open(config_path, 'rb', encoding='utf-8') as f:
+    with open(config_path, 'rb') as f:
         try:
             config = tomli.load(f)
             # 确保mcpywrap工具配置部分存在
@@ -46,7 +46,7 @@ def read_config(config_path=None) -> dict:
 
 def write_config(config_data):
     """写入配置文件"""
-    with open(get_config_path(), 'wb', encoding='utf-8') as f:
+    with open(get_config_path(), 'wb') as f:
         tomli_w.dump(config_data, f)
 
 def update_config(update_dict):
