@@ -202,26 +202,46 @@ def clear_directory(directory):
 def convert_project_py3_to_py2(directory):
     """将整个项目中的Python文件转换为Python 2"""
     try:
-        # 首先尝试使用直接的Python API调用
-        from lib3to2.main import main
-        # main函数接受包名和参数列表
-        # 第一个参数是包名 'lib3to2' (这是3to2所有修复器的位置)
-        # 第二个参数是命令行参数列表
+        from lib3to2.main import refactor, StdoutRefactoringTool
+        import logging
+        
         print(f"正在转换目录: {directory}")
-        exit_code = main('lib3to2.fixes', ['-w', '-n', '-j', '8', '--no-diffs', directory])
-        return exit_code == 0, "转换完成" if exit_code == 0 else f"转换失败，错误代码: {exit_code}"
-    except Exception as e:
-        # 如果直接调用失败，则尝试命令行方式（作为备选）
+        
+        # 设置日志级别
+        level = logging.INFO
+        logging.basicConfig(format='%(name)s: %(message)s', level=level)
+        
+        # 获取所有可用的修复器
+        fixer_pkg = 'lib3to2.fixes'
+        avail_fixes = set(refactor.get_fixers_from_package(fixer_pkg))
+        
+        # 排除__future__相关的fixer
+        unwanted_fixes = {f"{fixer_pkg}.fix_future"}
+        fixer_names = avail_fixes.difference(unwanted_fixes)
+        
+        # 创建重构工具实例
+        rt = StdoutRefactoringTool(sorted(fixer_names), None, [], True, False)
+        
+        # 执行重构
         try:
-            # 方法1：直接命令行调用
-            success, output = run_command(["3to2", "-w", "-n", directory])
-            if not success:
-                # 方法2：使用shell=True参数
-                success, output = run_command(["3to2", "-w", "-n", directory], shell=True)
-            
-            return success, output
-        except Exception as cmd_e:
-            return False, f"Python API调用失败: {str(e)}\n命令行调用也失败: {str(cmd_e)}"
+            rt.refactor([directory], write=True, doctests_only=False, num_processes=4)
+            rt.summarize()
+            return not bool(rt.errors), "转换完成" if not rt.errors else f"转换过程中发生{len(rt.errors)}个错误"
+        except Exception as refactor_err:
+            return False, f"执行重构时出错: {str(refactor_err)}"
+    except Exception as e:
+        try:
+            # 备选：使用main函数，通过-x选项排除future fixer
+            from lib3to2.main import main
+            exit_code = main('lib3to2.fixes', ['-w', '-n', '-j', '8', '--no-diffs', '-x', 'future', directory])
+            return exit_code == 0, "转换完成" if exit_code == 0 else f"转换失败，错误代码: {exit_code}"
+        except Exception as main_e:
+            # 最后尝试命令行方式
+            try:
+                success, output = run_command(["3to2", "-w", "-n", "-x", "future", directory])
+                return success, output
+            except Exception as cmd_e:
+                return False, f"Python API调用失败: {str(e)}\n备用调用失败: {str(main_e)}\n命令行调用失败: {str(cmd_e)}"
 
 def find_mcpywrap_dependencies(dependencies: list[str]) -> dict[str, AddonsPack]:
     """
