@@ -312,7 +312,7 @@ def find_mcpywrap_dependencies(dependencies: list[str]) -> dict[str, AddonsPack]
                             # 对URL进行解码，处理%编码的特殊字符
                             from urllib.parse import unquote
                             url = unquote(url)
-                                url = os.path.abspath(url)
+                            url = os.path.abspath(url)
 
                             # 确保路径格式一致
                             if sys.platform == "win32":
