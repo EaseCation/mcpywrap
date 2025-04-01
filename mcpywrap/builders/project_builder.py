@@ -207,7 +207,6 @@ def convert_project_py3_to_py2(directory):
         # main函数接受包名和参数列表
         # 第一个参数是包名 'lib3to2' (这是3to2所有修复器的位置)
         # 第二个参数是命令行参数列表
-        print(f"正在转换目录: {directory}")
         exit_code = main('lib3to2.fixes', ['-w', '-n', '-j', '8', '--no-diffs', directory])
         return exit_code == 0, "转换完成" if exit_code == 0 else f"转换失败，错误代码: {exit_code}"
     except Exception as e:
