@@ -5,6 +5,8 @@
 
 import os
 import shutil
+
+from ..utils.py3to2_util import py3_to_2
 from ..utils.utils import ensure_dir, run_command
 
 def is_python_file(file_path):
@@ -15,6 +17,7 @@ def copy_file(src_path, dest_path):
     """复制文件，确保目标目录存在"""
     dest_dir = os.path.dirname(dest_path)
     ensure_dir(dest_dir)
+    print(f"复制文件: {src_path} 到 {dest_path}")
     shutil.copy2(src_path, dest_path)
     return dest_path
 
@@ -26,7 +29,8 @@ def convert_py3_to_py2(file_path):
         # main函数接受包名和参数列表
         # 第一个参数是包名 'lib3to2' (这是3to2所有修复器的位置)
         # 第二个参数是命令行参数列表
-        exit_code = main('lib3to2.fixes', ['-w', '-n', '--no-diffs', file_path])
+        exit_code = main('lib3to2.fixes', ['-w', '-n', '--no-diffs', file_path, '--nofix=metaclass'])
+        # exit_code = py3_to_2(file_path)
         return exit_code == 0, "转换完成" if exit_code == 0 else f"转换失败，错误代码: {exit_code}"
     except Exception as e:
         # 如果直接调用失败，则尝试命令行方式（作为备选）
@@ -46,14 +50,14 @@ def process_file(src_path, source_dir, target_dir):
     # 计算相对路径和目标路径
     rel_path = os.path.relpath(src_path, source_dir)
     dest_path = os.path.join(target_dir, rel_path)
-    
+
     # 复制文件
     copy_file(src_path, dest_path)
-    
+
     # 如果是Python文件，进行转换
     if is_python_file(src_path):
         success, output = convert_py3_to_py2(dest_path)
         return success, output, dest_path
-    
+
     # 如果是其他类型文件，直接返回成功
     return True, "", dest_path
