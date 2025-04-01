@@ -2,7 +2,8 @@
 
 import click
 from .commands.init_cmd import init_cmd
-from .commands.install_cmd import install_cmd
+from .commands.add_cmd import add_cmd
+from .commands.remove_cmd import remove_cmd
 from .commands.build_cmd import build_cmd
 from .commands.dev_cmd import dev_cmd
 from .commands.publish_cmd import publish_cmd
@@ -21,7 +22,8 @@ def cli(ctx):
 # 注册其他子命令
 cli.add_command(modsdk_cmd, name='modsdk')
 cli.add_command(init_cmd, name='init')
-cli.add_command(install_cmd, name='install')
+cli.add_command(add_cmd, name='add')
+cli.add_command(remove_cmd, name='remove')
 cli.add_command(build_cmd, name='build')
 cli.add_command(dev_cmd, name='dev')
 cli.add_command(publish_cmd, name='publish')

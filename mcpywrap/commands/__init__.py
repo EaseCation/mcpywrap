@@ -2,7 +2,8 @@
 
 # 在这里导入和注册所有的命令模块
 from .init_cmd import init_cmd
-from .install_cmd import install_cmd
+from .add_cmd import add_cmd
+from .remove_cmd import remove_cmd
 from .modsdk_cmd import modsdk_cmd
 from .build_cmd import build_cmd
 from .dev_cmd import dev_cmd
@@ -13,7 +14,8 @@ from .default_cmd import default_cmd
 commands = [
     default_cmd,
     init_cmd,
-    install_cmd,
+    add_cmd,
+    remove_cmd,
     modsdk_cmd,
     build_cmd,
     dev_cmd,

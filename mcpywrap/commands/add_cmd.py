@@ -10,11 +10,11 @@ from ..config import config_exists, add_dependency, get_project_dependencies
 
 @click.command()
 @click.argument('package', required=True)
-def install_cmd(package):
+def add_cmd(package):
     """安装依赖并添加到项目配置中"""
     # 检查项目是否已初始化
     if not config_exists():
-        click.echo(click.style('❌ 项目尚未初始化，请先运行 mcpywrap init', fg='red', bold=True))
+        click.echo(click.style('❌ 项目尚未初始化，请先运行 mcpy init', fg='red', bold=True))
         return
     
     # 检查依赖是否已存在

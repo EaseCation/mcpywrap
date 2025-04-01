@@ -88,3 +88,22 @@ def add_dependency(package):
         write_config(config)
         return True
     return False
+
+def remove_dependency(package_name):
+    """从项目配置中删除依赖
+    
+    Args:
+        package_name: 要删除的依赖名称
+        
+    Returns:
+        bool: 删除是否成功
+    """
+    try:
+        config = read_config()
+        if 'dependencies' in config and package_name in config['dependencies']:
+            config['dependencies'].remove(package_name)
+            write_config(config)
+            return True
+        return False
+    except Exception:
+        return False

@@ -8,6 +8,7 @@ import shutil
 
 from ..utils.py3to2_util import py3_to_2
 from ..utils.utils import ensure_dir, run_command
+from .file_merge import try_merge_file
 
 def is_python_file(file_path):
     """判断是否为Python文件"""
@@ -45,14 +46,62 @@ def convert_py3_to_py2(file_path):
         except Exception as cmd_e:
             return False, f"Python API调用失败: {str(e)}\n命令行调用也失败: {str(cmd_e)}"
 
-def process_file(src_path, source_dir, target_dir):
+def process_file(src_path, source_dir, target_dir, is_dependency=False, dependency_name=None):
     """处理单个文件（复制并根据文件类型处理）"""
     # 计算相对路径和目标路径
     rel_path = os.path.relpath(src_path, source_dir)
-    dest_path = os.path.join(target_dir, rel_path)
+    
+    # 如果是依赖项，需要特殊处理目标路径
+    if is_dependency:
+        # 确定是属于行为包还是资源包
+        if "behavior_pack" in src_path.lower() or "behaviorpack" in src_path.lower():
+            # 在路径中定位behavior_pack部分
+            parts = src_path.split(os.sep)
+            for i, part in enumerate(parts):
+                if "behavior_pack" in part.lower() or "behaviorpack" in part.lower():
+                    # 获取behavior_pack后的相对路径
+                    sub_path = os.path.join(*parts[i+1:])
+                    # 目标路径应该是behavior_pack目录
+                    for item in os.listdir(target_dir):
+                        if "behavior_pack" in item.lower() or "behaviorpack" in item.lower():
+                            dest_path = os.path.join(target_dir, item, sub_path)
+                            break
+                    else:
+                        # 如果找不到behavior_pack目录，创建一个
+                        dest_path = os.path.join(target_dir, "behavior_pack", sub_path)
+                    break
+        elif "resource_pack" in src_path.lower() or "resourcepack" in src_path.lower():
+            # 在路径中定位resource_pack部分
+            parts = src_path.split(os.sep)
+            for i, part in enumerate(parts):
+                if "resource_pack" in part.lower() or "resourcepack" in part.lower():
+                    # 获取resource_pack后的相对路径
+                    sub_path = os.path.join(*parts[i+1:])
+                    # 目标路径应该是resource_pack目录
+                    for item in os.listdir(target_dir):
+                        if "resource_pack" in item.lower() or "resourcepack" in item.lower():
+                            dest_path = os.path.join(target_dir, item, sub_path)
+                            break
+                    else:
+                        # 如果找不到resource_pack目录，创建一个
+                        dest_path = os.path.join(target_dir, "resource_pack", sub_path)
+                    break
+        else:
+            # 如果不在行为包或资源包中，忽略该文件
+            return False, "不在行为包或资源包中的文件将被忽略", None
+    else:
+        dest_path = os.path.join(target_dir, rel_path)
 
-    # 复制文件
-    copy_file(src_path, dest_path)
+    # 检查目标文件是否已存在，如果存在且来自依赖，尝试合并
+    if is_dependency and os.path.exists(dest_path):
+        suc, reason = try_merge_file(src_path, dest_path)
+        if not suc:
+            # 如果合并失败或有冲突，直接返回
+            msg = f"文件合并失败或存在冲突" if reason is None else reason
+            return False, msg, dest_path
+    else:
+        # 复制文件
+        copy_file(src_path, dest_path)
 
     # 如果是Python文件，进行转换
     if is_python_file(src_path):
