@@ -69,9 +69,9 @@ class AddonsPack(object):
         for item in os.listdir(self.path):
             item_path = os.path.join(self.path, item)
             if os.path.isdir(item_path):
-                if item.startswith("behavior_pack"):
+                if item.startswith("behavior_pack") or item.startswith("BehaviorPack"):
                     self.behavior_pack_dir = item_path
-                elif item.startswith("resource_pack"):
+                elif item.startswith("resource_pack") or item.startswith("ResourcePack"):
                     self.resource_pack_dir = item_path
         if not self.behavior_pack_dir:
             self.behavior_pack_dir = os.path.join(self.path, "behavior_pack")
