@@ -6,6 +6,7 @@ from ..config import update_config, config_exists, read_config
 from .init_cmd import init as init_project
 from ..minecraft.netease_modsdk import check_installed_modsdk, get_available_versions, download_and_install_package
 from ..utils.project_setup import find_and_configure_behavior_pack, install_project_dev_mode
+from ..utils.print_guide import print_guide
 
 
 @click.command()
@@ -41,9 +42,11 @@ def default_cmd():
         click.echo(click.style('🔄 正在安装到包管理...', fg='blue'))
         # 执行pip安装
         if install_project_dev_mode():
-            click.echo(click.style('🚀 项目重新配置和安装完成！', fg='bright_green', bold=True))
+            click.echo(click.style('🚀 项目检查和安装完成！', fg='bright_green', bold=True))
         else:
             click.echo(click.style('❌ 安装失败，请检查包管理器配置', fg='red', bold=True))
+        
+        print_guide()
 
 def try_install_modsdk():
     # 如果未指定版本，提示用户选择版本或使用最新版

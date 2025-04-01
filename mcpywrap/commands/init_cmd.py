@@ -5,9 +5,11 @@
 """
 import os
 import click
+from pathlib import Path
 from ..config import update_config, config_exists
 from ..utils.utils import ensure_dir
 from ..minecraft.addons import setup_minecraft_addon, is_minecraft_addon_project
+from ..utils.print_guide import print_guide
 from ..utils.project_setup import (
     get_default_author, get_default_email, get_default_project_name, find_behavior_pack_dir,
     update_behavior_pack_config, install_project_dev_mode
@@ -105,6 +107,7 @@ def init():
             'authors': [{'name': author}],
             'readme': "README.md",
             'requires-python': python_requires,
+            'dependencies': dependencies,
             'license': {'text': license_name},
             'classifiers': [
                 f"License :: OSI Approved :: {license_name} License",
@@ -125,9 +128,6 @@ def init():
     if project_url:
         config['project']['urls'] = {'Homepage': project_url}
     
-    if dependencies:
-        config['project']['dependencies'] = dependencies
-    
     # 更新行为包配置
     rel_path = update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir)
     if behavior_pack_dir:
@@ -137,6 +137,60 @@ def init():
     click.echo(click.style('✅ 初始化完成！配置文件已更新到 pyproject.toml', fg='green'))
     
     # 使用pip安装项目（可编辑模式）
-    if click.confirm(click.style('❓ 是否立即安装项目到开发环境？（使用pip install -e .命令）', fg='magenta'), default=True):
-        if install_project_dev_mode():
-            click.echo(click.style('🚀 现在你可以开始编写Minecraft Python脚本了！', fg='bright_green', bold=True))
+    install_project_dev_mode()
+
+    # 创建.gitignore文件
+    if click.confirm(click.style('❓ 是否创建.gitignore文件？（包含Python和构建目录的忽略项）', fg='magenta'), default=True):
+        gitignore_content = """# Python相关
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+.env
+.venv
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE相关
+.idea/
+.vscode/
+*.swp
+*.swo
+.mcs
+studio.json
+work.mcscfg
+
+# Minecraft Addon 构建目录
+/build/
+"""
+        gitignore_path = Path(base_dir) / '.gitignore'
+        if gitignore_path.exists():
+            if click.confirm(click.style('⚠️  .gitignore文件已存在，是否覆盖？', fg='yellow'), default=False):
+                gitignore_path.write_text(gitignore_content)
+                click.echo(click.style('✅ .gitignore文件已更新！', fg='green'))
+        else:
+            gitignore_path.write_text(gitignore_content)
+            click.echo(click.style('✅ .gitignore文件已创建！', fg='green'))
+
+    # 指令使用指南
+    print_guide()
