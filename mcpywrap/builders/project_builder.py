@@ -255,6 +255,9 @@ def find_mcpywrap_dependencies(dependencies: list[str]) -> dict[str, AddonsPack]
                         # 处理file://开头的路径
                         if url.startswith("file://"):
                             url = url[7:]
+                            # 对URL进行解码，处理%编码的特殊字符
+                            from urllib.parse import unquote
+                            url = unquote(url)
                             url = os.path.abspath(url)
                             if sys.platform == "win32":
                                 url = url.replace("\\", "/")
