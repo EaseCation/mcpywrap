@@ -18,13 +18,13 @@ def ensure_dir(path_str):
         path.mkdir(parents=True)
     return str(path)
 
-def run_command(cmd, cwd=None):
+def run_command(cmd, cwd=None, shell=False):
     """运行系统命令"""
     try:
         result = subprocess.run(
             cmd, 
             cwd=cwd, 
-            shell=True,
+            shell=shell,
             check=True, 
             text=True, 
             capture_output=True

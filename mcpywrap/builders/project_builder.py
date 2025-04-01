@@ -201,8 +201,27 @@ def clear_directory(directory):
 
 def convert_project_py3_to_py2(directory):
     """将整个项目中的Python文件转换为Python 2"""
-    success, output = run_command(["3to2", "-w", "-n", directory])
-    return success, output
+    try:
+        # 首先尝试使用直接的Python API调用
+        from lib3to2.main import main
+        # main函数接受包名和参数列表
+        # 第一个参数是包名 'lib3to2' (这是3to2所有修复器的位置)
+        # 第二个参数是命令行参数列表
+        print(f"正在转换目录: {directory}")
+        exit_code = main('lib3to2.fixes', ['-w', '-n', '-j', '8', '--no-diffs', directory])
+        return exit_code == 0, "转换完成" if exit_code == 0 else f"转换失败，错误代码: {exit_code}"
+    except Exception as e:
+        # 如果直接调用失败，则尝试命令行方式（作为备选）
+        try:
+            # 方法1：直接命令行调用
+            success, output = run_command(["3to2", "-w", "-n", directory])
+            if not success:
+                # 方法2：使用shell=True参数
+                success, output = run_command(["3to2", "-w", "-n", directory], shell=True)
+            
+            return success, output
+        except Exception as cmd_e:
+            return False, f"Python API调用失败: {str(e)}\n命令行调用也失败: {str(cmd_e)}"
 
 def find_mcpywrap_dependencies(dependencies: list[str]) -> dict[str, AddonsPack]:
     """
