@@ -68,7 +68,7 @@ class {mod_name}:
 ''')
         
         # 创建服务端系统文件
-        server_system_filename = f"{server_system_name.replace('System', '')}.py"
+        server_system_filename = f"{server_system_name}.py"
         with open(os.path.join(server_dir, server_system_filename), "w") as f:
             f.write(f'''# -*- coding: utf-8 -*-
 
@@ -86,7 +86,7 @@ class {server_system_name}(ServerSystem):
 ''')
         
         # 创建客户端系统文件
-        client_system_filename = f"{client_system_name.replace('System', '')}.py"
+        client_system_filename = f"{client_system_name}.py"
         with open(os.path.join(client_dir, client_system_filename), "w") as f:
             f.write(f'''import mod.client.extraClientApi as clientApi
 from ..config import *

@@ -152,6 +152,6 @@ def build_project(source_dir, target_dir):
         dependencies[dep].merge_resource_into(target_addons.resource_pack_dir)
 
     # 转换Python文件
-    success, output = convert_project_py3_to_py2(target_dir)
-
-    return success, output
+    # success, output = convert_project_py3_to_py2(target_dir)
+    # return success, output
+    return True, None
