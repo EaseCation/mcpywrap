@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import os
 import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
@@ -82,7 +84,7 @@ class FileStructurePreview(QFrame):
         server_dir.setForeground(0, QColor(self.folder_color))
         server_dir.setExpanded(True)
         
-        server_system_file = QTreeWidgetItem(server_dir, [f"{server_system_name.replace('System', '')}.py"])
+        server_system_file = QTreeWidgetItem(server_dir, [f"{server_system_name}.py"])
         server_system_file.setForeground(0, QColor(self.file_color))
         
         server_init = QTreeWidgetItem(server_dir, ["__init__.py"])
@@ -93,7 +95,7 @@ class FileStructurePreview(QFrame):
         client_dir.setForeground(0, QColor(self.folder_color))
         client_dir.setExpanded(True)
         
-        client_system_file = QTreeWidgetItem(client_dir, [f"{client_system_name.replace('System', '')}.py"])
+        client_system_file = QTreeWidgetItem(client_dir, [f"{client_system_name}.py"])
         client_system_file.setForeground(0, QColor(self.file_color))
         
         client_init = QTreeWidgetItem(client_dir, ["__init__.py"])
@@ -386,8 +388,8 @@ def open_ui_crate_mod(behavior_pack_path):
             # 总是更新类路径，因为它们不可手动编辑
             server_name = server_system_name_input.text() or f"{mod_name}ServerSystem"
             client_name = client_system_name_input.text() or f"{mod_name}ClientSystem"
-            server_system_cls = f"{root_dir_name}.server.{server_name.replace('System', '')}.{server_name}"
-            client_system_cls = f"{root_dir_name}.client.{client_name.replace('System', '')}.{client_name}"
+            server_system_cls = f"{root_dir_name}.server.{server_name}.{server_name}"
+            client_system_cls = f"{root_dir_name}.client.{client_name}.{client_name}"
             
             server_system_cls_input.setText(server_system_cls)
             client_system_cls_input.setText(client_system_cls)

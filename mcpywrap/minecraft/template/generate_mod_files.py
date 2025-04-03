@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import os
 
 def generate_mod_framework(behavior_pack_path, mod_name, mod_version, server_system_name, 
@@ -31,7 +33,9 @@ def generate_mod_framework(behavior_pack_path, mod_name, mod_version, server_sys
         
         # 创建config.py
         with open(os.path.join(script_dir, "config.py"), "w") as f:
-            f.write(f'''ModName = "{mod_name}"
+            f.write(f'''# -*- coding: utf-8 -*-
+
+ModName = "{mod_name}"
 ModVersion = "{mod_version}"
 ServerSystemName = "{server_system_name}"
 ServerSystemCls = "{server_system_cls}"
@@ -41,10 +45,13 @@ ClientSystemCls = "{client_system_cls}"
         
         # 创建modMain.py
         with open(os.path.join(script_dir, "modMain.py"), "w") as f:
-            f.write(f'''from mod.common.mod import Mod
+            f.write(f'''# -*- coding: utf-8 -*-
+
+from mod.common.mod import Mod
 import mod.server.extraServerApi as serverApi
 import mod.client.extraClientApi as clientApi
 from .config import *
+
 
 @Mod.Binding(name=ModName, version=ModVersion)
 class {mod_name}:
@@ -63,10 +70,13 @@ class {mod_name}:
         # 创建服务端系统文件
         server_system_filename = f"{server_system_name.replace('System', '')}.py"
         with open(os.path.join(server_dir, server_system_filename), "w") as f:
-            f.write(f'''import mod.server.extraServerApi as serverApi
+            f.write(f'''# -*- coding: utf-8 -*-
+
+import mod.server.extraServerApi as serverApi
 from ..config import *
 
 ServerSystem = serverApi.GetServerSystemCls()
+
 
 class {server_system_name}(ServerSystem):
 
