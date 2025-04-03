@@ -105,8 +105,8 @@ def process_file(src_path, source_dir, target_dir, is_dependency=False, dependen
 
     # 如果是Python文件，进行转换
     if is_python_file(src_path):
-        success, output = convert_py3_to_py2(dest_path)
-        return success, output, dest_path
+        # success, output = convert_py3_to_py2(dest_path)
+        return True, None, dest_path
 
     # 如果是其他类型文件，直接返回成功
     return True, "", dest_path
