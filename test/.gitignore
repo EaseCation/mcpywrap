@@ -1,0 +1,41 @@
+# Python相关
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境
+.env
+.venv
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE相关
+.idea/
+.vscode/
+*.swp
+*.swo
+.mcs
+studio.json
+work.mcscfg
+
+# Minecraft Addon 构建目录
+/build/

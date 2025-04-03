@@ -22,7 +22,8 @@ dependencies = [
     "twine>=3.4.0",
     "tomli",
     "tomli-w",
-    "setuptools"
+    "setuptools",
+    "PyQt5>=5.15.0",
 ]
 
 [project.scripts]

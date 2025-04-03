@@ -109,31 +109,22 @@ def setup_minecraft_addon(base_dir, name, description, version):
     # 创建behavior pack文件夹结构
     ensure_dir(os.path.join(behavior_pack_dir, "entities"))
     ensure_dir(os.path.join(behavior_pack_dir, "items"))
-    scripts_dir = os.path.join(behavior_pack_dir, "MyScripts")
-    ensure_dir(scripts_dir)
-    
-    # 创建__init__.py文件，标记为Python包
-    with open(os.path.join(scripts_dir, "__init__.py"), 'w', encoding='utf-8') as f:
-        f.write("# Python package initialization\n")
-    
-    # 将modules_dir记录为Python源代码目录
-    result["python_root_dir"] = behavior_pack_dir
     
     # 创建behavior pack清单文件
     bp_manifest = create_manifest_json(
         f"{name} Behaviors",
-        f"{description} - Behaviors",
+        f"{description}",
         version
     )
     bp_manifest["header"]["type"] = "data"
     
     # 添加对resource pack的依赖
-    bp_manifest["dependencies"] = [
-        {
-            "uuid": rp_manifest["header"]["uuid"],
-            "version": rp_manifest["header"]["version"]
-        }
-    ]
+    # bp_manifest["dependencies"] = [
+    #     {
+    #         "uuid": rp_manifest["header"]["uuid"],
+    #         "version": rp_manifest["header"]["version"]
+    #     }
+    # ]
     
     # 检查是否已经存在manifest文件
     bp_manifest_path = os.path.join(behavior_pack_dir, "manifest.json")

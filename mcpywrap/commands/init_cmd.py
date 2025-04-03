@@ -14,6 +14,7 @@ from ..utils.project_setup import (
     get_default_author, get_default_email, get_default_project_name, find_behavior_pack_dir,
     update_behavior_pack_config, install_project_dev_mode
 )
+from ..minecraft.template.mod_template import open_ui_crate_mod
 
 
 @click.command()
@@ -45,9 +46,15 @@ def init():
         author_email = click.prompt(click.style('📧 请输入作者邮箱', fg='cyan'), default=default_email, type=str, show_default=True)
         project_url = click.prompt(click.style('🔗 请输入项目URL', fg='cyan'), default='', type=str)
         license_name = click.prompt(click.style('📜 请输入许可证类型', fg='cyan'), default='MIT', type=str)
-        python_requires = click.prompt(click.style('🐍 请输入Python版本要求', fg='cyan'), default='>=3.6', type=str)
-        
-        # 获取依赖列表
+        python_requires = click.prompt(click.style('🐍 请输入Python版本要求', fg='cyan'), default='>=3.6', type=str)    
+    else:
+        # 设置默认值
+        author_email = get_default_email()
+        project_url = ''
+        license_name = 'MIT'
+        python_requires = '>=3.6'
+
+    # 获取依赖列表
         dependencies = []
         click.echo(click.style('📚 请输入项目依赖包（其他需要打包到入此项目的mcpywrap项目），每行一个（输入空行结束）:', fg='cyan'))
         while True:
@@ -55,13 +62,6 @@ def init():
             if not dep:
                 break
             dependencies.append(dep)
-    else:
-        # 设置默认值
-        author_email = get_default_email()
-        project_url = ''
-        license_name = 'MIT'
-        python_requires = '>=3.6'
-        dependencies = []
     
     base_dir = os.getcwd()
     behavior_pack_dir = None
@@ -77,8 +77,8 @@ def init():
         else:
             click.echo(click.style('⚠️ 无法找到行为包目录', fg='yellow'))
     else:
-        if click.confirm(click.style('❓ 是否创建Minecraft addon 基础框架？', fg='magenta'), default=True):
-            click.echo(click.style('🧱 正在创建Minecraft addon 基础框架...', fg='magenta'))
+        if click.confirm(click.style('❓ 是否创建 Minecraft addon 基础框架？', fg='magenta'), default=True):
+            click.echo(click.style('🧱 正在创建 Minecraft addon 基础框架...', fg='magenta'))
             minecraft_addon_info = setup_minecraft_addon(
                 base_dir, 
                 project_name, 
@@ -90,9 +90,15 @@ def init():
             click.echo(click.style(f'📂 行为包: {minecraft_addon_info["behavior_pack"]["path"]}', fg='green'))
             behavior_pack_dir = minecraft_addon_info["behavior_pack"]["path"]
 
-    if behavior_pack_dir and click.confirm(click.style('❓ 是否配置构建目标目录？（指定生成的脚本文件应安装到的位置）', fg='magenta'), default=False):
-        target_dir = click.prompt(click.style('📂 请输入目标目录', fg='cyan'), default='./build', type=str)
-        ensure_dir(target_dir)
+    # 检查行为包中是否有任意Python包
+    if behavior_pack_dir:
+        if not any(file.endswith('.py') for file in os.listdir(behavior_pack_dir)):
+            if click.confirm(click.style('⚠️ 是否使用模板创建 Mod 基础 Python 脚本框架？', fg='yellow'), default=True):
+                open_ui_crate_mod(behavior_pack_dir)
+
+    # 构建目录
+    target_dir = click.prompt(click.style('📂 默认构建目录', fg='cyan'), default='./build', type=str)
+    ensure_dir(target_dir)
     
     # 构建符合 PEP 621 标准的配置
     config = {

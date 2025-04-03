@@ -9,6 +9,7 @@ from .commands.dev_cmd import dev_cmd
 from .commands.publish_cmd import publish_cmd
 from .commands.default_cmd import default_cmd
 from .commands.modsdk_cmd import modsdk_cmd
+from .commands.mod_cmd import mod_cmd
 
 @click.group(invoke_without_command=True)
 @click.pass_context
@@ -27,6 +28,7 @@ cli.add_command(remove_cmd, name='remove')
 cli.add_command(build_cmd, name='build')
 cli.add_command(dev_cmd, name='dev')
 cli.add_command(publish_cmd, name='publish')
+cli.add_command(mod_cmd, name='mod')
 
 if __name__ == '__main__':
     cli()
