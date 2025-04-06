@@ -31,5 +31,5 @@ mcpywrap = "mcpywrap.__main__:main"
 mcpy = "mcpywrap.__main__:main"
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/mcpywrap"
-"Bug Tracker" = "https://github.com/yourusername/mcpywrap/issues"
+"Homepage" = "https://github.com/EaseCation/mcpywrap"
+"Bug Tracker" = "https://github.com/EaseCation/mcpywrap/issues"
