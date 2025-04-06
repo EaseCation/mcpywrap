@@ -1,6 +1,0 @@
-ModName = "MyFirstMod"
-ModVersion = "1.0"
-ServerSystemName = "MyFirstModServerSystem"
-ServerSystemCls = "MyScript.server.MyFirstModServer.MyFirstModServerSystem"
-ClientSystemName = "MyFirstModClientSystem"
-ClientSystemCls = "MyScript.client.MyFirstModClient.MyFirstModClientSystem"
