@@ -69,72 +69,61 @@ class FileChangeHandler(FileSystemEventHandler):
         
         self.recent_events[event_key] = current_time
 
-        # 根据事件类型进行处理
-        if event_type == 'deleted':
-            # 对于删除的文件，生成目标路径并通知回调
-            rel_path = os.path.relpath(src_path, self.source_dir)
-            dest_path = os.path.join(self.target_dir, rel_path)
-            
-            if self.callback:
-                is_py = is_python_file(src_path)
-                self.callback(src_path, dest_path, False, f"文件已删除: {src_path}", is_py, 
-                             self.is_dependency, self.dependency_name, event_type='deleted')
-        else:
-            # 对于其他事件（创建、修改），使用AddonsPack处理文件
-            success = False
-            output = ""
-            dest_path = None
-            
-            # 判断是行为包还是资源包文件
-            if "behavior_pack" in src_path.lower() or "behaviorpack" in src_path.lower():
-                # 在目标目录中找到behavior_pack目录
-                for item in os.listdir(self.target_dir):
-                    if "behavior_pack" in item.lower() or "behaviorpack" in item.lower():
-                        dest_dir = os.path.join(self.target_dir, item)
-                        # 使用AddonsPack的方法合并
-                        self.addon_pack.merge_behavior_into(dest_dir)
-                        success = True
-                        output = f"行为包文件已合并: {src_path}"
-                        # 计算目标路径
-                        parts = src_path.split(os.sep)
-                        for i, part in enumerate(parts):
-                            if "behavior_pack" in part.lower() or "behaviorpack" in part.lower():
-                                sub_path = os.path.join(*parts[i+1:])
-                                dest_path = os.path.join(dest_dir, sub_path)
-                                break
-                        break
-                else:
-                    success = False
-                    output = f"错误: 在目标目录中找不到behavior_pack目录"
-            elif "resource_pack" in src_path.lower() or "resourcepack" in src_path.lower():
-                # 在目标目录中找到resource_pack目录
-                for item in os.listdir(self.target_dir):
-                    if "resource_pack" in item.lower() or "resourcepack" in item.lower():
-                        dest_dir = os.path.join(self.target_dir, item)
-                        # 使用AddonsPack的方法合并
-                        self.addon_pack.merge_resource_into(dest_dir)
-                        success = True
-                        output = f"资源包文件已合并: {src_path}"
-                        # 计算目标路径
-                        parts = src_path.split(os.sep)
-                        for i, part in enumerate(parts):
-                            if "resource_pack" in part.lower() or "resourcepack" in part.lower():
-                                sub_path = os.path.join(*parts[i+1:])
-                                dest_path = os.path.join(dest_dir, sub_path)
-                                break
-                        break
-                else:
-                    success = False
-                    output = f"错误: 在目标目录中找不到resource_pack目录"
+        # 使用AddonsPack处理文件
+        success = False
+        output = ""
+        dest_path = None
+        
+        # 判断是行为包还是资源包文件
+        if "behavior_pack" in src_path.lower() or "behaviorpack" in src_path.lower():
+            # 在目标目录中找到behavior_pack目录
+            for item in os.listdir(self.target_dir):
+                if "behavior_pack" in item.lower() or "behaviorpack" in item.lower():
+                    dest_dir = os.path.join(self.target_dir, item)
+                    # 使用AddonsPack的方法合并
+                    self.addon_pack.merge_behavior_into(dest_dir)
+                    success = True
+                    output = f"行为包文件已合并: {src_path}"
+                    # 计算目标路径
+                    parts = src_path.split(os.sep)
+                    for i, part in enumerate(parts):
+                        if "behavior_pack" in part.lower() or "behaviorpack" in part.lower():
+                            sub_path = os.path.join(*parts[i+1:])
+                            dest_path = os.path.join(dest_dir, sub_path)
+                            break
+                    break
             else:
                 success = False
-                output = f"错误: 文件 {src_path} 不在行为包或资源包目录中"
+                output = f"错误: 在目标目录中找不到behavior_pack目录"
+        elif "resource_pack" in src_path.lower() or "resourcepack" in src_path.lower():
+            # 在目标目录中找到resource_pack目录
+            for item in os.listdir(self.target_dir):
+                if "resource_pack" in item.lower() or "resourcepack" in item.lower():
+                    dest_dir = os.path.join(self.target_dir, item)
+                    # 使用AddonsPack的方法合并
+                    self.addon_pack.merge_resource_into(dest_dir)
+                    success = True
+                    output = f"资源包文件已合并: {src_path}"
+                    # 计算目标路径
+                    parts = src_path.split(os.sep)
+                    for i, part in enumerate(parts):
+                        if "resource_pack" in part.lower() or "resourcepack" in part.lower():
+                            sub_path = os.path.join(*parts[i+1:])
+                            dest_path = os.path.join(dest_dir, sub_path)
+                            break
+                    break
+            else:
+                success = False
+                output = f"错误: 在目标目录中找不到resource_pack目录"
+        else:
+            success = False
+            output = f"错误: 文件 {src_path} 不在行为包或资源包目录中"
 
-            # 如果有回调函数，调用它
-            if self.callback and dest_path:
-                is_py = is_python_file(src_path)
-                self.callback(src_path, dest_path, success, output, is_py, 
-                             self.is_dependency, self.dependency_name, event_type=event_type)
+        # 如果有回调函数，调用它
+        if self.callback and dest_path:
+            is_py = is_python_file(src_path)
+            self.callback(src_path, dest_path, success, output, is_py, 
+                            self.is_dependency, self.dependency_name, event_type=event_type)
 
     def on_created(self, event):
         """处理创建事件"""

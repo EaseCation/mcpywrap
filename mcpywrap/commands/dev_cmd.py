@@ -14,36 +14,15 @@ def file_change_callback(src_path, dest_path, success, output, is_python, is_dep
     """文件变化回调函数 - 展示处理结果"""
     # 显示文件变化来源
     if is_dependency:
-        click.secho(f"\n📝 检测到依赖项目 ", fg="bright_blue", nl=False)
-        click.secho(f"{dependency_name}", fg="bright_magenta", nl=False)
-        click.secho(f" 文件变化", fg="bright_blue")
+        click.secho(f"\n📝 检测到依赖项目文件变化 {dependency_name} {src_path}", fg="bright_blue", nl=False)
     else:
-        click.secho(f"\n📝 检测到文件变化", fg="bright_blue")
-    
-    # 显示源文件路径
-    click.secho(f"  源: {src_path}", fg="bright_cyan")
-    
-    # 处理删除事件
-    if event_type == 'deleted':
-        try:
-            if os.path.exists(dest_path):
-                os.remove(dest_path)
-                click.secho(f'✅ 文件已从目标移除: {dest_path}', fg="green")
-            else:
-                click.secho(f'ℹ️  目标文件不存在: {dest_path}', fg="blue")
-        except Exception as e:
-            click.secho(f'❌ 目标文件移除失败: {str(e)}', fg="red")
-        return
+        click.secho(f"\n📝 检测到文件变化 {src_path}", fg="bright_blue")
     
     # 处理其他事件（创建或修改）
     if success:
-        click.secho(f'✅ 处理成功: {dest_path}', fg="green")
-        if output:
-            click.secho(f'   {output}', fg="bright_green")
+        click.secho(f'✅ 处理成功 {output}', fg="green")
     else:
-        click.secho(f'❌ 处理失败', fg="red")
-        if output:
-            click.secho(f'   {output}', fg="bright_red")
+        click.secho(f'❌ 处理失败 {output}', fg="red")
 
 @click.command()
 def dev_cmd():
