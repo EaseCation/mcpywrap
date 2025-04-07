@@ -5,24 +5,28 @@
 
 import os
 import time
+import pdb
 from typing import Callable, Dict, List, Optional
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+from ..utils.utils import ensure_dir
 
 from .dependency_manager import DependencyManager, DependencyNode
 from .AddonsPack import AddonsPack
 
 class FileChangeHandler(FileSystemEventHandler):
     """文件变化处理器"""
-    def __init__(self, source_dir, target_dir, callback=None, is_dependency=False, dependency_name=None, addon_pack=None):
+    def __init__(self, source_dir, target_dir, callback=None, is_dependency=False, dependency_name=None, project_watcher=None, addon_pack=None):
         self.source_dir = source_dir
         self.target_dir = target_dir
+        print(f"监控目录: {self.source_dir} -> {self.target_dir}")
         self.last_event_time = 0
-        self.cooldown = 2  # 冷却时间（秒）
+        self.cooldown = 0  # 冷却时间（秒）
         self.callback = callback
         self.is_dependency = is_dependency  # 是否是依赖项目
         self.dependency_name = dependency_name  # 依赖项目名称
-        self.addon_pack = addon_pack  # AddonsPack 对象
+        self.project_watcher: ProjectWatcher = project_watcher  # ProjectWatcher 对象
+        self.addon_pack: AddonsPack = addon_pack  # AddonsPack 对象
         # 存储最近处理的事件，用于防止重复处理
         self.recent_events = {}
         
@@ -68,61 +72,58 @@ class FileChangeHandler(FileSystemEventHandler):
         
         self.recent_events[event_key] = current_time
 
-        # 使用AddonsPack处理文件
+        # 使用 AddonsPack 判断文件类型
+        is_in_pack, pack_type, src_rel_path = self.addon_pack.get_relative_path_in_pack(src_path)
+        
+        if not is_in_pack:
+            # 文件不在行为包或资源包中
+            return
+            
+        # 初始化变量
         success = False
         output = ""
         dest_path = None
         
-        # 判断是行为包还是资源包文件
-        if "behavior_pack" in src_path.lower() or "behaviorpack" in src_path.lower():
-            # 在目标目录中找到behavior_pack目录
-            for item in os.listdir(self.target_dir):
-                if "behavior_pack" in item.lower() or "behaviorpack" in item.lower():
-                    dest_dir = os.path.join(self.target_dir, item)
-                    # 使用AddonsPack的方法合并
-                    self.addon_pack.merge_behavior_into(dest_dir)
-                    success = True
-                    output = f"行为包文件已合并: {src_path}"
-                    # 计算目标路径
-                    parts = src_path.split(os.sep)
-                    for i, part in enumerate(parts):
-                        if "behavior_pack" in part.lower() or "behaviorpack" in part.lower():
-                            sub_path = os.path.join(*parts[i+1:])
-                            dest_path = os.path.join(dest_dir, sub_path)
-                            break
-                    break
-            else:
-                success = False
-                output = f"错误: 在目标目录中找不到behavior_pack目录"
-        elif "resource_pack" in src_path.lower() or "resourcepack" in src_path.lower():
-            # 在目标目录中找到resource_pack目录
-            for item in os.listdir(self.target_dir):
-                if "resource_pack" in item.lower() or "resourcepack" in item.lower():
-                    dest_dir = os.path.join(self.target_dir, item)
-                    # 使用AddonsPack的方法合并
-                    self.addon_pack.merge_resource_into(dest_dir)
-                    success = True
-                    output = f"资源包文件已合并: {src_path}"
-                    # 计算目标路径
-                    parts = src_path.split(os.sep)
-                    for i, part in enumerate(parts):
-                        if "resource_pack" in part.lower() or "resourcepack" in part.lower():
-                            sub_path = os.path.join(*parts[i+1:])
-                            dest_path = os.path.join(dest_dir, sub_path)
-                            break
-                    break
-            else:
-                success = False
-                output = f"错误: 在目标目录中找不到resource_pack目录"
-        else:
+        # 查找目标目录中对应的包目录
+        if pack_type == "behavior":
+            dest_path = os.path.join(self.target_dir, os.path.basename(self.project_watcher.target_addon_pack.behavior_pack_dir), src_rel_path)
+        elif pack_type == "resource":
+            dest_path = os.path.join(self.target_dir, os.path.basename(self.project_watcher.target_addon_pack.resource_pack_dir), src_rel_path)
+        
+        if not dest_path:
             success = False
-            output = f"错误: 文件 {src_path} 不在行为包或资源包目录中"
+            output = f"错误: 无法计算{src_path}的目标路径"
+            return
+        
+        # 处理删除事件
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        
+        # 处理创建/修改事件
+        try:
+            # 确保目标目录存在
+            ensure_dir(os.path.dirname(dest_path))
+            if pack_type == "behavior":
+                self.project_watcher.main_addon_pack.merge_behavior_single_file_to(src_rel_path, dest_path)
+                for dep in self.project_watcher.dependency_manager.dependency_map.values():
+                    dep.merge_behavior_single_file_to(src_rel_path, dest_path)
+            elif pack_type == "resource":
+                self.project_watcher.main_addon_pack.merge_resource_single_file_to(src_rel_path, dest_path)
+                for dep in self.project_watcher.dependency_manager.dependency_map.values():
+                    dep.merge_resource_single_file_to(src_rel_path, dest_path)
+            # 处理完成
+            success = True
+            pack_name = "行为包" if pack_type == "behavior" else "资源包"
+            output = f"{pack_name}文件已合并: {src_path}"
+        except Exception as e:
+            success = False
+            output = f"合并文件失败: {str(e)}"
 
         # 如果有回调函数，调用它
-        if self.callback and dest_path:
+        if self.callback:
             is_py = src_path.endswith('.py')
             self.callback(src_path, dest_path, success, output, is_py, 
-                            self.is_dependency, self.dependency_name, event_type=event_type)
+                         self.is_dependency, self.dependency_name, event_type=event_type)
 
     def on_created(self, event):
         """处理创建事件"""
@@ -154,14 +155,15 @@ class FileChangeHandler(FileSystemEventHandler):
 
 class FileWatcher:
     """文件监控器"""
-    def __init__(self, source_dir, target_dir, callback=None, is_dependency=False, dependency_name=None, addon_pack=None):
+    def __init__(self, source_dir, target_dir, callback=None, is_dependency=False, dependency_name=None, project_watcher=None, addon_pack=None):
         self.source_dir = source_dir
         self.target_dir = target_dir
         self.observer = None
         self.callback = callback
         self.is_dependency = is_dependency
         self.dependency_name = dependency_name
-        self.addon_pack = addon_pack
+        self.project_watcher: ProjectWatcher = project_watcher
+        self.addon_pack: AddonsPack = addon_pack
         
     def start(self):
         """开始监控"""
@@ -171,6 +173,7 @@ class FileWatcher:
             self.callback,
             self.is_dependency,
             self.dependency_name,
+            self.project_watcher,
             self.addon_pack
         )
         self.observer = Observer()
@@ -210,7 +213,8 @@ class ProjectWatcher:
         self.callback = callback
         self.multi_watcher = MultiWatcher()
         self.dependency_manager = DependencyManager()
-        self.main_addon_pack = None
+        self.main_addon_pack: AddonsPack = None
+        self.target_addon_pack: AddonsPack = None
         
     def setup_from_config(self, project_name: str, dependencies: List[str]):
         """根据配置设置监视器"""
@@ -229,12 +233,15 @@ class ProjectWatcher:
             if self.main_addon_pack.resource_pack_dir:
                 resource_dir_name = os.path.basename(self.main_addon_pack.resource_pack_dir)
                 os.makedirs(os.path.join(self.target_dir, resource_dir_name), exist_ok=True)
+
+            self.target_addon_pack = AddonsPack(project_name, self.target_dir, is_origin=False)
             
             # 添加主项目监视器
             main_watcher = FileWatcher(
                 self.source_dir, 
                 self.target_dir, 
                 self.callback,
+                project_watcher=self,
                 addon_pack=self.main_addon_pack
             )
             self.multi_watcher.add_watcher(main_watcher)
@@ -255,6 +262,7 @@ class ProjectWatcher:
                     self.callback,
                     is_dependency=True,
                     dependency_name=dep_name,
+                    project_watcher=self,
                     addon_pack=dep_addon
                 )
                 self.multi_watcher.add_watcher(dep_watcher)
