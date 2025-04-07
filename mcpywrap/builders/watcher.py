@@ -9,7 +9,6 @@ from typing import Callable, Dict, List, Optional
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-from .file_handler import process_file, is_python_file
 from .dependency_manager import DependencyManager, DependencyNode
 from .AddonsPack import AddonsPack
 
@@ -121,7 +120,7 @@ class FileChangeHandler(FileSystemEventHandler):
 
         # 如果有回调函数，调用它
         if self.callback and dest_path:
-            is_py = is_python_file(src_path)
+            is_py = src_path.endswith('.py')
             self.callback(src_path, dest_path, success, output, is_py, 
                             self.is_dependency, self.dependency_name, event_type=event_type)
 

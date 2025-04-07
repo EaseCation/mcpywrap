@@ -4,9 +4,7 @@
 """
 
 from .project_builder import ProjectBuilder
-from .file_handler import process_file, is_python_file
 from .watcher import ProjectWatcher, FileWatcher
 from .dependency_manager import DependencyManager
 
-__all__ = ['ProjectBuilder', 'process_file', 'is_python_file', 
-           'ProjectWatcher', 'FileWatcher', 'DependencyManager']
+__all__ = ['ProjectBuilder', 'ProjectWatcher', 'FileWatcher', 'DependencyManager']

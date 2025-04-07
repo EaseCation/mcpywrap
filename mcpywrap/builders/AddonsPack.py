@@ -3,8 +3,9 @@
 import os
 import shutil
 import click
-from .file_handler import ensure_dir, try_merge_file
 
+from ..utils.utils import ensure_dir
+from .file_merge import try_merge_file
 
 # Python 包管理和其他应该忽略的文件和目录
 EXCLUDED_PATTERNS = [
