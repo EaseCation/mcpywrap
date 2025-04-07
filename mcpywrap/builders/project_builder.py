@@ -12,7 +12,7 @@ import click
 
 from ..utils.py3to2_util import py3_to_2
 from ..utils.utils import run_command
-from ..config import read_config, CONFIG_FILE
+from ..config import read_config, CONFIG_FILE, get_use_3to2
 from .AddonsPack import AddonsPack
 
 
@@ -152,6 +152,8 @@ def build_project(source_dir, target_dir):
         dependencies[dep].merge_resource_into(target_addons.resource_pack_dir)
 
     # 转换Python文件
-    # success, output = convert_project_py3_to_py2(target_dir)
-    # return success, output
+    if get_use_3to2():
+        success, output = convert_project_py3_to_py2(target_dir)
+        return success, output
+
     return True, None

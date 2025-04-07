@@ -83,7 +83,7 @@ def setup_minecraft_addon(base_dir, name, description, version):
     # 创建resource pack清单文件
     rp_manifest = create_manifest_json(
         f"{name} Resources",
-        f"{description}",
+        f"{description} - Resources",
         version
     )
     

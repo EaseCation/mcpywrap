@@ -1,7 +1,6 @@
 .idea
+/test
 # Python
-.idea
-
 __pycache__/
 *.py[cod]
 *$py.class
@@ -25,4 +24,3 @@ var/
 
 # mcpywrap specific
 .mcpywrap.json
-test/

@@ -70,6 +70,11 @@ def get_mcpywrap_config():
     config = read_config()
     return config.get('tool', {}).get('mcpywrap', {})
 
+def get_use_3to2():
+    """获取是否使用3to2转换的配置"""
+    mcpywrap_config = get_mcpywrap_config()
+    return mcpywrap_config.get('use_3to2', False)
+
 def get_project_dependencies() -> list[str]:
     """获取项目依赖列表"""
     config = read_config()
