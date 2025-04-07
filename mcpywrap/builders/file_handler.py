@@ -48,7 +48,19 @@ def convert_py3_to_py2(file_path):
             return False, f"Python API调用失败: {str(e)}\n命令行调用也失败: {str(cmd_e)}"
 
 def process_file(src_path, source_dir, target_dir, is_dependency=False, dependency_name=None):
-    """处理单个文件（复制并根据文件类型处理）"""
+    """
+    处理单个文件（复制并根据文件类型处理）
+    
+    Args:
+        src_path: 源文件路径
+        source_dir: 源目录
+        target_dir: 目标目录
+        is_dependency: 是否是依赖项目的文件
+        dependency_name: 依赖项目名称
+    
+    Returns:
+        Tuple[bool, str, str]: (是否成功, 错误信息, 目标文件路径)
+    """
     # 计算相对路径和目标路径
     rel_path = os.path.relpath(src_path, source_dir)
     
@@ -94,15 +106,24 @@ def process_file(src_path, source_dir, target_dir, is_dependency=False, dependen
         dest_path = os.path.join(target_dir, rel_path)
 
     # 检查目标文件是否已存在，如果存在且来自依赖，尝试合并
-    if is_dependency and os.path.exists(dest_path):
-        suc, reason = try_merge_file(src_path, dest_path)
-        if not suc:
-            # 如果合并失败或有冲突，直接返回
-            msg = f"文件合并失败或存在冲突" if reason is None else reason
-            return False, msg, dest_path
+    if os.path.exists(dest_path):
+        if is_dependency:
+            suc, reason = try_merge_file(src_path, dest_path, dependency_name)
+            if not suc:
+                # 如果合并失败或有冲突，直接返回
+                msg = f"文件合并失败或存在冲突" if reason is None else reason
+                return False, msg, dest_path
+            return True, reason, dest_path
+        else:
+            # 如果是主项目的文件，直接覆盖
+            pass
     else:
-        # 复制文件
-        copy_file(src_path, dest_path)
+        # 文件不存在，直接复制
+        try:
+            # 复制文件
+            copy_file(src_path, dest_path)
+        except Exception as e:
+            return False, f"复制文件失败: {str(e)}", dest_path
 
     # 如果是Python文件，进行转换
     if is_python_file(src_path):

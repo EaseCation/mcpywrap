@@ -5,7 +5,7 @@
 import os
 import click
 from ..config import config_exists, get_mcpywrap_config
-from ..builders.project_builder import build_project
+from ..builders.project_builder import ProjectBuilder
 
 @click.command()
 def build_cmd():
@@ -31,28 +31,29 @@ def build_cmd():
     build(source_dir, target_dir)
     
 def build(source_dir, target_dir):
+    """
+    执行项目构建
+    
+    Args:
+        source_dir: 源代码目录
+        target_dir: 目标目录
+        
+    Returns:
+        bool: 是否构建成功
+    """
     if target_dir is None:
         click.secho('❌ 错误: 未指定目标目录。', fg="red")
         return False
-    if not os.path.exists(target_dir):
-        # 创建目录
-        os.makedirs(target_dir)
-        click.secho(f'🔧 创建目标目录: ', fg="yellow", nl=False)
-    
-    click.secho(f'📂 正在将源代码从 ', fg="bright_blue", nl=False)
-    click.secho(f'{source_dir}', fg="bright_cyan", nl=False)
-    click.secho(' 复制到 ', fg="bright_blue", nl=False)
-    click.secho(f'{target_dir}', fg="bright_cyan", nl=False)
-    click.secho('...', fg="bright_blue")
-    
-    click.secho('🔄 正在构建项目与代码...', fg="yellow")
-    success, output = build_project(source_dir, target_dir)
+        
+    # 使用项目构建器
+    builder = ProjectBuilder(source_dir, target_dir)
+    success, error = builder.build()
     
     if success:
         click.secho('✅ 构建成功！项目已生成到目标目录。', fg="green")
         return True
     else:
         click.secho(f'❌ 构建失败: ', fg="red", nl=False)
-        click.secho(f'{output}', fg="bright_red")
+        click.secho(f'{error}', fg="bright_red")
         return False
 

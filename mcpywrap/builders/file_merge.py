@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
+"""
+文件合并模块 - 提供文件合并功能
+"""
 import os
 import shutil
 import json
+import click
+from typing import Dict, Any, Tuple, Optional, List, Set
 
 
-def _read_json_file(file_path):
+def _read_json_file(file_path) -> Dict[str, Any]:
     """从文件中读取并解析JSON内容"""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -15,7 +20,7 @@ def _read_json_file(file_path):
         raise ValueError(f"读取文件错误: {str(e)}")
 
 
-def _write_json_file(file_path, content):
+def _write_json_file(file_path, content) -> bool:
     """将JSON内容写入文件"""
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -25,7 +30,7 @@ def _write_json_file(file_path, content):
         raise ValueError(f"写入文件错误: {str(e)}")
 
 
-def _merge_ui_defs_json(target_json, source_json):
+def _merge_ui_defs_json(target_json, source_json) -> Dict[str, Any]:
     """合并 ui_defs.json 文件"""
     if 'ui_defs' in source_json and 'ui_defs' in target_json:
         # 合并 ui_defs 数组，去重
@@ -38,7 +43,7 @@ def _merge_ui_defs_json(target_json, source_json):
         return _merge_dicts_shallow(target_json, source_json)
 
 
-def _read_lang_file(file_path):
+def _read_lang_file(file_path) -> Dict[str, str]:
     """从文件中读取并解析.lang内容"""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -60,7 +65,7 @@ def _read_lang_file(file_path):
         raise ValueError(f"读取.lang文件错误: {str(e)}")
 
 
-def _write_lang_file(file_path, content):
+def _write_lang_file(file_path, content) -> bool:
     """将.lang内容写入文件"""
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -72,7 +77,7 @@ def _write_lang_file(file_path, content):
         raise ValueError(f"写入.lang文件错误: {str(e)}")
 
 
-def _merge_lang_file(target_json, source_json):
+def _merge_lang_file(target_json, source_json) -> Dict[str, str]:
     """合并.lang文件"""
     # 合并两个字典，源文件的键值对会覆盖目标文件的相同键
     merged = target_json.copy()
@@ -80,8 +85,18 @@ def _merge_lang_file(target_json, source_json):
     return merged
 
 
-def try_merge_file(source_file, target_file) -> tuple[bool, str]:
-    """合并两个文件的内容"""
+def try_merge_file(source_file, target_file, source_dependency_name=None) -> Tuple[bool, Optional[str]]:
+    """
+    合并两个文件的内容
+    
+    Args:
+        source_file: 源文件路径
+        target_file: 目标文件路径
+        source_dependency_name: 源文件所属的依赖包名称（用于日志）
+        
+    Returns:
+        Tuple[bool, Optional[str]]: (是否成功, 错误信息)
+    """
     try:
         # 如果是py文件，直接复制即可
         if source_file.endswith('.py'):
@@ -92,6 +107,9 @@ def try_merge_file(source_file, target_file) -> tuple[bool, str]:
         # 获取文件名
         base_name = os.path.basename(source_file)
         
+        # 记录操作类型
+        dep_info = f"(来自依赖: {source_dependency_name})" if source_dependency_name else ""
+        
         # 根据不同文件类型进行不同处理
         if base_name.endswith('.lang'):
             # 处理.lang文件
@@ -99,6 +117,7 @@ def try_merge_file(source_file, target_file) -> tuple[bool, str]:
             target_lang = _read_lang_file(target_file)
             merged_lang = _merge_lang_file(target_lang, source_lang)
             _write_lang_file(target_file, merged_lang)
+            click.secho(f"✅ 合并语言文件 {base_name} {dep_info}", fg="green")
             return True, f"成功合并 {base_name} 到 {os.path.basename(target_file)}"
         
         # 读取源文件和目标文件的JSON内容
@@ -108,25 +127,32 @@ def try_merge_file(source_file, target_file) -> tuple[bool, str]:
         # 根据不同文件类型进行不同处理
         if base_name == "blocks.json":
             merged_json = _merge_dicts_shallow(target_json, source_json)
+            click.secho(f"✅ 合并方块定义 {base_name} {dep_info}", fg="green")
         elif base_name in ["terrain_texture.json", "item_texture.json"]:
             # 特殊处理texture_data字段
             merged_json = _merge_texture_json(target_json, source_json)
+            click.secho(f"✅ 合并纹理定义 {base_name} {dep_info}", fg="green")
         elif base_name in ["sounds.json", "sound_definitions.json"]:
             # 特殊处理声音定义文件
             merged_json = _merge_sound_json(target_json, source_json)
+            click.secho(f"✅ 合并声音定义 {base_name} {dep_info}", fg="green")
         elif base_name in ["animations.json", "animation_controllers.json"]:
             # 特殊处理动画相关文件
             merged_json = _merge_animation_json(target_json, source_json)
+            click.secho(f"✅ 合并动画定义 {base_name} {dep_info}", fg="green")
         elif base_name in ["entity_models.json", "render_controllers.json", 
                           "materials.json", "attachables.json", "particle_effects.json"]:
             # 这些文件通常有顶级命名空间，包含多个注册项
             merged_json = _merge_registry_json(target_json, source_json)
+            click.secho(f"✅ 合并注册类定义 {base_name} {dep_info}", fg="green")
         elif base_name == "_ui_defs.json":
             # 特殊处理 UI 定义文件
             merged_json = _merge_ui_defs_json(target_json, source_json)
+            click.secho(f"✅ 合并UI定义 {base_name} {dep_info}", fg="green")
         else:
-            # 不支持的JSON文件类型
-            return False, f"不支持合并此类型的文件: {base_name}"
+            # 对于不支持的JSON文件类型，尝试智能合并
+            merged_json = _merge_dicts_deep(target_json, source_json)
+            click.secho(f"🔄 智能合并JSON文件 {base_name} {dep_info}", fg="yellow")
         
         # 写入合并后的内容到目标文件
         _write_json_file(target_file, merged_json)
@@ -134,10 +160,12 @@ def try_merge_file(source_file, target_file) -> tuple[bool, str]:
         return True, f"成功合并 {base_name} 到 {os.path.basename(target_file)}"
     
     except Exception as e:
-        return False, f"合并失败: {str(e)}"
+        error_msg = f"合并失败: {str(e)}"
+        click.secho(f"❌ {error_msg}", fg="red")
+        return False, error_msg
 
 
-def _merge_texture_json(target_json, source_json):
+def _merge_texture_json(target_json, source_json) -> Dict[str, Any]:
     """合并含texture_data的文件，如terrain_texture.json和item_texture.json"""
     if 'texture_data' in source_json and 'texture_data' in target_json:
         # 合并texture_data字段
@@ -149,7 +177,7 @@ def _merge_texture_json(target_json, source_json):
         return _merge_dicts_shallow(target_json, source_json)
 
 
-def _merge_sound_json(target_json, source_json):
+def _merge_sound_json(target_json, source_json) -> Dict[str, Any]:
     """合并声音定义文件"""
     # 处理sounds.json和sound_definitions.json
     if 'sound_definitions' in source_json and 'sound_definitions' in target_json:
@@ -162,7 +190,7 @@ def _merge_sound_json(target_json, source_json):
         return _merge_dicts_shallow(target_json, source_json)
 
 
-def _merge_animation_json(target_json, source_json):
+def _merge_animation_json(target_json, source_json) -> Dict[str, Any]:
     """合并动画文件"""
     # 处理animations.json和animation_controllers.json
     # 这些文件可能有多个顶级节点如animations, animation_controllers等
@@ -177,7 +205,7 @@ def _merge_animation_json(target_json, source_json):
     return target_json
 
 
-def _merge_registry_json(target_json, source_json):
+def _merge_registry_json(target_json, source_json) -> Dict[str, Any]:
     """合并包含多个注册项的文件"""
     # 处理entity_models.json, render_controllers.json等
     # 这些文件通常有一个或多个命名空间，每个命名空间下有多个定义
@@ -196,7 +224,7 @@ def _merge_registry_json(target_json, source_json):
     return target_json
 
 
-def _merge_dicts_shallow(dict1, dict2):
+def _merge_dicts_shallow(dict1, dict2) -> Dict[str, Any]:
     """浅合并两个字典"""
     result = dict1.copy()
     for key, value in dict2.items():
@@ -208,7 +236,8 @@ def _merge_dicts_shallow(dict1, dict2):
             result[key] = value
     return result
 
-def _merge_dicts_deep(dict1, dict2):
+
+def _merge_dicts_deep(dict1, dict2) -> Dict[str, Any]:
     """递归合并两个字典"""
     result = dict1.copy()
     for key, value in dict2.items():
@@ -216,8 +245,16 @@ def _merge_dicts_deep(dict1, dict2):
             # 递归合并嵌套字典
             result[key] = _merge_dicts_deep(result[key], value)
         elif key in result and isinstance(result[key], list) and isinstance(value, list):
-            # 合并列表
-            result[key].extend(value)
+            # 合并列表，尝试去重
+            combined_list = result[key].copy()
+            for item in value:
+                if isinstance(item, dict) and any(isinstance(existing, dict) and 
+                                              all(existing.get(k) == item.get(k) for k in item) 
+                                              for existing in combined_list):
+                    # 如果是具有相同键值的字典，则不添加
+                    continue
+                combined_list.append(item)
+            result[key] = combined_list
         else:
             # 覆盖或添加新键
             result[key] = value
