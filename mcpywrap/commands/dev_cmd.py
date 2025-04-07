@@ -10,7 +10,7 @@ from ..config import get_mcpywrap_config, config_exists, read_config, CONFIG_FIL
 from ..builders.watcher import ProjectWatcher
 from .build_cmd import build
 
-def file_change_callback(src_path, dest_path, success, output, is_python, is_dependency=False, dependency_name=None):
+def file_change_callback(src_path, dest_path, success, output, is_python, is_dependency=False, dependency_name=None, event_type=None):
     """文件变化回调函数 - 展示处理结果"""
     if is_dependency:
         click.secho(f"\n📝 检测到依赖项目 ", fg="bright_blue", nl=False)
@@ -21,6 +21,21 @@ def file_change_callback(src_path, dest_path, success, output, is_python, is_dep
     
     click.secho(f"{src_path}", fg="bright_cyan")
     
+    # 处理删除事件
+    if event_type == 'deleted':
+        click.secho(f"🗑️  文件已删除，从目标目录移除: {dest_path}", fg="yellow")
+        # 尝试删除目标文件
+        try:
+            if os.path.exists(dest_path):
+                os.remove(dest_path)
+                click.secho(f'✅ 目标文件已删除: {dest_path}', fg="green")
+            else:
+                click.secho(f'ℹ️  目标文件不存在，无需删除: {dest_path}', fg="blue")
+        except Exception as e:
+            click.secho(f'❌ 目标文件删除失败: {str(e)}', fg="red")
+        return
+    
+    # 处理其他事件（创建或修改）
     if is_python:
         click.secho("🔄 正在转换 Python 文件...", fg="yellow")
         if success:

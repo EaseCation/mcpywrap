@@ -22,32 +22,55 @@ class FileChangeHandler(FileSystemEventHandler):
         self.callback = callback
         self.is_dependency = is_dependency  # 是否是依赖项目
         self.dependency_name = dependency_name  # 依赖项目名称
+        # 存储最近处理的事件，用于防止重复处理
+        self.recent_events = {}
 
-    def on_any_event(self, event):
-        # 检查路径是否有效
+    def _should_ignore_path(self, path):
+        """判断是否应该忽略该路径"""
+        basename = os.path.basename(path)
+        return (basename.startswith('.') or
+                path.endswith('~') or
+                basename.startswith('.#') or
+                basename.endswith('.swp') or  # vim临时文件
+                basename.endswith('.tmp'))    # 其他临时文件
+
+    def _process_event(self, event, event_type):
+        """处理事件的通用方法"""
         if not hasattr(event, 'src_path'):
             return
 
         src_path = event.src_path
-
-        # 忽略目录事件、隐藏文件和临时文件
-        if (event.is_directory or
-                os.path.basename(src_path).startswith('.') or
-                src_path.endswith('~') or
-                os.path.basename(src_path).startswith('.#') or
-                os.path.basename(src_path).endswith('.swp') or  # vim临时文件
-                os.path.basename(src_path).endswith('.tmp')):  # 其他临时文件
+        
+        # 忽略目录事件（如果不需要直接处理目录事件）和需要忽略的文件
+        if event.is_directory or self._should_ignore_path(src_path):
             return
 
-        # 检查文件是否存在
-        if not os.path.exists(src_path):
+        # 对于删除事件，不检查文件是否存在
+        if event_type != 'deleted' and not os.path.exists(src_path):
             return
 
+        # 使用事件类型和路径作为键来防止短时间内重复处理相同事件
+        event_key = f"{event_type}:{src_path}"
         current_time = time.time()
-        if current_time - self.last_event_time > self.cooldown:
-            self.last_event_time = current_time
+        
+        # 检查冷却时间
+        if event_key in self.recent_events and current_time - self.recent_events[event_key] < self.cooldown:
+            return
+        
+        self.recent_events[event_key] = current_time
 
-            # 处理文件变化
+        # 根据事件类型进行处理
+        if event_type == 'deleted':
+            # 对于删除的文件，生成目标路径并通知回调
+            rel_path = os.path.relpath(src_path, self.source_dir)
+            dest_path = os.path.join(self.target_dir, rel_path)
+            
+            if self.callback:
+                is_py = is_python_file(src_path)
+                self.callback(src_path, dest_path, False, f"文件已删除: {src_path}", is_py, 
+                             self.is_dependency, self.dependency_name, event_type='deleted')
+        else:
+            # 对于其他事件（创建、修改），使用process_file处理
             success, output, dest_path = process_file(
                 src_path,
                 self.source_dir,
@@ -57,9 +80,38 @@ class FileChangeHandler(FileSystemEventHandler):
             )
 
             # 如果有回调函数，调用它
-            if self.callback and dest_path:  # 确保dest_path存在
+            if self.callback and dest_path:
                 is_py = is_python_file(src_path)
-                self.callback(src_path, dest_path, success, output, is_py, self.is_dependency, self.dependency_name)
+                self.callback(src_path, dest_path, success, output, is_py, 
+                             self.is_dependency, self.dependency_name, event_type=event_type)
+
+    def on_created(self, event):
+        """处理创建事件"""
+        self._process_event(event, 'created')
+        
+    def on_deleted(self, event):
+        """处理删除事件"""
+        self._process_event(event, 'deleted')
+        
+    def on_modified(self, event):
+        """处理修改事件"""
+        self._process_event(event, 'modified')
+        
+    def on_moved(self, event):
+        """处理移动事件"""
+        # 处理移动事件为删除+创建
+        if hasattr(event, 'dest_path'):
+            # 先处理源文件删除
+            self._process_event(event, 'deleted')
+            
+            # 构造一个创建事件对象来处理目标文件
+            class TempEvent:
+                def __init__(self, src_path, is_directory):
+                    self.src_path = src_path
+                    self.is_directory = is_directory
+                    
+            create_event = TempEvent(event.dest_path, event.is_directory)
+            self._process_event(create_event, 'created')
 
 class FileWatcher:
     """文件监控器"""
