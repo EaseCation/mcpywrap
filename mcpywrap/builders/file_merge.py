@@ -98,6 +98,8 @@ def try_merge_file(source_file, target_file, source_dependency_name=None) -> Tup
         Tuple[bool, Optional[str]]: (是否成功, 错误信息)
     """
     try:
+        if os.path.basename(source_file) in ['manifest.json', 'pack_manifest.json']:
+            return True, "跳过合并 manifest 文件"
         # 如果是py文件，直接复制即可
         if source_file.endswith('.py'):
             # 直接复制
@@ -117,7 +119,6 @@ def try_merge_file(source_file, target_file, source_dependency_name=None) -> Tup
             target_lang = _read_lang_file(target_file)
             merged_lang = _merge_lang_file(target_lang, source_lang)
             _write_lang_file(target_file, merged_lang)
-            click.secho(f"✅ 合并语言文件 {base_name} {dep_info}", fg="green")
             return True, f"成功合并 {base_name} 到 {os.path.basename(target_file)}"
         
         # 读取源文件和目标文件的JSON内容
@@ -127,32 +128,26 @@ def try_merge_file(source_file, target_file, source_dependency_name=None) -> Tup
         # 根据不同文件类型进行不同处理
         if base_name == "blocks.json":
             merged_json = _merge_dicts_shallow(target_json, source_json)
-            click.secho(f"✅ 合并方块定义 {base_name} {dep_info}", fg="green")
         elif base_name in ["terrain_texture.json", "item_texture.json"]:
             # 特殊处理texture_data字段
             merged_json = _merge_texture_json(target_json, source_json)
-            click.secho(f"✅ 合并纹理定义 {base_name} {dep_info}", fg="green")
         elif base_name in ["sounds.json", "sound_definitions.json"]:
             # 特殊处理声音定义文件
             merged_json = _merge_sound_json(target_json, source_json)
-            click.secho(f"✅ 合并声音定义 {base_name} {dep_info}", fg="green")
         elif base_name in ["animations.json", "animation_controllers.json"]:
             # 特殊处理动画相关文件
             merged_json = _merge_animation_json(target_json, source_json)
-            click.secho(f"✅ 合并动画定义 {base_name} {dep_info}", fg="green")
         elif base_name in ["entity_models.json", "render_controllers.json", 
                           "materials.json", "attachables.json", "particle_effects.json"]:
             # 这些文件通常有顶级命名空间，包含多个注册项
             merged_json = _merge_registry_json(target_json, source_json)
-            click.secho(f"✅ 合并注册类定义 {base_name} {dep_info}", fg="green")
         elif base_name == "_ui_defs.json":
             # 特殊处理 UI 定义文件
             merged_json = _merge_ui_defs_json(target_json, source_json)
-            click.secho(f"✅ 合并UI定义 {base_name} {dep_info}", fg="green")
         else:
-            # 对于不支持的JSON文件类型，尝试智能合并
-            merged_json = _merge_dicts_deep(target_json, source_json)
-            click.secho(f"🔄 智能合并JSON文件 {base_name} {dep_info}", fg="yellow")
+            # 对于不支持的JSON文件类型，提示不支持
+            error_msg = f"不支持的文件类型: {base_name} {dep_info}"
+            return False, error_msg
         
         # 写入合并后的内容到目标文件
         _write_json_file(target_file, merged_json)

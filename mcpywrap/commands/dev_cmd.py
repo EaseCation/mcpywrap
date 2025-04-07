@@ -12,46 +12,38 @@ from .build_cmd import build
 
 def file_change_callback(src_path, dest_path, success, output, is_python, is_dependency=False, dependency_name=None, event_type=None):
     """文件变化回调函数 - 展示处理结果"""
+    # 显示文件变化来源
     if is_dependency:
         click.secho(f"\n📝 检测到依赖项目 ", fg="bright_blue", nl=False)
         click.secho(f"{dependency_name}", fg="bright_magenta", nl=False)
-        click.secho(f" 文件变化: ", fg="bright_blue", nl=False)
+        click.secho(f" 文件变化", fg="bright_blue")
     else:
-        click.secho(f"\n📝 检测到文件变化: ", fg="bright_blue", nl=False)
+        click.secho(f"\n📝 检测到文件变化", fg="bright_blue")
     
-    click.secho(f"{src_path}", fg="bright_cyan")
+    # 显示源文件路径
+    click.secho(f"  源: {src_path}", fg="bright_cyan")
     
     # 处理删除事件
     if event_type == 'deleted':
-        click.secho(f"🗑️  文件已删除，从目标目录移除: {dest_path}", fg="yellow")
-        # 尝试删除目标文件
         try:
             if os.path.exists(dest_path):
                 os.remove(dest_path)
-                click.secho(f'✅ 目标文件已删除: {dest_path}', fg="green")
+                click.secho(f'✅ 文件已从目标移除: {dest_path}', fg="green")
             else:
-                click.secho(f'ℹ️  目标文件不存在，无需删除: {dest_path}', fg="blue")
+                click.secho(f'ℹ️  目标文件不存在: {dest_path}', fg="blue")
         except Exception as e:
-            click.secho(f'❌ 目标文件删除失败: {str(e)}', fg="red")
+            click.secho(f'❌ 目标文件移除失败: {str(e)}', fg="red")
         return
     
     # 处理其他事件（创建或修改）
-    if is_python:
-        click.secho("🔄 正在转换 Python 文件...", fg="yellow")
-        if success:
-            click.secho(f'✅ Python 文件已转换: ', fg="green", nl=False)
-            click.secho(f'{dest_path}', fg="bright_green")
-        else:
-            click.secho(f'❌ Python 文件转换失败: ', fg="red", nl=False)
-            click.secho(f'{output}', fg="bright_red")
+    if success:
+        click.secho(f'✅ 处理成功: {dest_path}', fg="green")
+        if output:
+            click.secho(f'   {output}', fg="bright_green")
     else:
-        click.secho("📋 正在复制非 Python 文件...", fg="yellow")
-        if success:
-            click.secho(f'✅ 文件已复制: ', fg="green", nl=False)
-            click.secho(f'{dest_path}', fg="bright_green")
-        else:
-            click.secho(f'❌ 文件复制失败: ', fg="red", nl=False)
-            click.secho(f'{output}', fg="bright_red")
+        click.secho(f'❌ 处理失败', fg="red")
+        if output:
+            click.secho(f'   {output}', fg="bright_red")
 
 @click.command()
 def dev_cmd():
