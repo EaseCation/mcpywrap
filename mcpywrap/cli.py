@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import click
+
+from .commands.run_cmd import run_cmd
 from .commands.init_cmd import init_cmd
 from .commands.add_cmd import add_cmd
 from .commands.remove_cmd import remove_cmd
@@ -29,6 +31,7 @@ cli.add_command(build_cmd, name='build')
 cli.add_command(dev_cmd, name='dev')
 cli.add_command(publish_cmd, name='publish')
 cli.add_command(mod_cmd, name='mod')
+cli.add_command(run_cmd, name='run')
 
 if __name__ == '__main__':
     cli()

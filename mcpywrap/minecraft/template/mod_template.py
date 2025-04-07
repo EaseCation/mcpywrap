@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                             QGroupBox, QMessageBox, QTreeWidget, QTreeWidgetItem,
                             QSplitter, QFrame)
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QIcon, QPalette, QColor
+from PyQt5.QtGui import QFont, QIcon, QPalette, QColor, QFontDatabase
 from .generate_mod_files import generate_mod_framework
 
 class FileStructurePreview(QFrame):
@@ -107,7 +107,53 @@ def open_ui_crate_mod(behavior_pack_path):
     Args:
         behavior_pack_path: 行为包目录的路径
     """
+    # 在创建 QApplication 之前启用高 DPI 缩放
+    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    
     app = QApplication(sys.argv) if not QApplication.instance() else QApplication.instance()
+    
+    # 为已存在的应用程序实例启用自动缩放
+    if QApplication.instance():
+        if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+            QApplication.instance().setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+            QApplication.instance().setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    
+    # 设置优先使用的中文字体列表
+    preferred_fonts = [
+        "Microsoft YaHei UI", "微软雅黑",  # 微软雅黑UI/微软雅黑
+        "Source Han Sans CN", "思源黑体",  # 思源黑体
+        "Noto Sans CJK SC",               # Noto Sans中文字体
+        "PingFang SC", "苹方-简",          # 苹方字体(macOS)
+        "Hiragino Sans GB", "冬青黑体",     # 冬青黑体
+        "Microsoft JhengHei", "微軟正黑體", # 微软正黑
+        "SimHei", "黑体"                   # 最后回退到黑体
+    ]
+    
+    # 获取系统中可用的字体
+    font_db = QFontDatabase()
+    available_fonts = font_db.families()
+    
+    # 查找第一个可用的首选字体
+    selected_font = None
+    for font_name in preferred_fonts:
+        for available_font in available_fonts:
+            if font_name.lower() in available_font.lower():
+                selected_font = available_font
+                break
+        if selected_font:
+            break
+    
+    # 设置全局字体
+    if selected_font:
+        font = QFont(selected_font, 9)  # 9号字体大小比较合适
+    else:
+        font = QFont()  # 使用系统默认字体
+        
+    app.setFont(font)
     
     # 主窗口
     window = QWidget()
@@ -377,7 +423,7 @@ def open_ui_crate_mod(behavior_pack_path):
         mod_name = mod_name_input.text()
         root_dir_name = root_dir_input.text() or "myScript"
         
-        if mod_name:
+        if (mod_name):
             # 如果用户没有手动修改过，则自动更新
             if not server_system_name_input.isModified():
                 server_system_name_input.setText(f"{mod_name}ServerSystem")

@@ -3,6 +3,10 @@ import click
 
 def print_guide():
     click.echo(click.style("\n⩸⩸⩸⩸ 📋 如何继续？ ⩸⩸⩸⩸\n", fg="bright_cyan"))
+
+    click.echo(click.style("🎮 ", fg="green") +
+                click.style("mcpy run", fg="bright_green", bold=True) +
+                click.style("    - 启动游戏进行测试", fg="white"))
     
     click.echo(click.style("🔄 ", fg="yellow") + 
                click.style("mcpy dev", fg="bright_yellow", bold=True) + 

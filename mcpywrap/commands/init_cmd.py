@@ -150,12 +150,6 @@ def init():
     rel_path = update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir)
     if behavior_pack_dir:
         click.echo(click.style(f'📦 已配置自动包发现于: {rel_path}', fg='green'))
-    
-    update_config(config)
-    click.echo(click.style('✅ 初始化完成！配置文件已更新到 pyproject.toml', fg='green'))
-    
-    # 使用pip安装项目（可编辑模式）
-    install_project_dev_mode()
 
     # 创建.gitignore文件
     if click.confirm(click.style('❓ 是否创建.gitignore文件？（包含Python和构建目录的忽略项）', fg='magenta'), default=True):
@@ -200,6 +194,7 @@ work.mcscfg
 
 # Minecraft Addon 构建目录
 /build/
+.runtime/
 """
         gitignore_path = Path(base_dir) / '.gitignore'
         if gitignore_path.exists():
@@ -209,6 +204,12 @@ work.mcscfg
         else:
             gitignore_path.write_text(gitignore_content)
             click.echo(click.style('✅ .gitignore文件已创建！', fg='green'))
+    
+    update_config(config)
+    click.echo(click.style('✅ 初始化完成！配置文件已更新到 pyproject.toml', fg='green'))
+    
+    # 使用pip安装项目（可编辑模式）
+    install_project_dev_mode()
 
     # 指令使用指南
     print_guide()
