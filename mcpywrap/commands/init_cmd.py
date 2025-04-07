@@ -55,13 +55,20 @@ def init():
         python_requires = '>=3.6'
 
     # 获取依赖列表
-        dependencies = []
-        click.echo(click.style('📚 请输入项目依赖包（其他需要打包到入此项目的mcpywrap项目），每行一个（输入空行结束）:', fg='cyan'))
-        while True:
-            dep = click.prompt(click.style('➕ 依赖', fg='bright_blue'), default='', show_default=False)
-            if not dep:
-                break
-            dependencies.append(dep)
+    dependencies = []
+    click.echo(click.style('📚 请输入项目依赖包（其他需要打包到入此项目的mcpywrap项目），每行一个（输入空行结束）:', fg='cyan'))
+    while True:
+        dep = click.prompt(click.style('➕ 依赖', fg='bright_blue'), default='', show_default=False)
+        if not dep:
+            break
+        dependencies.append(dep)
+    
+    # 询问是否使用3to2转换
+    use_3to2 = click.confirm(click.style('❓ 是否使用3to2自动将Python 3代码转换为Python 2？', fg='magenta'), default=False)
+    if use_3to2:
+        click.echo(click.style('ℹ️ 已启用3to2转换，构建时将自动转换Python代码', fg='cyan'))
+    else:
+        click.echo(click.style('ℹ️ 已禁用3to2转换，构建时将保持原始Python版本', fg='cyan'))
     
     base_dir = os.getcwd()
     behavior_pack_dir = None
@@ -120,6 +127,11 @@ def init():
                 "Programming Language :: Python",
                 "Programming Language :: Python :: 3",
             ]
+        },
+        'tool': {
+            'mcpywrap': {
+                'use_3to2': use_3to2
+            }
         }
     }
     

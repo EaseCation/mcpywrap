@@ -9,6 +9,7 @@ import shutil
 from ..utils.py3to2_util import py3_to_2
 from ..utils.utils import ensure_dir, run_command
 from .file_merge import try_merge_file
+from ..config import get_use_3to2
 
 def is_python_file(file_path):
     """判断是否为Python文件"""
@@ -105,8 +106,11 @@ def process_file(src_path, source_dir, target_dir, is_dependency=False, dependen
 
     # 如果是Python文件，进行转换
     if is_python_file(src_path):
-        # success, output = convert_py3_to_py2(dest_path)
-        return True, None, dest_path
+        if get_use_3to2():
+            success, output = convert_py3_to_py2(dest_path)
+            return success, output, dest_path
+        else:
+            return True, None, dest_path
 
     # 如果是其他类型文件，直接返回成功
     return True, "", dest_path
