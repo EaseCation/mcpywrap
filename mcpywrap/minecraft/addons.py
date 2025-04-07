@@ -60,7 +60,7 @@ def create_manifest_json(name, description, version="1.0.0", min_engine_version=
         },
         "modules": [
             {
-                "type": "data",
+                "type": "resources",
                 "uuid": str(uuid.uuid4()),
                 "version": list(map(int, version.split('.')[:3]))
             }
@@ -86,7 +86,6 @@ def setup_minecraft_addon(base_dir, name, description, version):
         f"{description}",
         version
     )
-    rp_manifest["header"]["type"] = "resources"
     
     # 检查是否已经存在manifest文件
     rp_manifest_path = os.path.join(resource_pack_dir, "manifest.json")
@@ -116,15 +115,7 @@ def setup_minecraft_addon(base_dir, name, description, version):
         f"{description}",
         version
     )
-    bp_manifest["header"]["type"] = "data"
-    
-    # 添加对resource pack的依赖
-    # bp_manifest["dependencies"] = [
-    #     {
-    #         "uuid": rp_manifest["header"]["uuid"],
-    #         "version": rp_manifest["header"]["version"]
-    #     }
-    # ]
+    bp_manifest["modules"][0]["type"] = "data"
     
     # 检查是否已经存在manifest文件
     bp_manifest_path = os.path.join(behavior_pack_dir, "manifest.json")
