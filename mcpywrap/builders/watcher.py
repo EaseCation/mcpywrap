@@ -269,50 +269,6 @@ class ProjectWatcher:
     def start(self):
         """开始监视"""
         try:
-            # 初始构建 - 复制主项目文件到目标目录
-            if self.main_addon_pack:
-                import click
-                click.secho("🔄 初始构建 - 复制主项目文件到目标目录...", fg="cyan")
-                
-                # 复制主项目的行为包和资源包
-                self.main_addon_pack.copy_behavior_to(self.target_dir)
-                self.main_addon_pack.copy_resource_to(self.target_dir)
-                
-                # 合并依赖项目
-                dependencies_map = self.dependency_manager.get_all_dependencies()
-                if dependencies_map:
-                    click.secho(f"🔄 合并 {len(dependencies_map)} 个依赖项目...", fg="cyan")
-                    
-                    # 获取目标目录中的行为包和资源包路径
-                    target_behavior_dir = None
-                    target_resource_dir = None
-                    for item in os.listdir(self.target_dir):
-                        item_path = os.path.join(self.target_dir, item)
-                        if os.path.isdir(item_path):
-                            if "behavior_pack" in item.lower() or "behaviorpack" in item.lower():
-                                target_behavior_dir = item_path
-                            elif "resource_pack" in item.lower() or "resourcepack" in item.lower():
-                                target_resource_dir = item_path
-                    
-                    # 得到依赖树
-                    dep_tree = self.dependency_manager.get_dependency_tree()
-                    if dep_tree:
-                        # 获取按层次排序的依赖列表，从最底层开始
-                        ordered_deps = self._get_ordered_dependencies(dep_tree)
-                        
-                        for level, deps in enumerate(ordered_deps):
-                            if deps:
-                                click.secho(f"🔄 合并第 {level+1} 层依赖: {', '.join([dep.name for dep in deps])}", fg="yellow")
-                                for dep_node in deps:
-                                    dep_addon = dep_node.addon_pack
-                                    click.secho(f" 📦 {dep_node.name} → {dep_addon.path}", fg="green")
-                                    
-                                    if target_behavior_dir and dep_addon.behavior_pack_dir:
-                                        dep_addon.merge_behavior_into(target_behavior_dir)
-                                    
-                                    if target_resource_dir and dep_addon.resource_pack_dir:
-                                        dep_addon.merge_resource_into(target_resource_dir)
-            
             # 开始文件监视
             self.multi_watcher.start_all()
         except Exception as e:
