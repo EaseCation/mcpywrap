@@ -25,6 +25,61 @@ def _write_json_file(file_path, content):
         raise ValueError(f"写入文件错误: {str(e)}")
 
 
+def _merge_ui_defs_json(target_json, source_json):
+    """合并 ui_defs.json 文件"""
+    if 'ui_defs' in source_json and 'ui_defs' in target_json:
+        # 合并 ui_defs 数组，去重
+        target_ui_defs = set(target_json['ui_defs'])
+        source_ui_defs = set(source_json['ui_defs'])
+        target_json['ui_defs'] = list(target_ui_defs.union(source_ui_defs))
+        return target_json
+    else:
+        # 如果没有 ui_defs 字段，进行普通的浅合并
+        return _merge_dicts_shallow(target_json, source_json)
+
+
+def _read_lang_file(file_path):
+    """从文件中读取并解析.lang内容"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            # 将文件内容按行分割
+            lines = content.splitlines()
+            # 解析键值对
+            lang_dict = {}
+            for line in lines:
+                # 跳过空行和注释
+                if not line.strip() or line.strip().startswith('#'):
+                    continue
+                # 分割键值对
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    lang_dict[key.strip()] = value.strip()
+            return lang_dict
+    except Exception as e:
+        raise ValueError(f"读取.lang文件错误: {str(e)}")
+
+
+def _write_lang_file(file_path, content):
+    """将.lang内容写入文件"""
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            # 将字典转换为字符串
+            lines = [f"{key}={value}" for key, value in content.items()]
+            f.write('\n'.join(lines))
+        return True
+    except Exception as e:
+        raise ValueError(f"写入.lang文件错误: {str(e)}")
+
+
+def _merge_lang_file(target_json, source_json):
+    """合并.lang文件"""
+    # 合并两个字典，源文件的键值对会覆盖目标文件的相同键
+    merged = target_json.copy()
+    merged.update(source_json)
+    return merged
+
+
 def try_merge_file(source_file, target_file) -> tuple[bool, str]:
     """合并两个文件的内容"""
     try:
@@ -36,6 +91,15 @@ def try_merge_file(source_file, target_file) -> tuple[bool, str]:
         
         # 获取文件名
         base_name = os.path.basename(source_file)
+        
+        # 根据不同文件类型进行不同处理
+        if base_name.endswith('.lang'):
+            # 处理.lang文件
+            source_lang = _read_lang_file(source_file)
+            target_lang = _read_lang_file(target_file)
+            merged_lang = _merge_lang_file(target_lang, source_lang)
+            _write_lang_file(target_file, merged_lang)
+            return True, f"成功合并 {base_name} 到 {os.path.basename(target_file)}"
         
         # 读取源文件和目标文件的JSON内容
         source_json = _read_json_file(source_file)
@@ -57,6 +121,9 @@ def try_merge_file(source_file, target_file) -> tuple[bool, str]:
                           "materials.json", "attachables.json", "particle_effects.json"]:
             # 这些文件通常有顶级命名空间，包含多个注册项
             merged_json = _merge_registry_json(target_json, source_json)
+        elif base_name == "_ui_defs.json":
+            # 特殊处理 UI 定义文件
+            merged_json = _merge_ui_defs_json(target_json, source_json)
         else:
             # 不支持的JSON文件类型
             return False, f"不支持合并此类型的文件: {base_name}"
