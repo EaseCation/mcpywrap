@@ -129,7 +129,7 @@ def _setup_dependencies(project_name, base_dir):
                 # 打印依赖树结构
                 click.secho('📊 依赖关系:', fg='cyan')
                 root_node = dependency_manager.get_dependency_tree()
-                if root_node:
+                if (root_node):
                     _print_dependency_tree(root_node, 0)
                 
                 all_packs.extend(dependency_packs)
@@ -321,8 +321,10 @@ def run_cmd(new, list, delete, force, instance_prefix):
             config_path = latest_instance['config_path']
             click.secho(f'📅 使用最新实例: {level_id[:8]}...', fg='green')
         else:
+            # 只有在找不到任何现有实例时才创建新实例
             level_id, config_path = _generate_new_instance_config(base_dir, project_name)
-            click.secho(f'🆕 创建新实例: {level_id[:8]}...', fg='green')
+            click.secho(f'🆕 创建首个实例: {level_id[:8]}...', fg='green')
+            click.secho('💡 下次运行将重用此实例，若需创建新实例请使用 "--new" 参数', fg='yellow')
 
     # 运行游戏
     _run_game_with_instance(config_path, level_id, all_packs)
