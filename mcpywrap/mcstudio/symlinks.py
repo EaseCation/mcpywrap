@@ -11,7 +11,7 @@ from .mcs import *
 from ..config import get_project_type
 
 # 强制请求管理员权限
-FORCE_ADMIN = False
+FORCE_ADMIN = True
 
 
 # 共享函数定义 - 在 symlink_helper 和 symlinks 中都可以使用
