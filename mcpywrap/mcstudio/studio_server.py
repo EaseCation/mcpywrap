@@ -9,8 +9,36 @@ import argparse
 import sys
 import re
 
-class StudioLogServer:
+# 添加对 PyQt5 信号的支持
+try:
+    from PyQt5.QtCore import QObject, pyqtSignal
+    PYQT_AVAILABLE = True
+except ImportError:
+    PYQT_AVAILABLE = False
+    # 如果 PyQt5 不可用，创建一个虚拟的基类和信号类
+    class QObject:
+        pass
+    
+    class DummySignal:
+        def __init__(self):
+            pass
+        
+        def emit(self, *args, **kwargs):
+            pass
+        
+        def connect(self, func):
+            pass
+    
+    # 替代 pyqtSignal
+    pyqtSignal = lambda *args, **kwargs: DummySignal()
+
+class StudioLogServer(QObject if PYQT_AVAILABLE else object):
+    # 定义信号 - 仅当 PyQt5 可用时才会是实际信号
+    client_connected_signal = pyqtSignal()
+    client_disconnected_signal = pyqtSignal()
+
     def __init__(self, host='0.0.0.0', port=8000):
+        super().__init__()
         self.host = host
         self.port = port
         self.server_socket = None
@@ -25,6 +53,8 @@ class StudioLogServer:
             'exit': self.exit_server,
             'history': self.show_history
         }
+        # 判断是否在UI中运行
+        self.in_ui_mode = 'PyQt5' in sys.modules
 
     def start(self):
         """启动服务器"""
@@ -36,10 +66,12 @@ class StudioLogServer:
             self.running = True
             print(f"[+] 服务器已启动，监听 {self.host}:{self.port}")
             
-            # 启动命令输入线程
-            cmd_thread = threading.Thread(target=self.command_input)
-            cmd_thread.daemon = True
-            cmd_thread.start()
+            # 如果不在UI模式下，启动命令输入线程
+            if not self.in_ui_mode:
+                cmd_thread = threading.Thread(target=self.command_input)
+                cmd_thread.daemon = True
+                cmd_thread.start()
+                print("> ", end='', flush=True)
             
             # 接受客户端连接
             while self.running:
@@ -53,6 +85,9 @@ class StudioLogServer:
                         'id': len(self.clients)
                     }
                     self.clients.append(client_info)
+                    
+                    # 发射客户端连接信号
+                    self.client_connected_signal.emit()
                     
                     # 为每个客户端创建接收线程
                     client_thread = threading.Thread(
@@ -97,8 +132,9 @@ class StudioLogServer:
                     log_data = data.decode('utf-8', errors='replace')
                     print(f"\n[日志] 客户端 {client_id}: {log_data}", end='')
                 
-                # 让命令提示符重新出现
-                print("\n> ", end='', flush=True)
+                # 只在非UI模式下显示命令提示符
+                if not self.in_ui_mode:
+                    print("\n> ", end='', flush=True)
                 
         except ConnectionResetError:
             print(f"\n[!] 客户端 {client_id} 连接已重置")
@@ -109,7 +145,12 @@ class StudioLogServer:
                 client_socket.close()
                 self.clients.remove(client_info)
                 print(f"\n[-] 客户端 {client_id} 已断开连接")
-                print("> ", end='', flush=True)
+                
+                # 发射客户端断开连接信号
+                self.client_disconnected_signal.emit()
+                
+                if not self.in_ui_mode:
+                    print("> ", end='', flush=True)
             except:
                 pass
 
@@ -182,6 +223,10 @@ class StudioLogServer:
                 break
             except Exception as e:
                 print(f"[!] 命令处理出错: {e}")
+                
+            # 重新显示提示符
+            if self.running and not self.in_ui_mode:
+                print("> ", end='', flush=True)
 
     def show_help(self, *args):
         """显示帮助信息"""
@@ -249,7 +294,7 @@ class StudioLogServer:
         print("[+] 服务器已关闭")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Minecraft Studio调试日志服务器')
+    parser = argparse.ArgumentParser(description='Minecraft Studio 调试日志服务器')
     parser.add_argument('-p', '--port', type=int, default=8000, 
                         help='服务器监听端口 (默认: 8000)')
     parser.add_argument('-a', '--address', default='0.0.0.0',
@@ -264,3 +309,4 @@ if __name__ == "__main__":
         print("\n[+] 收到退出信号，正在关闭服务器...")
     except Exception as e:
         print(f"[!] 服务器运行出错: {e}")
+

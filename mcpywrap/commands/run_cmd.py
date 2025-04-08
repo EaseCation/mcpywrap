@@ -3,10 +3,14 @@
 """
 项目运行命令模块
 """
+import subprocess
+
 import click
 import os
 import json
 import uuid
+
+from future.moves import sys
 
 from ..builders import DependencyManager
 from ..config import config_exists, read_config, get_project_dependencies
@@ -14,6 +18,7 @@ from ..builders.AddonsPack import AddonsPack
 from ..mcstudio.game import open_game, open_safaia
 from ..mcstudio.mcs import *
 from ..mcstudio.runtime_cppconfig import gen_runtime_config
+from ..mcstudio.studio_server_ui import run_studio_server_ui, run_studio_server_ui_subprocess
 from ..mcstudio.symlinks import setup_addons_symlinks
 from ..utils.project_setup import find_and_configure_behavior_pack
 from ..utils.utils import ensure_dir
@@ -132,12 +137,18 @@ def run_cmd():
 
     click.echo(click.style('📝 配置文件已生成', fg='green'))
 
+    logging_port = 8678
+
     # 启动游戏
     click.echo(click.style('🚀 正在启动游戏...', fg='bright_blue', bold=True))
-    game_process = open_game(config_path)
+    game_process = open_game(config_path, logging_port=logging_port)
 
     if game_process is None:
         click.echo(click.style('❌ 游戏启动失败', fg='red', bold=True))
+        return
+
+    # 启动studio_logging_server
+    run_studio_server_ui_subprocess(port=logging_port)
 
     # 启动日志与调试工具
     open_safaia()

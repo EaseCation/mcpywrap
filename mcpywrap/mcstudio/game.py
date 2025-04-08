@@ -46,13 +46,14 @@ class SimpleMonitor:
 
         return True
 
-def open_game(config_path):
+def open_game(config_path, logging_ip="localhost", logging_port=8678):
     """
     打开MC Studio游戏引擎
 
     Args:
         config_path: 游戏配置文件路径
-        return_process: 是否返回进程对象
+        logging_ip: 日志服务器IP地址
+        logging_port: 日志服务器端口号
 
     Returns:
         如果 return_process=True，返回进程对象；否则返回布尔值表示是否成功启动
@@ -124,7 +125,7 @@ def open_game(config_path):
         import subprocess
 
         # 启动游戏
-        cmd_str = f'cmd /c start "MC Studio Game Console" "{minecraft_exe}" config="{os.path.abspath(config_path)}"'
+        cmd_str = f'cmd /c start "MC Studio Game Console" "{minecraft_exe}" config="{os.path.abspath(config_path)}" loggingIP={logging_ip} loggingPort={logging_port}'
         subprocess.Popen(cmd_str, shell=True)
 
         return SimpleMonitor()
