@@ -252,8 +252,9 @@ def _run_game_with_instance(config_path, level_id, all_packs):
 @click.option('--list', '-l', is_flag=True, help='列出所有可用的游戏实例')
 @click.option('--delete', '-d', help='删除指定的游戏实例 (输入实例ID前缀)')
 @click.option('--force', '-f', is_flag=True, help='强制删除，不提示确认')
+@click.option('--clean-all', is_flag=True, help='清空所有游戏实例')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, instance_prefix):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例
@@ -269,6 +270,11 @@ def run_cmd(new, list, delete, force, instance_prefix):
     # 创建运行时配置目录
     runtime_dir = os.path.join(base_dir, ".runtime")
     ensure_dir(runtime_dir)
+
+    # 清空所有实例
+    if clean_all:
+        _clean_all_instances(force)
+        return
 
     # 列出所有实例
     if list:
@@ -339,7 +345,7 @@ def _list_instances():
         return
     
     click.secho('📋 可用游戏实例列表:', fg='bright_cyan')
-    click.secho(f"{'  ID预览  ':12} {'创建时间':19} {'世界名称'}", fg='cyan')
+    click.secho(f"{'   ID预览  ':12} {'创建时间':19} {'世界名称'}", fg='cyan')
     click.secho("-" * 50, fg='cyan')
     
     for i, instance in enumerate(instances):
@@ -351,7 +357,7 @@ def _list_instances():
         # 只显示前8个字符，方便引用
         short_id = level_id[:8]
         
-        click.secho(f"{prefix}{short_id:10} {time_str} {instance['name']}", 
+        click.secho(f"{prefix}{short_id:10}  {time_str}     {instance['name']}", 
                    fg='bright_green' if i == 0 else 'green')
         
     click.secho("\n💡 提示: 使用 'mcpy run <实例ID前缀>' 运行特定实例", fg='cyan')
@@ -385,11 +391,78 @@ def _delete_instance(instance_prefix, force):
         # 删除游戏世界目录
         world_dir = os.path.join(engine_data_path, "minecraftWorlds", level_id)
         if os.path.exists(world_dir):
+            click.secho(f'🗑️ 正在删除游戏存档: {world_dir}', fg='yellow')
             shutil.rmtree(world_dir, ignore_errors=True)
+            click.secho(f'✅ 游戏存档已删除', fg='green')
+        else:
+            click.secho(f'ℹ️ 未找到对应的游戏存档', fg='cyan')
         
         click.secho(f'✅ 成功删除实例: {level_id[:8]}', fg='green')
     except Exception as e:
         click.secho(f'❌ 删除实例时出错: {str(e)}', fg='red')
+
+
+def _clean_all_instances(force):
+    """清空所有游戏实例"""
+    instances = _get_all_instances()
+    
+    if not instances:
+        click.secho('📭 没有找到任何游戏实例', fg='yellow')
+        return
+    
+    count = len(instances)
+    
+    if not force:
+        click.secho(f'⚠️ 警告: 即将删除所有 {count} 个游戏实例!', fg='bright_red', bold=True)
+        click.secho('此操作将删除所有实例配置及对应的游戏存档，且不可恢复!', fg='red')
+        
+        # 二次确认
+        confirmation1 = click.confirm('确定要继续吗?', default=False)
+        if not confirmation1:
+            click.secho('操作已取消', fg='green')
+            return
+            
+        confirmation2 = click.confirm('⚠️ 最后确认: 真的要删除所有实例吗?', default=False)
+        if not confirmation2:
+            click.secho('操作已取消', fg='green')
+            return
+    
+    # 开始删除所有实例
+    click.secho(f'🗑️ 正在删除 {count} 个游戏实例...', fg='yellow')
+    
+    success_count = 0
+    fail_count = 0
+    
+    for instance in instances:
+        try:
+            level_id = instance['level_id']
+            config_path = instance['config_path']
+            
+            # 删除配置文件
+            if os.path.exists(config_path):
+                os.remove(config_path)
+                
+            # 获取游戏引擎数据目录
+            engine_data_path = get_mcs_game_engine_data_path()
+            
+            # 删除游戏世界目录
+            world_dir = os.path.join(engine_data_path, "minecraftWorlds", level_id)
+            if os.path.exists(world_dir):
+                shutil.rmtree(world_dir, ignore_errors=True)
+                
+            success_count += 1
+        except Exception as e:
+            fail_count += 1
+            if not force:  # 在非强制模式下显示错误
+                click.secho(f'❌ 删除实例 {instance["level_id"][:8]} 时出错: {str(e)}', fg='red')
+    
+    # 报告结果
+    if success_count == count:
+        click.secho(f'✅ 已成功删除所有 {count} 个游戏实例', fg='green', bold=True)
+    else:
+        click.secho(f'⚠️ 删除结果: 成功 {success_count} 个, 失败 {fail_count} 个', fg='yellow', bold=True)
+        if fail_count > 0 and not force:
+            click.secho('💡 提示: 使用 "--force" 选项可以忽略错误继续删除', fg='cyan')
 
 
 def _print_dependency_tree(node, level):

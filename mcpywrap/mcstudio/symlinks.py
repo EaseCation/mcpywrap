@@ -6,9 +6,10 @@ import tempfile
 import json
 import base64
 import time
+from datetime import datetime
 from .mcs import *
+from ..utils.utils import DynamicOutput
 
-from ..config import get_project_type
 
 # 强制请求管理员权限
 FORCE_ADMIN = False
@@ -38,40 +39,45 @@ def create_symlinks(user_data_path, packs, use_click=True):
     os.makedirs(behavior_packs_dir, exist_ok=True)
     os.makedirs(resource_packs_dir, exist_ok=True)
 
-    # 打印函数，根据是否使用click选择不同的输出方式
-    def print_msg(message, color=None, bold=False):
-        if use_click:
-            click.secho(message, fg=color, bold=bold)
-        else:
-            print(message)
+    # 创建动态输出对象
+    output = DynamicOutput(use_click=use_click)
 
     # 清空现有链接
-    print_msg("🧹 清理现有软链接...", color="cyan")
+    output.print_msg("🧹 清理现有软链接...", color="cyan")
+    output.start_progress("正在扫描现有链接")
 
     # 清理行为包目录
     if os.path.exists(behavior_packs_dir):
+        link_count = 0
         for item in os.listdir(behavior_packs_dir):
             item_path = os.path.join(behavior_packs_dir, item)
             if os.path.islink(item_path):
+                output.progress_step(f"删除行为包链接 {item}")
                 try:
                     os.unlink(item_path)
-                    print_msg(f"🗑️ 删除链接: {item}", color="cyan")
+                    link_count += 1
                 except Exception as e:
-                    print_msg(f"⚠️ 删除链接失败 {item}: {str(e)}", color="yellow")
+                    output.print_msg(f"⚠️ 删除链接失败 {item}: {str(e)}", color="yellow")
+        
+        output.progress_step(f"已删除 {link_count} 个行为包链接")
 
     # 清理资源包目录
     if os.path.exists(resource_packs_dir):
+        link_count = 0
         for item in os.listdir(resource_packs_dir):
             item_path = os.path.join(resource_packs_dir, item)
             if os.path.islink(item_path):
+                output.progress_step(f"删除资源包链接 {item}")
                 try:
                     os.unlink(item_path)
-                    print_msg(f"🗑️ 删除链接: {item}", color="cyan")
+                    link_count += 1
                 except Exception as e:
-                    print_msg(f"⚠️ 删除链接失败 {item}: {str(e)}", color="yellow")
+                    output.print_msg(f"⚠️ 删除链接失败 {item}: {str(e)}", color="yellow")
+        
+        output.end_progress(True, f"🧹 清理完成: 共删除 {link_count} 个链接")
 
     # 创建新链接
-    print_msg("🔗 创建新的软链接...", color="cyan")
+    output.print_msg("🔗 创建新的软链接...", color="cyan")
 
     # 处理包数据格式的统一转换函数
     def get_pack_data(pack):
@@ -91,8 +97,14 @@ def create_symlinks(user_data_path, packs, use_click=True):
                 "pkg_name": getattr(pack, "pkg_name", "unknown")
             }
 
-    for pack in packs:
+    # 创建链接进度跟踪
+    output.start_progress("正在创建软链接")
+    success_count = 0
+    fail_count = 0
+    
+    for i, pack in enumerate(packs):
         pack_data = get_pack_data(pack)
+        output.progress_step(f"处理包 {i+1}/{len(packs)}: {pack_data['pkg_name']}")
         
         # 处理行为包
         if pack_data["behavior_pack_dir"] and os.path.exists(pack_data["behavior_pack_dir"]):
@@ -101,10 +113,11 @@ def create_symlinks(user_data_path, packs, use_click=True):
 
             try:
                 os.symlink(pack_data["behavior_pack_dir"], link_path)
-                print_msg(f"✅ 行为包链接创建成功: {link_name}", color="green")
                 behavior_links.append(link_name)
+                success_count += 1
             except Exception as e:
-                print_msg(f"⚠️ 行为包链接创建失败: {str(e)}", color="yellow")
+                output.print_msg(f"⚠️ 行为包链接创建失败 ({pack_data['pkg_name']}): {str(e)}", color="yellow")
+                fail_count += 1
 
         # 处理资源包
         if pack_data["resource_pack_dir"] and os.path.exists(pack_data["resource_pack_dir"]):
@@ -113,13 +126,19 @@ def create_symlinks(user_data_path, packs, use_click=True):
 
             try:
                 os.symlink(pack_data["resource_pack_dir"], link_path)
-                print_msg(f"✅ 资源包链接创建成功: {link_name}", color="green")
                 resource_links.append(link_name)
+                success_count += 1
             except Exception as e:
-                print_msg(f"⚠️ 资源包链接创建失败: {str(e)}", color="yellow")
+                output.print_msg(f"⚠️ 资源包链接创建失败 ({pack_data['pkg_name']}): {str(e)}", color="yellow")
+                fail_count += 1
+    
+    # 完成进度
+    if fail_count == 0:
+        output.end_progress(True, f"✅ 软链接创建完成！共创建 {success_count} 个链接")
+    else:
+        output.end_progress(False, f"⚠️ 软链接部分创建成功。成功: {success_count}, 失败: {fail_count}")
 
-    print_msg("✅ 软链接设置完成！", color="green", bold=True)
-    return True, behavior_links, resource_links
+    return fail_count == 0, behavior_links, resource_links
 
 
 def is_admin():

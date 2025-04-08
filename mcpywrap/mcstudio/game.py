@@ -4,7 +4,6 @@ import os
 import json
 import subprocess
 import click
-import time
 import threading
 
 from .mcs import *
@@ -14,8 +13,6 @@ from .SimpleMonitor import SimpleMonitor
 try:
     import win32gui
     import win32con
-    import win32process
-    import ctypes
     from ctypes import windll, c_int, byref, sizeof
     HAS_WIN32API = True
 except ImportError:
