@@ -396,7 +396,10 @@ class GameRunThread(QThread):
             from mcpywrap.mcstudio.game import open_game, open_safaia
             from mcpywrap.mcstudio.studio_server_ui import run_studio_server_ui_subprocess
             from mcpywrap.utils.utils import ensure_dir
+            from mcpywrap.mcstudio.symlinks import setup_map_packs_symlinks
+            from mcpywrap.mcstudio.mcs import get_mcs_game_engine_data_path
             import json
+            import shutil
             
             project_type = get_project_type()
             project_name = get_project_name()
@@ -446,6 +449,41 @@ class GameRunThread(QThread):
                 json.dump(runtime_config, f, ensure_ascii=False, indent=2)
                 
             self.log_message.emit(f"📝 配置文件已生成: {os.path.basename(self.config_path)}", "success")
+            
+            # 地图存档创建 - 为地图类型项目添加特殊处理
+            if project_type == 'map':
+                # 获取游戏引擎数据目录
+                engine_data_path = get_mcs_game_engine_data_path()
+                if not engine_data_path:
+                    self.log_message.emit("⚠️ 未找到游戏数据目录，地图文件可能无法正确加载", "warning")
+                else:
+                    # 判断目标地图存档路径
+                    runtime_map_dir = os.path.join(engine_data_path, "minecraftWorlds", self.level_id)
+                    ensure_dir(runtime_map_dir)
+                    
+                    self.log_message.emit("🗺️ 正在准备地图存档...", "info")
+                    
+                    # 判断是否有level.dat，没有的话就复制
+                    level_dat_path = os.path.join(runtime_map_dir, "level.dat")
+                    if not os.path.exists(level_dat_path):
+                        origin_level_dat_path = os.path.join(os.getcwd(), "level.dat")
+                        if os.path.exists(origin_level_dat_path):
+                            shutil.copy2(origin_level_dat_path, level_dat_path)
+                            self.log_message.emit("✓ 已复制level.dat文件", "success")
+                    
+                    # 复制db文件夹
+                    level_db_dir = os.path.join(runtime_map_dir, "db")
+                    if not os.path.exists(level_db_dir) and os.path.exists(os.path.join(os.getcwd(), "db")):
+                        shutil.copytree(os.path.join(os.getcwd(), "db"), level_db_dir)
+                        self.log_message.emit("✓ 已复制db文件夹", "success")
+                    
+                    # 设置地图软链接
+                    self.log_message.emit("🔗 正在设置地图软链接...", "info")
+                    link_result = setup_map_packs_symlinks(os.getcwd(), self.level_id)
+                    if link_result:
+                        self.log_message.emit("✓ 地图软链接设置成功", "success")
+                    else:
+                        self.log_message.emit("⚠️ 地图软链接设置可能不完整", "warning")
                 
             # 启动游戏 - 非阻塞模式
             logging_port = 8678
