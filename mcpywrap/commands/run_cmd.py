@@ -23,11 +23,13 @@ from ..mcstudio.symlinks import setup_global_addons_symlinks, setup_map_packs_sy
 from ..utils.project_setup import find_and_configure_behavior_pack
 from ..utils.utils import ensure_dir
 
+base_dir = os.getcwd()
+
 
 # 实例管理助手函数
 def _get_all_instances():
     """获取所有运行实例信息"""
-    runtime_dir = os.path.join(os.getcwd(), ".runtime")
+    runtime_dir = os.path.join(base_dir, ".runtime")
     if not os.path.exists(runtime_dir):
         return []
     
@@ -145,7 +147,6 @@ def _setup_dependencies(project_name, base_dir):
 
 def _run_game_with_instance(config_path, level_id, all_packs):
     """使用指定的实例运行游戏"""
-    base_dir = os.getcwd()
     project_type = get_project_type()
     project_name = get_project_name()
     
@@ -264,7 +265,6 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix):
         click.echo(click.style('❌ 项目尚未初始化，请先运行 mcpy init', fg='red', bold=True))
         return
 
-    base_dir = os.getcwd()
     project_name = get_project_name()
     
     # 创建运行时配置目录

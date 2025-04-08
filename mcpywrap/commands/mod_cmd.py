@@ -7,11 +7,13 @@ from ..minecraft.addons import is_minecraft_addon_project
 from ..minecraft.template.mod_template import open_ui_crate_mod
 from ..utils.project_setup import find_behavior_pack_dir
 
+base_dir = os.getcwd()
+
 
 @click.command()
 def mod_cmd():
     """ 向导式创建 Python Mod 基础框架 """
-    base_dir = os.getcwd()
+    
     if is_minecraft_addon_project(base_dir):
         behavior_pack_dir = find_behavior_pack_dir(base_dir)
         if behavior_pack_dir:

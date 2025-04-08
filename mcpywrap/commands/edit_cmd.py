@@ -14,6 +14,8 @@ from ..mcstudio.mcs import *
 from ..mcstudio.editor import open_editor, create_editor_config
 from ..utils.project_setup import find_and_configure_behavior_pack
 
+base_dir = os.getcwd()
+
 
 @click.command()
 def edit_cmd():
@@ -25,7 +27,6 @@ def edit_cmd():
 
     # 读取项目配置
     config = read_config()
-    base_dir = os.getcwd()
 
     project_name = get_project_name()
     project_type = get_project_type()

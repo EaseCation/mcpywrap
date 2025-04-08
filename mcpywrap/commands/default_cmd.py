@@ -8,6 +8,8 @@ from ..minecraft.netease_modsdk import check_installed_modsdk, get_available_ver
 from ..utils.project_setup import find_and_configure_behavior_pack, install_project_dev_mode
 from ..utils.print_guide import print_guide
 
+base_dir = os.getcwd()
+
 
 @click.command()
 def default_cmd():
@@ -22,7 +24,7 @@ def default_cmd():
         # 执行init指令
         init_project()
     else:
-        base_dir = os.getcwd()
+        base_dir = base_dir
         click.echo(click.style('🔄 正在刷新项目...', fg='blue'))
 
         # 加载现有配置
