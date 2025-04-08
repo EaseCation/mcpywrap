@@ -19,7 +19,7 @@ except ImportError:
     HAS_WIN32API = False
 
 
-def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system_color=True):
+def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system_color=True, wait=True):
     """
     打开MC Studio游戏引擎
 
@@ -105,9 +105,12 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
         # 如果需要使用系统主题色且Win32API可用，使用定时器异步应用窗口样式
         if use_system_color and HAS_WIN32API and is_windows():
             # 使用定时器在5秒后触发窗口样式修改，避免阻塞主线程
-            style_timer = threading.Timer(5.0, apply_system_titlebar_style, args=["Minecraft"])
-            style_timer.daemon = True
-            style_timer.start()
+            style_timer1 = threading.Timer(5.0, apply_system_titlebar_style, args=["Minecraft"])
+            style_timer1.daemon = True
+            style_timer1.start()
+            style_timer2 = threading.Timer(10.0, apply_system_titlebar_style, args=["Minecraft"])
+            style_timer2.daemon = True
+            style_timer2.start()
 
         return SimpleMonitor("Minecraft.Windows.exe")
 

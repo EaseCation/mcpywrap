@@ -40,3 +40,12 @@ class SimpleMonitor:
                 time.sleep(1)
 
         return True
+    
+    def poll(self):
+        """检查进程是否仍在运行"""
+        import psutil
+
+        for proc in psutil.process_iter(['name']):
+            if proc.info['name'] == self.process_name:
+                return True
+        return False
