@@ -2,7 +2,7 @@
 
 import click
 import os
-from ..config import update_config, config_exists, read_config
+from ..config import update_config, config_exists, read_config, get_project_type
 from .init_cmd import init as init_project
 from ..minecraft.netease_modsdk import check_installed_modsdk, get_available_versions, download_and_install_package
 from ..utils.project_setup import find_and_configure_behavior_pack, install_project_dev_mode
@@ -27,13 +27,15 @@ def default_cmd():
 
         # 加载现有配置
         config = read_config()
-        
-        # 查找行为包并更新配置
-        behavior_pack_dir, _ = find_and_configure_behavior_pack(base_dir, config)
-        
-        if not behavior_pack_dir:
-            click.echo(click.style('❌ 未找到行为包目录，请手动配置', fg='red'))
-            return
+        project_type = get_project_type()
+
+        if project_type == 'addon':
+            # 查找行为包并更新配置
+            behavior_pack_dir, _ = find_and_configure_behavior_pack(base_dir, config)
+            
+            if not behavior_pack_dir:
+                click.echo(click.style('❌ 未找到行为包目录，请手动配置', fg='red'))
+                return
         
         # 更新配置文件
         update_config(config)

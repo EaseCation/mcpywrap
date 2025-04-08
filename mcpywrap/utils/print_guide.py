@@ -8,6 +8,10 @@ def print_guide():
                 click.style("mcpy run", fg="bright_green", bold=True) +
                 click.style("    - 启动游戏进行测试", fg="white"))
     
+    click.echo(click.style("✏️  ", fg="cyan") + 
+               click.style("mcpy edit", fg="bright_cyan", bold=True) + 
+               click.style("  - 使用 MC Studio Editor 编辑器进行编辑", fg="white"))
+    
     click.echo(click.style("🔄 ", fg="yellow") + 
                click.style("mcpy dev", fg="bright_yellow", bold=True) + 
                click.style("    - 进入实时构建开发模式", fg="white"))
@@ -21,5 +25,6 @@ def print_guide():
                click.style(" <package>", fg="bright_white") + 
                click.style(" - 手动添加依赖包", fg="white"))
     
-    click.echo("\n")
     
+    click.echo("\n")
+
