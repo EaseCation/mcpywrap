@@ -9,40 +9,6 @@ import subprocess
 from .mcs import *
 
 
-def is_admin():
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
-        return False
-
-
-def run_as_admin(args=None):
-    """
-    以管理员权限重新启动当前脚本
-
-    Args:
-        args: 命令行参数列表
-
-    Returns:
-        bool: 是否成功请求管理员权限
-    """
-    if args is None:
-        args = sys.argv
-
-    try:
-        if sys.platform == 'win32':
-            # 在Windows上使用ShellExecute以管理员权限启动程序
-            return ctypes.windll.shell32.ShellExecuteW(
-                None, "runas", sys.executable, subprocess.list2cmdline(args), None, 1
-            ) > 32
-        else:
-            # 在非Windows平台上不支持这个功能
-            return False
-    except Exception as e:
-        click.secho(f"❌ 无法请求管理员权限: {str(e)}", fg="red", bold=True)
-        return False
-
-
 def create_symlink_using_cmd(source, target, is_dir=True):
     """
     使用Windows命令行工具mklink创建软链接
@@ -100,16 +66,6 @@ def setup_addons_symlinks(packs: list):
     if not is_windows():
         click.secho("❌ 此功能仅支持Windows系统", fg="red", bold=True)
         return False, [], []
-
-    # 检查管理员权限，如果没有则请求
-    if is_windows() and not is_admin():
-        click.secho("⚠️ 创建软链接需要管理员权限，正在请求...", fg="yellow", bold=True)
-        if run_as_admin():
-            # 成功请求管理员权限，程序会重新启动，当前进程可以退出
-            return True, [], []  # 返回True表示操作正在进行中
-        else:
-            click.secho("❌ 无法获取管理员权限，软链接创建可能会失败", fg="red", bold=True)
-            # 继续尝试创建软链接，但可能会失败
 
     behavior_links = []
     resource_links = []
