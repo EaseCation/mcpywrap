@@ -16,12 +16,13 @@ def is_admin():
         return False
 
 
-def run_as_admin(args=None):
+def run_as_admin(args=None, force_restart=True):
     """
     以管理员权限重新启动当前脚本
     
     Args:
         args: 命令行参数列表
+        force_restart: 是否强制重启进程
         
     Returns:
         bool: 是否成功请求管理员权限
@@ -32,9 +33,15 @@ def run_as_admin(args=None):
     try:
         if sys.platform == 'win32':
             # 在Windows上使用ShellExecute以管理员权限启动程序
-            return ctypes.windll.shell32.ShellExecuteW(
+            result = ctypes.windll.shell32.ShellExecuteW(
                 None, "runas", sys.executable, subprocess.list2cmdline(args), None, 1
             ) > 32
+            
+            # 如果成功启动并且需要强制重启，则退出当前进程
+            if result and force_restart:
+                sys.exit(0)
+                
+            return result
         else:
             # 在非Windows平台上不支持这个功能
             return False
@@ -60,13 +67,15 @@ def setup_addons_symlinks(packs: list):
     # 检查管理员权限，如果没有则请求
     if is_windows() and not is_admin():
         click.secho("⚠️ 创建软链接需要管理员权限，正在请求...", fg="yellow", bold=True)
+        # 请求管理员权限并退出当前进程，新进程将继续执行
         if run_as_admin():
-            # 成功请求管理员权限，程序会重新启动，当前进程可以退出
-            return True, [], []  # 返回True表示操作正在进行中
+            # 成功请求管理员权限，程序会重新启动，当前进程退出
+            sys.exit(0)
         else:
             click.secho("❌ 无法获取管理员权限，软链接创建可能会失败", fg="red", bold=True)
             # 继续尝试创建软链接，但可能会失败
 
+    # 如果代码执行到这里，说明已经有管理员权限或者获取权限失败
     behavior_links = []
     resource_links = []
 
