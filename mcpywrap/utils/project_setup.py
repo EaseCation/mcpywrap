@@ -11,6 +11,9 @@ import getpass
 from ..utils.utils import ensure_dir
 from ..minecraft.addons import find_behavior_pack_dir, is_minecraft_addon_project
 
+base_dir = os.getcwd()
+
+
 def get_git_config_value(key):
     """尝试从git配置获取值"""
     try:
@@ -41,7 +44,7 @@ def get_default_email():
 
 def get_default_project_name():
     """获取默认项目名称（当前目录名）"""
-    return os.path.basename(os.getcwd())
+    return os.path.basename(base_dir)
 
 def update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir=None):
     """更新配置中的行为包信息"""

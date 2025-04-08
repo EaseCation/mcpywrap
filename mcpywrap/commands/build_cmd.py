@@ -7,6 +7,9 @@ import click
 from ..config import config_exists, get_mcpywrap_config, get_project_type
 from ..builders.project_builder import ProjectBuilder
 
+
+base_dir = os.getcwd()
+
 @click.command()
 def build_cmd():
     """构建为 MCStudio 工程"""
@@ -19,7 +22,7 @@ def build_cmd():
 
     if get_project_type() == "addon":
         # 源代码目录固定为当前目录
-        source_dir = os.getcwd()
+        source_dir = base_dir
         # 目标目录从配置中读取behavior_pack_dir
         target_dir = mcpywrap_config.get('target_dir')
         

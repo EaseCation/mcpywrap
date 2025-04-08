@@ -8,11 +8,13 @@ import tomli
 import tomli_w
 import click
 
+base_dir = os.getcwd()
 CONFIG_FILE = 'pyproject.toml'
+
 
 def get_config_path() -> str:
     """获取配置文件路径"""
-    return os.path.join(os.getcwd(), CONFIG_FILE)
+    return os.path.join(base_dir, CONFIG_FILE)
 
 def config_exists() -> bool:
     """检查配置文件是否存在"""
@@ -68,7 +70,7 @@ def _deep_update(original, update):
 def get_project_name() -> str:
     """获取项目名称"""
     config = read_config()
-    config.get('project', {}).get('name', 'project')
+    return config.get('project', {}).get('name', 'project')
 
 def get_mcpywrap_config():
     """获取mcpywrap特定的配置"""

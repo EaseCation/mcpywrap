@@ -11,6 +11,7 @@ from .dev_cmd import dev_cmd
 from .publish_cmd import publish_cmd
 from .mod_cmd import mod_cmd
 from .run_cmd import run_cmd
+from .edit_cmd import edit_cmd
 
 # 导出命令列表，包含所有注册的命令
 commands = [
@@ -23,5 +24,6 @@ commands = [
     dev_cmd,
     publish_cmd,
     mod_cmd,
-    run_cmd
+    run_cmd,
+    edit_cmd,
 ]

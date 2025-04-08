@@ -11,7 +11,8 @@ from ctypes import windll, c_int, byref, sizeof
 import click
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QTextEdit, QLabel, QComboBox, QFrame, QStyleFactory
+    QPushButton, QTextEdit, QLabel, QComboBox, QFrame, QStyleFactory,
+    QCheckBox, QDesktopWidget
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QObject, pyqtSlot, QSettings, QTimer
 from PyQt5.QtGui import QFont, QPalette, QColor
@@ -99,6 +100,13 @@ class StudioLoggerUI(QMainWindow):
         
         # 初始化按钮状态
         self.update_connection_status(False)
+        
+        # 默认设置窗口置顶
+        self.set_always_on_top(True)
+        self.stay_on_top_check.setChecked(True)
+        
+        # 设置窗口位置到屏幕左下角
+        self.position_window_bottom_left()
 
     def setup_ui(self):
         """设置UI组件"""
@@ -126,11 +134,17 @@ class StudioLoggerUI(QMainWindow):
         self.toggle_btn = QPushButton("展开日志")
         self.toggle_btn.clicked.connect(self.toggle_log_view)
         
+        # 添加置顶勾选框
+        self.stay_on_top_check = QCheckBox("置顶")
+        self.stay_on_top_check.setToolTip("保持窗口在最上层")
+        self.stay_on_top_check.stateChanged.connect(self.toggle_always_on_top)
+        
         # 添加按钮和控件到控制布局
         control_layout.addWidget(self.reload_btn)
         control_layout.addWidget(self.restart_btn)
         control_layout.addWidget(self.toggle_btn)
         control_layout.addStretch(1)
+        control_layout.addWidget(self.stay_on_top_check)
 
         # 创建日志区域容器
         self.log_container = QWidget()
@@ -361,6 +375,21 @@ class StudioLoggerUI(QMainWindow):
         if sys.platform == "win32":
             set_windows_dark_titlebar(int(self.winId()))
 
+    def toggle_always_on_top(self, state):
+        """切换窗口置顶状态"""
+        is_on_top = state == Qt.Checked
+        self.set_always_on_top(is_on_top)
+        # 保存用户偏好
+        self.settings.setValue("always_on_top", is_on_top)
+        
+    def set_always_on_top(self, on_top):
+        """设置窗口是否置顶"""
+        if on_top:
+            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        else:
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+        self.show()  # 重新显示窗口以应用更改
+
     def closeEvent(self, event):
         """窗口关闭时的处理"""
         # 恢复标准输出
@@ -371,10 +400,59 @@ class StudioLoggerUI(QMainWindow):
             self.log_server.running = False
             self.log_server.shutdown()
 
+        # 保存置顶设置和窗口位置
+        self.settings.setValue("always_on_top", self.stay_on_top_check.isChecked())
+        self.settings.setValue("window_position_x", self.x())
+        self.settings.setValue("window_position_y", self.y())
+        
         # 保存设置
         self.settings.sync()
 
         super().closeEvent(event)
+        
+    def showEvent(self, event):
+        """窗口显示事件"""
+        super().showEvent(event)
+        
+        # 从设置中加载置顶状态
+        always_on_top = self.settings.value("always_on_top", True, type=bool)
+        if self.stay_on_top_check.isChecked() != always_on_top:
+            self.stay_on_top_check.setChecked(always_on_top)
+        
+        # 如果是第一次显示，初始化置顶状态和位置
+        if not hasattr(self, '_shown'):
+            self.set_always_on_top(always_on_top)
+            
+            # 加载保存的位置或使用默认的左下角位置
+            saved_x = self.settings.value("window_position_x", None)
+            saved_y = self.settings.value("window_position_y", None)
+            
+            # 如果有保存的位置则使用，否则使用左下角位置
+            if saved_x is not None and saved_y is not None:
+                self.move(int(saved_x), int(saved_y))
+            else:
+                self.position_window_bottom_left()
+                
+            self._shown = True
+
+    def position_window_bottom_left(self):
+        """将窗口定位到屏幕左下角，保留边距"""
+        # 获取可用屏幕几何信息
+        desktop = QDesktopWidget().availableGeometry()
+        
+        # 设置边距（像素）
+        margin = 20
+        
+        # 计算左下角位置
+        x = desktop.left() + margin
+        y = desktop.bottom() - self.height() - margin
+        
+        # 移动窗口
+        self.move(x, y)
+        
+        # 保存初始位置信息
+        self.settings.setValue("window_position_x", x)
+        self.settings.setValue("window_position_y", y)
 
 def run_studio_server_ui(host='0.0.0.0', port=8000):
     """主函数"""
