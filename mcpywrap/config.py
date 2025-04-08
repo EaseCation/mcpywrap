@@ -65,6 +65,11 @@ def _deep_update(original, update):
         else:
             original[key] = value
 
+def get_project_name() -> str:
+    """获取项目名称"""
+    config = read_config()
+    config.get('project', {}).get('name', 'project')
+
 def get_mcpywrap_config():
     """获取mcpywrap特定的配置"""
     config = read_config()

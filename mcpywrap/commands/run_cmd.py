@@ -3,23 +3,24 @@
 """
 项目运行命令模块
 """
-import subprocess
 
 import click
 import os
 import json
 import uuid
+import shutil
 
 from ..builders import DependencyManager
-from ..config import config_exists, read_config, get_project_dependencies
+from ..config import config_exists, read_config, get_project_dependencies, get_project_type, get_project_name
 from ..builders.AddonsPack import AddonsPack
 from ..mcstudio.game import open_game, open_safaia
 from ..mcstudio.mcs import *
 from ..mcstudio.runtime_cppconfig import gen_runtime_config
-from ..mcstudio.studio_server_ui import run_studio_server_ui, run_studio_server_ui_subprocess
-from ..mcstudio.symlinks import setup_addons_symlinks
+from ..mcstudio.studio_server_ui import run_studio_server_ui_subprocess
+from ..mcstudio.symlinks import setup_global_addons_symlinks, setup_map_packs_symlinks
 from ..utils.project_setup import find_and_configure_behavior_pack
 from ..utils.utils import ensure_dir
+
 
 @click.command()
 def run_cmd():
@@ -32,6 +33,9 @@ def run_cmd():
     # 读取项目配置
     config = read_config()
     base_dir = os.getcwd()
+
+    project_name = get_project_name()
+    project_type = get_project_type()
 
     # 创建运行时配置目录
     runtime_dir = os.path.join(base_dir, ".runtime")
@@ -48,19 +52,25 @@ def run_cmd():
     if not engine_dirs:
         click.echo(click.style('❌ 未找到MC Studio游戏引擎，请确保已安装MC Studio', fg='red', bold=True))
         return
+    
+    # 获取游戏引擎数据目录
+    engine_data_path = get_mcs_game_engine_data_path()
 
     # 使用最新版本的引擎
     latest_engine = engine_dirs[0]
     click.echo(click.style(f'🎮 使用引擎版本: {latest_engine}', fg='cyan'))
 
-    # 查找当前项目的行为包
-    behavior_pack_dir, resource_pack_dir = find_and_configure_behavior_pack(base_dir, config)
-    if not behavior_pack_dir:
-        click.echo(click.style('❌ 未找到行为包目录，请检查项目结构', fg='red', bold=True))
-        return
+    all_packs = []
 
-    # 创建主包实例
-    main_pack = AddonsPack(config.get('project', {}).get('name', 'main'), base_dir, is_origin=True)
+    if project_type == 'addon':
+        # 查找当前项目的行为包
+        behavior_pack_dir, resource_pack_dir = find_and_configure_behavior_pack(base_dir, config)
+        if not behavior_pack_dir:
+            click.echo(click.style('❌ 未找到行为包目录，请检查项目结构', fg='red', bold=True))
+            return
+        # 创建主包实例
+        main_pack = AddonsPack(project_name, base_dir, is_origin=True)
+        all_packs.append(main_pack)
 
     # 解析依赖包
     dependency_manager = DependencyManager()
@@ -71,7 +81,7 @@ def run_cmd():
 
         # 构建依赖树
         dependency_manager.build_dependency_tree(
-            config.get('project', {}).get('name', 'main'),
+            project_name,
             base_dir,
             dependencies
         )
@@ -95,8 +105,8 @@ def run_cmd():
         dependency_packs = []
 
     # 设置软链接
-    all_packs = [main_pack] + dependency_packs
-    link_suc, behavior_links, resource_links = setup_addons_symlinks(all_packs)
+    all_packs += dependency_packs
+    link_suc, behavior_links, resource_links = setup_global_addons_symlinks(all_packs)
 
     if not link_suc:
         click.echo(click.style('❌ 软链接创建失败，请检查权限', fg='red', bold=True))
@@ -115,7 +125,7 @@ def run_cmd():
             level_id = config_data.get('world_info', {}).get('level_id', str(uuid.uuid4()))
 
     # 生成世界名称
-    world_name = f"{config.get('project', {}).get('name', 'MyWorld')}"
+    world_name = project_name
 
     # 生成运行时配置
     runtime_config = gen_runtime_config(
@@ -123,7 +133,7 @@ def run_cmd():
         world_name,
         level_id,
         mcs_download_dir,
-        main_pack.pkg_name,
+        project_name,
         behavior_links,
         resource_links
     )
@@ -135,10 +145,30 @@ def run_cmd():
 
     click.echo(click.style('📝 配置文件已生成', fg='green'))
 
-    logging_port = 8678
+    # 地图存档创建
+    if project_type == 'map':
+        # 判断目标地图存档路径
+        runtime_map_dir = os.path.join(engine_data_path, "minecraftWorlds", level_id)
+        ensure_dir(runtime_map_dir)
+        # 判断是否有level.dat，没有的话就复制
+        level_dat_path = os.path.join(runtime_map_dir, "level.dat")
+        print(level_dat_path)
+        if not os.path.exists(level_dat_path):
+            click.echo(click.style(f"🗺️ 创建地图存档... {level_dat_path}", fg='yellow'))
+            origin_level_dat_path = os.path.join(base_dir, "level.dat")
+            if os.path.exists(origin_level_dat_path):
+                shutil.copy2(origin_level_dat_path, level_dat_path)
+        level_db_dir = os.path.join(runtime_map_dir, "db")
+        if not os.path.exists(level_db_dir):
+            shutil.copytree(os.path.join(base_dir, "db"), level_db_dir)
+        # 链接
+        setup_map_packs_symlinks(base_dir, runtime_map_dir)
 
     # 启动游戏
+    logging_port = 8678
+
     click.echo(click.style('🚀 正在启动游戏...', fg='bright_blue', bold=True))
+    
     game_process = open_game(config_path, logging_port=logging_port)
 
     if game_process is None:

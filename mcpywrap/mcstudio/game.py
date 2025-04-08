@@ -4,7 +4,20 @@ import os
 import json
 import subprocess
 import click
+import time
+import threading
 from .mcs import *
+
+# 添加必要的Windows API支持
+try:
+    import win32gui
+    import win32con
+    import win32process
+    import ctypes
+    from ctypes import windll, c_int, byref, sizeof
+    HAS_WIN32API = True
+except ImportError:
+    HAS_WIN32API = False
 
 class SimpleMonitor:
     def __init__(self, process_name="Minecraft.Windows.exe"):
@@ -46,7 +59,7 @@ class SimpleMonitor:
 
         return True
 
-def open_game(config_path, logging_ip="localhost", logging_port=8678):
+def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system_color=True):
     """
     打开MC Studio游戏引擎
 
@@ -54,6 +67,7 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678):
         config_path: 游戏配置文件路径
         logging_ip: 日志服务器IP地址
         logging_port: 日志服务器端口号
+        use_system_color: 是否使用系统主题色标题栏
 
     Returns:
         如果 return_process=True，返回进程对象；否则返回布尔值表示是否成功启动
@@ -126,7 +140,14 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678):
 
         # 启动游戏
         cmd_str = f'cmd /c start "MC Studio Game Console" "{minecraft_exe}" config="{os.path.abspath(config_path)}" loggingIP={logging_ip} loggingPort={logging_port}'
-        subprocess.Popen(cmd_str, shell=True)
+        proc = subprocess.Popen(cmd_str, shell=True)
+        
+        # 如果需要使用系统主题色且Win32API可用，使用定时器异步应用窗口样式
+        if use_system_color and HAS_WIN32API and is_windows():
+            # 使用定时器在5秒后触发窗口样式修改，避免阻塞主线程
+            style_timer = threading.Timer(5.0, apply_system_titlebar_style, args=["Minecraft"])
+            style_timer.daemon = True
+            style_timer.start()
 
         return SimpleMonitor()
 
@@ -136,6 +157,102 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678):
     except Exception as e:
         click.secho(f"❌ 启动游戏失败: {str(e)}", fg="red", bold=True)
         return False
+
+def apply_system_titlebar_style(window_title_contains):
+    """
+    查找包含指定标题的窗口并应用系统主题色标题栏
+    
+    Args:
+        window_title_contains: 窗口标题包含的文本
+    """
+    if not HAS_WIN32API:
+        click.secho("⚠️ 无法应用系统主题色: 缺少win32api模块", fg="yellow")
+        return False
+    
+    def enum_windows_callback(hwnd, results):
+        if win32gui.IsWindowVisible(hwnd):
+            window_text = win32gui.GetWindowText(hwnd)
+            if window_title_contains.lower() in window_text.lower():
+                results.append(hwnd)
+        return True
+    
+    window_handles = []
+    win32gui.EnumWindows(enum_windows_callback, window_handles)
+    
+    if not window_handles:
+        click.secho(f"⚠️ 未找到标题包含 '{window_title_contains}' 的窗口", fg="yellow")
+        return False
+    
+    # 定义DWM API常量和函数
+    DWMWA_USE_IMMERSIVE_DARK_MODE = 20  # Windows 10 1809及以上版本
+    DWMWA_CAPTION_COLOR = 35            # Windows 11的标题栏颜色
+    DWMWA_SYSTEMBACKDROP_TYPE = 38      # Windows 11的系统背景类型
+    DWMWA_USE_MICA = 1029               # Windows 11的Mica效果
+    
+    # Backdrop类型
+    DWMSBT_AUTO = 0                     # 自动
+    DWMSBT_DISABLE = 1                  # 禁用
+    DWMSBT_MAINWINDOW = 2               # 主窗口样式（通常是Mica）
+    DWMSBT_TRANSIENTWINDOW = 3          # 临时窗口样式（通常是亚克力）
+    DWMSBT_TABBEDWINDOW = 4             # 标签式窗口样式
+
+    for hwnd in window_handles:
+        try:
+            # 1. 设置系统主题色标题栏
+            try:
+                # 尝试使用DWMWA_USE_IMMERSIVE_DARK_MODE
+                use_dark_mode = c_int(1)  # 1表示启用
+                windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, 
+                    DWMWA_USE_IMMERSIVE_DARK_MODE, 
+                    byref(use_dark_mode), 
+                    sizeof(use_dark_mode)
+                )
+                # click.secho(f"✅ 已设置深色模式标题栏 (句柄: {hwnd})", fg="green")
+            except Exception as e:
+                click.secho(f"⚠️ 设置深色模式失败: {str(e)}", fg="yellow")
+            
+            # 2. 尝试设置Windows 11的系统背景类型
+            try:
+                backdrop_type = c_int(DWMSBT_MAINWINDOW)  # 使用主窗口样式
+                windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, 
+                    DWMWA_SYSTEMBACKDROP_TYPE, 
+                    byref(backdrop_type), 
+                    sizeof(backdrop_type)
+                )
+                # click.secho(f"✅ 已设置系统背景类型 (句柄: {hwnd})", fg="green")
+            except Exception as e:
+                click.secho(f"⚠️ 设置系统背景类型失败: {str(e)}", fg="yellow")
+            
+            # 3. 尝试设置Mica效果
+            try:
+                use_mica = c_int(1)  # 1表示启用
+                windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, 
+                    DWMWA_USE_MICA, 
+                    byref(use_mica), 
+                    sizeof(use_mica)
+                )
+                # click.secho(f"✅ 已设置Mica效果 (句柄: {hwnd})", fg="green")
+            except Exception as e:
+                click.secho(f"⚠️ 设置Mica效果失败: {str(e)}", fg="yellow")
+            
+            # 保留原有的窗口样式修改代码
+            style = win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE)
+            ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+            
+            # 强制窗口重绘
+            win32gui.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 
+                                win32con.SWP_FRAMECHANGED | 
+                                win32con.SWP_NOMOVE | 
+                                win32con.SWP_NOSIZE | 
+                                win32con.SWP_NOZORDER)
+            
+        except Exception as e:
+            click.secho(f"⚠️ 修改窗口样式失败 (句柄: {hwnd}): {str(e)}", fg="yellow")
+    
+    return True
 
 def open_safaia():
     """

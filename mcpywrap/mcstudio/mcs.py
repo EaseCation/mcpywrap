@@ -122,8 +122,38 @@ def get_mcs_game_engine_dirs():
     except Exception:
         # 如果解析版本号失败，尝试简单的字符串排序
         return sorted(engine_dirs, reverse=True)
-
+    
 def get_mcs_game_engine_data_path():
+    """
+    获取 MinecraftPE_Netease 用户数据目录
+
+    返回 AppData\Roaming\MinecraftPE_Netease\ 路径
+
+    Returns:
+        str: 用户数据目录路径，如果不存在或不是 Windows 系统则返回 None
+    """
+    if not is_windows():
+        return None
+
+    import os
+
+    try:
+        # 获取 AppData\Roaming 目录
+        appdata_path = os.environ.get('APPDATA')
+        if not appdata_path:
+            return None
+
+        # 拼接完整路径
+        user_data_path = os.path.join(appdata_path, "MinecraftPE_Netease")
+
+        # 检查目录是否存在
+        if os.path.isdir(user_data_path):
+            return user_data_path
+        return None
+    except Exception:
+        return None
+
+def get_mcs_game_engine_netease_data_path():
     """
     获取 MinecraftPE_Netease 用户数据目录
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from ..config import update_config, config_exists
 from ..utils.utils import ensure_dir
 from ..minecraft.addons import setup_minecraft_addon, is_minecraft_addon_project
+from ..minecraft.map import setup_minecraft_map, is_minecraft_map_project
 from ..utils.print_guide import print_guide
 from ..utils.project_setup import (
     get_default_author, get_default_email, get_default_project_name, find_behavior_pack_dir,
@@ -73,39 +74,103 @@ def init():
     base_dir = os.getcwd()
     behavior_pack_dir = None
     minecraft_addon_info = {}
+    minecraft_map_info = {}
     target_dir = None
+    project_type = "addon"  # 默认项目类型
     
-    # 检查是否为Minecraft addon项目
-    if is_minecraft_addon_project(base_dir):
-        click.echo(click.style('🔍 检测到已有 Minecraft Addon 项目结构', fg='magenta'))
-        behavior_pack_dir = find_behavior_pack_dir(base_dir)
-        if behavior_pack_dir:
-            click.echo(click.style(f'✅ 找到行为包目录: {behavior_pack_dir}', fg='green'))
+    # 自动检测项目类型
+    is_map = is_minecraft_map_project(base_dir)
+    is_addon = is_minecraft_addon_project(base_dir)
+    
+    # 如果既不是地图也不是插件，则询问用户要创建的项目类型
+    if not is_map and not is_addon:
+        project_type_choices = [
+            ('addon', '创建Minecraft插件项目 (Addon)'),
+            ('map', '创建Minecraft地图存档项目 (Map)')
+        ]
+        
+        click.echo(click.style('📋 请选择项目类型：', fg='bright_magenta'))
+        for i, (code, desc) in enumerate(project_type_choices):
+            click.echo(click.style(f"  {i+1}. {desc}", fg='bright_blue'))
+        
+        choice = click.prompt(
+            click.style('👉 请选择', fg='bright_magenta'), 
+            type=click.Choice(['1', '2']), 
+            show_choices=False
+        )
+        project_type = project_type_choices[int(choice)-1][0]
+    elif is_map:
+        project_type = "map"
+        click.echo(click.style('🔍 检测到已有 Minecraft Map 项目结构', fg='magenta'))
+    elif is_addon:
+        project_type = "addon"
+    
+    # 根据项目类型进行对应的初始化
+    if project_type == "map":
+        if is_map:
+            click.echo(click.style('✅ 已检测到地图存档结构', fg='green'))
         else:
-            click.echo(click.style('⚠️ 无法找到行为包目录', fg='yellow'))
-    else:
-        if click.confirm(click.style('❓ 是否创建 Minecraft addon 基础框架？', fg='magenta'), default=True):
-            click.echo(click.style('🧱 正在创建 Minecraft addon 基础框架...', fg='magenta'))
-            minecraft_addon_info = setup_minecraft_addon(
-                base_dir, 
-                project_name, 
-                project_description, 
-                project_version
-            )
-            click.echo(click.style('✅ Minecraft Addon 基础框架创建成功！', fg='green'))
-            click.echo(click.style(f'📂 资源包: {minecraft_addon_info["resource_pack"]["path"]}', fg='green'))
-            click.echo(click.style(f'📂 行为包: {minecraft_addon_info["behavior_pack"]["path"]}', fg='green'))
-            behavior_pack_dir = minecraft_addon_info["behavior_pack"]["path"]
+            if click.confirm(click.style('❓ 是否创建 Minecraft 地图存档基础框架？', fg='magenta'), default=True):
+                click.echo(click.style('🧱 正在创建 Minecraft 地图存档基础框架...', fg='magenta'))
+                
+                # 询问游戏模式
+                game_type_choices = [
+                    (0, "生存模式"),
+                    (1, "创造模式"),
+                    (2, "冒险模式")
+                ]
+                
+                click.echo(click.style('📋 请选择游戏模式：', fg='bright_blue'))
+                for i, (code, desc) in enumerate(game_type_choices):
+                    click.echo(click.style(f"  {i+1}. {desc}", fg='bright_blue'))
+                    
+                game_choice = click.prompt(
+                    click.style('👉 请选择', fg='bright_magenta'), 
+                    type=click.Choice(['1', '2', '3']),
+                    show_choices=False
+                )
+                game_type = game_type_choices[int(game_choice)-1][0]
+                
+                minecraft_map_info = setup_minecraft_map(
+                    base_dir,
+                    project_name,
+                    project_description,
+                    game_type
+                )
+                
+                click.echo(click.style('✅ Minecraft 地图存档基础框架创建成功！', fg='green'))
+                click.echo(click.style(f'📂 地图路径: {minecraft_map_info["map_path"]}', fg='green'))
+    else:  # project_type == "addon"
+        # 检查是否为Minecraft addon项目
+        if is_minecraft_addon_project(base_dir):
+            click.echo(click.style('🔍 检测到已有 Minecraft Addon 项目结构', fg='magenta'))
+            behavior_pack_dir = find_behavior_pack_dir(base_dir)
+            if behavior_pack_dir:
+                click.echo(click.style(f'✅ 找到行为包目录: {behavior_pack_dir}', fg='green'))
+            else:
+                click.echo(click.style('⚠️ 无法找到行为包目录', fg='yellow'))
+        else:
+            if click.confirm(click.style('❓ 是否创建 Minecraft addon 基础框架？', fg='magenta'), default=True):
+                click.echo(click.style('🧱 正在创建 Minecraft addon 基础框架...', fg='magenta'))
+                minecraft_addon_info = setup_minecraft_addon(
+                    base_dir, 
+                    project_name, 
+                    project_description, 
+                    project_version
+                )
+                click.echo(click.style('✅ Minecraft Addon 基础框架创建成功！', fg='green'))
+                click.echo(click.style(f'📂 资源包: {minecraft_addon_info["resource_pack"]["path"]}', fg='green'))
+                click.echo(click.style(f'📂 行为包: {minecraft_addon_info["behavior_pack"]["path"]}', fg='green'))
+                behavior_pack_dir = minecraft_addon_info["behavior_pack"]["path"]
 
-    # 检查行为包中是否有任意Python包
-    if behavior_pack_dir:
-        if not any(file.endswith('.py') for file in os.listdir(behavior_pack_dir)):
-            if click.confirm(click.style('⚠️ 是否使用模板创建 Mod 基础 Python 脚本框架？', fg='yellow'), default=True):
-                open_ui_crate_mod(behavior_pack_dir)
+        # 检查行为包中是否有任意Python包
+        if behavior_pack_dir:
+            if not any(file.endswith('.py') for file in os.listdir(behavior_pack_dir)):
+                if click.confirm(click.style('⚠️ 是否使用模板创建 Mod 基础 Python 脚本框架？', fg='yellow'), default=True):
+                    open_ui_crate_mod(behavior_pack_dir)
 
     # 构建目录
     target_dir = click.prompt(click.style('📂 默认构建目录', fg='cyan'), default='./build', type=str)
-    ensure_dir(target_dir)
     
     # 构建符合 PEP 621 标准的配置
     config = {
@@ -130,7 +195,8 @@ def init():
         },
         'tool': {
             'mcpywrap': {
-                'use_3to2': use_3to2
+                'use_3to2': use_3to2,
+                'project_type': project_type
             }
         }
     }
@@ -146,9 +212,9 @@ def init():
     if project_url:
         config['project']['urls'] = {'Homepage': project_url}
     
-    # 更新行为包配置
-    rel_path = update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir)
-    if behavior_pack_dir:
+    # 如果是addon类型，更新行为包配置
+    if project_type == "addon" and behavior_pack_dir:
+        rel_path = update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir)
         click.echo(click.style(f'📦 已配置自动包发现于: {rel_path}', fg='green'))
 
     # 创建.gitignore文件
@@ -206,7 +272,7 @@ work.mcscfg
             click.echo(click.style('✅ .gitignore文件已创建！', fg='green'))
     
     update_config(config)
-    click.echo(click.style('✅ 初始化完成！配置文件已更新到 pyproject.toml', fg='green'))
+    click.echo(click.style(f'✅ 初始化完成！配置文件已更新到 pyproject.toml (项目类型: {project_type})', fg='green'))
     
     # 使用pip安装项目（可编辑模式）
     install_project_dev_mode()

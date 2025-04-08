@@ -6,7 +6,7 @@
 import os
 import time
 import click
-from ..config import get_mcpywrap_config, config_exists, read_config, CONFIG_FILE
+from ..config import get_mcpywrap_config, config_exists, read_config, get_project_type, CONFIG_FILE
 from ..builders.watcher import ProjectWatcher
 from .build_cmd import build
 
@@ -33,48 +33,53 @@ def dev_cmd():
     
     # 获取mcpywrap特定配置
     mcpywrap_config = get_mcpywrap_config()
-    # 源代码目录固定为当前目录
-    source_dir = os.getcwd()
-    # 目标目录从配置中读取
-    target_dir = mcpywrap_config.get('target_dir')
-    
-    if not target_dir:
-        click.secho('❌ 错误: 配置文件中未找到target_dir。请手动添加。', fg="red")
-        return False
-    
-    # 转换为绝对路径
-    target_dir = os.path.normpath(os.path.join(source_dir, target_dir))
 
-    # 读取项目配置获取项目名和依赖项
-    config = read_config(os.path.join(source_dir, CONFIG_FILE))
-    project_name = config.get('project', {}).get('name', 'current_project')
-    dependencies_list = config.get('project', {}).get('dependencies', [])
-    
-    # 实际构建
-    suc = build(source_dir, target_dir)
-    if not suc:
-        click.secho("❌ 初始构建失败", fg="red")
-        return False
+    if get_project_type() == "addon":
+        # 源代码目录固定为当前目录
+        source_dir = os.getcwd()
+        # 目标目录从配置中读取
+        target_dir = mcpywrap_config.get('target_dir')
+        
+        if not target_dir:
+            click.secho('❌ 错误: 配置文件中未找到target_dir。请手动添加。', fg="red")
+            return False
+        
+        # 转换为绝对路径
+        target_dir = os.path.normpath(os.path.join(source_dir, target_dir))
 
-    click.secho(f"🔍 开始监控代码变化，路径: ", fg="bright_blue", nl=False)
-    click.secho(f"{source_dir}", fg="bright_cyan")
-    
-    # 创建项目监视器
-    project_watcher = ProjectWatcher(source_dir, target_dir, file_change_callback)
-    
-    # 设置监视器
-    dep_count = project_watcher.setup_from_config(project_name, dependencies_list)
-    
-    if dep_count > 0:
-        click.secho(f"✅ 找到并监控 {dep_count} 个依赖包", fg="green")
-    
-    # 启动监视
-    project_watcher.start()
-    
-    try:
-        click.secho("👀 监控中... 按 Ctrl+C 停止", fg="bright_magenta")
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        project_watcher.stop()
-        click.secho("🛑 监控已停止", fg="bright_yellow")
+        # 读取项目配置获取项目名和依赖项
+        config = read_config(os.path.join(source_dir, CONFIG_FILE))
+        project_name = config.get('project', {}).get('name', 'current_project')
+        dependencies_list = config.get('project', {}).get('dependencies', [])
+        
+        # 实际构建
+        suc = build(source_dir, target_dir)
+        if not suc:
+            click.secho("❌ 初始构建失败", fg="red")
+            return False
+
+        click.secho(f"🔍 开始监控代码变化，路径: ", fg="bright_blue", nl=False)
+        click.secho(f"{source_dir}", fg="bright_cyan")
+        
+        # 创建项目监视器
+        project_watcher = ProjectWatcher(source_dir, target_dir, file_change_callback)
+        
+        # 设置监视器
+        dep_count = project_watcher.setup_from_config(project_name, dependencies_list)
+        
+        if dep_count > 0:
+            click.secho(f"✅ 找到并监控 {dep_count} 个依赖包", fg="green")
+        
+        # 启动监视
+        project_watcher.start()
+        
+        try:
+            click.secho("👀 监控中... 按 Ctrl+C 停止", fg="bright_magenta")
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            project_watcher.stop()
+            click.secho("🛑 监控已停止", fg="bright_yellow")
+    else:
+        click.secho('❌ 暂未支持: 当前仅支持Addons项目的构建', fg="red")
+        return False

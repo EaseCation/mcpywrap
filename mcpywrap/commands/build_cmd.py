@@ -4,7 +4,7 @@
 """
 import os
 import click
-from ..config import config_exists, get_mcpywrap_config
+from ..config import config_exists, get_mcpywrap_config, get_project_type
 from ..builders.project_builder import ProjectBuilder
 
 @click.command()
@@ -16,19 +16,24 @@ def build_cmd():
     
     # 获取mcpywrap特定配置
     mcpywrap_config = get_mcpywrap_config()
-    # 源代码目录固定为当前目录
-    source_dir = os.getcwd()
-    # 目标目录从配置中读取behavior_pack_dir
-    target_dir = mcpywrap_config.get('target_dir')
-    
-    if not target_dir:
-        click.secho('❌ 错误: 配置文件中未找到target_dir。请手动添加。', fg="red")
+
+    if get_project_type() == "addon":
+        # 源代码目录固定为当前目录
+        source_dir = os.getcwd()
+        # 目标目录从配置中读取behavior_pack_dir
+        target_dir = mcpywrap_config.get('target_dir')
+        
+        if not target_dir:
+            click.secho('❌ 错误: 配置文件中未找到target_dir。请手动添加。', fg="red")
+            return False
+        
+        # 转换为绝对路径
+        target_dir = os.path.normpath(os.path.join(source_dir, target_dir))
+        # 实际构建
+        build(source_dir, target_dir)
+    else:
+        click.secho('❌ 暂未支持: 当前仅支持Addons项目的构建', fg="red")
         return False
-    
-    # 转换为绝对路径
-    target_dir = os.path.normpath(os.path.join(source_dir, target_dir))
-    # 实际构建
-    build(source_dir, target_dir)
     
 def build(source_dir, target_dir):
     """

@@ -8,6 +8,8 @@ import base64
 import time
 from .mcs import *
 
+from ..config import get_project_type
+
 # 强制请求管理员权限
 FORCE_ADMIN = False
 
@@ -233,7 +235,7 @@ def run_as_admin(script_path, packs_data, user_data_path):
         return False, [], []
 
 
-def setup_addons_symlinks(packs: list):
+def setup_global_addons_symlinks(packs: list):
     """
     在MC Studio用户数据目录下为行为包和资源包创建软链接
     
@@ -249,7 +251,7 @@ def setup_addons_symlinks(packs: list):
         
     try:
         # 获取MC Studio用户数据目录
-        user_data_path = get_mcs_game_engine_data_path()
+        user_data_path = get_mcs_game_engine_netease_data_path()
         if not user_data_path:
             click.secho("❌ 未找到MC Studio用户数据目录", fg="red", bold=True)
             return False, [], []
@@ -288,3 +290,198 @@ def setup_addons_symlinks(packs: list):
     except Exception as e:
         click.secho(f"❌ 设置软链接失败: {str(e)}", fg="red", bold=True)
         return False, [], []
+    
+    
+def setup_map_packs_symlinks(src_map_dir: str, level_id: str):
+    """
+    为地图创建资源包和行为包的软链接
+    
+    Args:
+        src_map_dir: 源地图目录
+        level_id: 运行时地图ID
+        
+    Returns:
+        bool: 操作是否成功
+    """
+    if not is_windows():
+        click.secho("❌ 此功能仅支持Windows系统", fg="red", bold=True)
+        return False
+        
+    try:
+        # 获取MC Studio用户数据目录
+        user_data_path = get_mcs_game_engine_data_path()
+        if not user_data_path:
+            click.secho("❌ 未找到MC Studio用户数据目录", fg="red", bold=True)
+            return False
+            
+        # 确保源地图目录存在
+        if not os.path.exists(src_map_dir):
+            click.secho(f"❌ 源地图目录不存在: {src_map_dir}", fg="red", bold=True)
+            return False
+            
+        # 运行时地图目录
+        runtime_map_dir = os.path.join(user_data_path, "minecraftWorlds", level_id)
+        if not os.path.exists(runtime_map_dir):
+            click.secho(f"❌ 运行时地图不存在: {level_id}", fg="red", bold=True)
+            return False
+        
+        # 源地图资源包和行为包目录
+        src_map_resource_packs_dir = os.path.join(src_map_dir, "resource_packs")
+        src_map_behavior_packs_dir = os.path.join(src_map_dir, "behavior_packs")
+        
+        # 运行时地图资源包和行为包目录
+        runtime_map_resource_packs_dir = os.path.join(runtime_map_dir, "resource_packs")
+        runtime_map_behavior_packs_dir = os.path.join(runtime_map_dir, "behavior_packs")
+        
+        # 判断是否需要管理员权限
+        need_admin = FORCE_ADMIN or (
+            (os.path.exists(src_map_dir) and not has_write_permission(src_map_dir))
+        )
+        
+        # 准备需要创建的链接信息
+        links_to_create = []
+        
+        # 检查资源包目录
+        if os.path.exists(src_map_resource_packs_dir):
+            # 确保目标目录存在
+            os.makedirs(os.path.dirname(runtime_map_resource_packs_dir), exist_ok=True)
+            
+            # 如果目标已存在，需要先删除
+            if os.path.exists(runtime_map_resource_packs_dir):
+                if os.path.islink(runtime_map_resource_packs_dir):
+                    if not need_admin or is_admin():
+                        try:
+                            os.unlink(runtime_map_resource_packs_dir)
+                            click.secho(f"🗑️ 删除现有链接: {runtime_map_resource_packs_dir}", color="cyan")
+                        except Exception as e:
+                            click.secho(f"⚠️ 删除链接失败: {str(e)}", color="yellow")
+                            return False
+                else:
+                    click.secho(f"⚠️ 目标已存在且不是链接: {runtime_map_resource_packs_dir}", color="yellow")
+                    return False
+                    
+            links_to_create.append({
+                "source": src_map_resource_packs_dir,
+                "target": runtime_map_resource_packs_dir,
+                "type": "resource_packs"
+            })
+                
+        # 检查行为包目录
+        if os.path.exists(src_map_behavior_packs_dir):
+            # 确保目标目录存在
+            os.makedirs(os.path.dirname(runtime_map_behavior_packs_dir), exist_ok=True)
+            
+            # 如果目标已存在，需要先删除
+            if os.path.exists(runtime_map_behavior_packs_dir):
+                if os.path.islink(runtime_map_behavior_packs_dir):
+                    if not need_admin or is_admin():
+                        try:
+                            os.unlink(runtime_map_behavior_packs_dir)
+                            click.secho(f"🗑️ 删除现有链接: {runtime_map_behavior_packs_dir}", color="cyan")
+                        except Exception as e:
+                            click.secho(f"⚠️ 删除链接失败: {str(e)}", color="yellow")
+                            return False
+                else:
+                    click.secho(f"⚠️ 目标已存在且不是链接: {runtime_map_behavior_packs_dir}", color="yellow")
+                    return False
+                    
+            links_to_create.append({
+                "source": src_map_behavior_packs_dir,
+                "target": runtime_map_behavior_packs_dir,
+                "type": "behavior_packs"
+            })
+            
+        # 如果没有需要创建的链接，直接返回成功
+        if not links_to_create:
+            click.secho("⚠️ 没有找到需要链接的资源包或行为包目录", color="yellow")
+            return True
+            
+        # 如果不需要管理员权限或已经是管理员，直接创建链接
+        if not need_admin or is_admin():
+            success = True
+            for link in links_to_create:
+                try:
+                    os.symlink(link["source"], link["target"])
+                    click.secho(f"✅ 链接创建成功: {link['target']} -> {link['source']}", color="green")
+                except Exception as e:
+                    click.secho(f"❌ 链接创建失败: {str(e)}", color="red")
+                    success = False
+                    
+            if success:
+                click.secho("✅ 地图软链接设置完成！", color="green", bold=True)
+            return success
+            
+        # 如果需要管理员权限
+        # 获取辅助脚本路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.join(current_dir, "symlink_helper_map.py")
+        
+        # 创建辅助脚本文件
+        with open(script_path, "w") as f:
+            f.write("""# -*- coding: utf-8 -*-
+import os
+import json
+import sys
+import base64
+import traceback
+
+def main():
+    \"\"\"辅助创建地图软链接的脚本\"\"\"
+    # 检查命令行参数
+    if len(sys.argv) != 2:
+        print("参数错误: 需要1个参数 (链接信息)")
+        sys.exit(1)
+
+    try:
+        # 从Base64编码的命令行参数中获取数据
+        links_data = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+        
+        success = True
+        for link in links_data:
+            try:
+                # 如果目标已存在，先删除
+                if os.path.exists(link["target"]):
+                    if os.path.islink(link["target"]):
+                        os.unlink(link["target"])
+                
+                # 创建链接
+                os.symlink(link["source"], link["target"])
+                print(f"链接创建成功: {link['target']}")
+            except Exception as e:
+                print(f"链接创建失败: {str(e)}")
+                success = False
+                
+        return 0 if success else 1
+        
+    except Exception as e:
+        print(f"执行过程中出错: {str(e)}")
+        print(traceback.format_exc())
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
+""")
+        
+        # 执行提权操作
+        click.secho("🔒 需要管理员权限创建软链接，正在提权...", fg="yellow")
+        
+        # 将链接数据编码为Base64
+        encoded_links = base64.b64encode(json.dumps(links_to_create).encode('utf-8')).decode('utf-8')
+        
+        # 构建命令行参数
+        params = f'"{script_path}" {encoded_links}'
+        
+        # 执行提权
+        shellExecute = ctypes.windll.shell32.ShellExecuteW
+        result = shellExecute(None, "runas", sys.executable, params, None, 0)
+        
+        if result <= 32:  # ShellExecute返回值小于等于32表示失败
+            click.secho("❌ 提权失败，无法创建软链接", fg="red")
+            return False
+            
+        click.secho("✅ 地图软链接设置完成！", color="green", bold=True)
+        return True
+        
+    except Exception as e:
+        click.secho(f"❌ 设置地图软链接失败: {str(e)}", fg="red", bold=True)
+        return False

@@ -42,8 +42,8 @@ def main():
             success, behavior_links, resource_links = create_symlinks(user_data_path, packs_data, use_click=False)
         else:
             # 如果导入失败，使用本地实现（这部分代码通常不会执行，作为备份）
-            print("⚠️ 无法导入共享函数，使用本地实现")
-            success, behavior_links, resource_links = create_links_locally(user_data_path, packs_data)
+            print("⚠️ 无法导入共享函数")
+            return 1
         
         # 将结果写入结果文件，供主进程读取
         result = {
@@ -69,86 +69,6 @@ def main():
             pass
             
         return 1
-
-
-def create_links_locally(user_data_path, packs_data):
-    """
-    本地创建软链接的函数，当无法导入共享函数时使用
-    
-    Args:
-        user_data_path: MC Studio用户数据目录
-        packs_data: 包数据列表
-        
-    Returns:
-        tuple: (成功状态, 行为包链接列表, 资源包链接列表)
-    """
-    behavior_links = []
-    resource_links = []
-
-    # 行为包和资源包目录
-    behavior_packs_dir = os.path.join(user_data_path, "behavior_packs")
-    resource_packs_dir = os.path.join(user_data_path, "resource_packs")
-
-    # 确保目录存在
-    os.makedirs(behavior_packs_dir, exist_ok=True)
-    os.makedirs(resource_packs_dir, exist_ok=True)
-
-    # 清空现有链接
-    print("清理现有软链接...")
-
-    try:
-        if os.path.exists(behavior_packs_dir):
-            for item in os.listdir(behavior_packs_dir):
-                item_path = os.path.join(behavior_packs_dir, item)
-                if os.path.islink(item_path):
-                    os.unlink(item_path)
-                    print(f"删除链接: {item}")
-    except Exception as e:
-        print(f"清理行为包目录失败: {str(e)}")
-
-    try:
-        if os.path.exists(resource_packs_dir):
-            for item in os.listdir(resource_packs_dir):
-                item_path = os.path.join(resource_packs_dir, item)
-                if os.path.islink(item_path):
-                    os.unlink(item_path)
-                    print(f"删除链接: {item}")
-    except Exception as e:
-        print(f"清理资源包目录失败: {str(e)}")
-
-    # 创建新链接
-    print("创建新的软链接...")
-
-    success = True
-    for pack in packs_data:
-        # 处理行为包
-        if pack["behavior_pack_dir"] and os.path.exists(pack["behavior_pack_dir"]):
-            link_name = f"{os.path.basename(pack['behavior_pack_dir'])}_{pack['pkg_name']}"
-            link_path = os.path.join(behavior_packs_dir, link_name)
-
-            try:
-                os.symlink(pack["behavior_pack_dir"], link_path)
-                print(f"行为包链接创建成功: {link_name}")
-                behavior_links.append(link_name)
-            except Exception as e:
-                print(f"行为包链接创建失败: {str(e)}")
-                success = False
-
-        # 处理资源包
-        if pack["resource_pack_dir"] and os.path.exists(pack["resource_pack_dir"]):
-            link_name = f"{os.path.basename(pack['resource_pack_dir'])}_{pack['pkg_name']}"
-            link_path = os.path.join(resource_packs_dir, link_name)
-
-            try:
-                os.symlink(pack["resource_pack_dir"], link_path)
-                print(f"资源包链接创建成功: {link_name}")
-                resource_links.append(link_name)
-            except Exception as e:
-                print(f"资源包链接创建失败: {str(e)}")
-                success = False
-
-    print("软链接设置完成！")
-    return success, behavior_links, resource_links
 
 
 if __name__ == "__main__":
