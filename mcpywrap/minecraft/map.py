@@ -7,7 +7,6 @@ import os
 import click
 from pathlib import Path
 from ..utils.utils import ensure_dir
-from .level_dat import BedrockNBT, create_world_directory
 
 def is_minecraft_map_project(dir_path):
     """
@@ -50,6 +49,7 @@ def setup_minecraft_map(base_dir, map_name, map_description=None, game_type=0):
         os.rename(level_dat_path, backup_path)
     
     # 创建新的level.dat
+    from .level_dat import BedrockNBT
     nbt = BedrockNBT.create_new(level_name=map_name, game_type=game_type)
     nbt.save_file(level_dat_path, create_backup=False)
 
@@ -67,6 +67,8 @@ def setup_minecraft_map(base_dir, map_name, map_description=None, game_type=0):
 
 def get_map_info(map_dir):
     """获取地图信息"""
+    from .level_dat import BedrockNBT
+    
     level_dat_path = os.path.join(map_dir, "level.dat")
     if not os.path.exists(level_dat_path):
         return None
