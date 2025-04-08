@@ -10,8 +10,6 @@ import os
 import json
 import uuid
 
-from future.moves import sys
-
 from ..builders import DependencyManager
 from ..config import config_exists, read_config, get_project_dependencies
 from ..builders.AddonsPack import AddonsPack
