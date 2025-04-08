@@ -75,6 +75,11 @@ def get_use_3to2():
     mcpywrap_config = get_mcpywrap_config()
     return mcpywrap_config.get('use_3to2', False)
 
+def get_project_type():
+    """获取项目类型，可能为：addon, map, apollo"""
+    mcpywrap_config = get_mcpywrap_config()
+    return mcpywrap_config.get('project_type', 'addon')
+
 def get_project_dependencies() -> list[str]:
     """获取项目依赖列表"""
     config = read_config()
