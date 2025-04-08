@@ -16,13 +16,12 @@ def is_admin():
         return False
 
 
-def run_as_admin(args=None, force_restart=True):
+def run_as_admin(args=None):
     """
     以管理员权限重新启动当前脚本
     
     Args:
         args: 命令行参数列表
-        force_restart: 是否强制重启进程
         
     Returns:
         bool: 是否成功请求管理员权限
@@ -36,17 +35,40 @@ def run_as_admin(args=None, force_restart=True):
             result = ctypes.windll.shell32.ShellExecuteW(
                 None, "runas", sys.executable, subprocess.list2cmdline(args), None, 1
             ) > 32
-            
-            # 如果成功启动并且需要强制重启，则退出当前进程
-            if result and force_restart:
-                sys.exit(0)
-                
+            # 不退出进程，仅返回结果
             return result
         else:
             # 在非Windows平台上不支持这个功能
             return False
     except Exception as e:
         click.secho(f"❌ 无法请求管理员权限: {str(e)}", fg="red", bold=True)
+        return False
+
+
+def ensure_admin_privileges():
+    """
+    确保程序以管理员权限运行
+    
+    Returns:
+        bool: 是否具有管理员权限
+    """
+    if not is_windows():
+        return True  # 非Windows系统不需要检查
+        
+    if is_admin():
+        return True  # 已经有管理员权限
+        
+    # 尝试获取管理员权限
+    click.secho("⚠️ 需要管理员权限来创建软链接，请在接下来的对话框中确认...", fg="yellow", bold=True)
+    has_admin = run_as_admin()
+    
+    # 检查是否成功获取了权限
+    if has_admin:
+        # 等待新进程启动
+        click.secho("✅ 已获取管理员权限", fg="green", bold=True)
+        return True
+    else:
+        click.secho("❌ 未能获取管理员权限，可能会导致操作失败", fg="red", bold=True)
         return False
 
 
@@ -63,19 +85,14 @@ def setup_addons_symlinks(packs: list):
     if not is_windows():
         click.secho("❌ 此功能仅支持Windows系统", fg="red", bold=True)
         return False, [], []
-        
-    # 检查管理员权限，如果没有则请求
-    if is_windows() and not is_admin():
-        click.secho("⚠️ 创建软链接需要管理员权限，正在请求...", fg="yellow", bold=True)
-        # 请求管理员权限并退出当前进程，新进程将继续执行
-        if run_as_admin():
-            # 成功请求管理员权限，程序会重新启动，当前进程退出
-            sys.exit(0)
-        else:
+    
+    # 先确保有管理员权限
+    if is_windows():
+        has_admin = ensure_admin_privileges()
+        if not has_admin and not is_admin():
             click.secho("❌ 无法获取管理员权限，软链接创建可能会失败", fg="red", bold=True)
-            # 继续尝试创建软链接，但可能会失败
-
-    # 如果代码执行到这里，说明已经有管理员权限或者获取权限失败
+            # 继续尝试操作，但可能会失败
+    
     behavior_links = []
     resource_links = []
 
