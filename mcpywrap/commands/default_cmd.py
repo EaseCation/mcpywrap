@@ -24,7 +24,6 @@ def default_cmd():
         # 执行init指令
         init_project()
     else:
-        base_dir = base_dir
         click.echo(click.style('🔄 正在刷新项目...', fg='blue'))
 
         # 加载现有配置

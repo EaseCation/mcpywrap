@@ -537,10 +537,10 @@ work.mcscfg
                 default=False, 
                 console=console
             ):
-                gitignore_path.write_text(gitignore_content)
+                gitignore_path.write_text(gitignore_content, encoding='utf-8')
                 console.print("[green]✅ .gitignore文件已更新！[/]")
         else:
-            gitignore_path.write_text(gitignore_content)
+            gitignore_path.write_text(gitignore_content, encoding='utf-8')
             console.print("[green]✅ .gitignore文件已创建！[/]")
     
     update_config(config)
