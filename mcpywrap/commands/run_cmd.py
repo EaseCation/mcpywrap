@@ -164,29 +164,53 @@ def _build_dependency_tree(node, tree_node):
         _build_dependency_tree(child, child_node)
 
 
-def _run_game_with_instance(config_path, level_id, all_packs):
-    """使用指定的实例运行游戏"""
+def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_callback=None):
+    """使用指定的实例运行游戏
+    
+    Args:
+        config_path: 配置文件路径
+        level_id: 世界ID
+        all_packs: 所有要加载的包
+        wait: 是否等待游戏进程结束（默认为True）
+        log_callback: 日志回调函数，格式为 log_callback(message, level)
+    
+    Returns:
+        tuple: (成功状态, 游戏进程对象)
+    """
     project_type = get_project_type()
     project_name = get_project_name()
+    
+    # 日志输出函数
+    def log_message(message, level="normal"):
+        if log_callback:
+            log_callback(message, level)
+        else:
+            style = {
+                "error": "red bold",
+                "success": "green",
+                "info": "cyan",
+                "warning": "yellow"
+            }.get(level, None)
+            console.print(message, style=style)
     
     # 获取MC Studio安装目录
     mcs_download_dir = get_mcs_download_path()
     if not mcs_download_dir:
-        console.print("❌ 未找到MC Studio下载目录，请确保已安装MC Studio", style="red bold")
-        return False
+        log_message("❌ 未找到MC Studio下载目录，请确保已安装MC Studio", "error")
+        return False, None
 
     # 获取游戏引擎版本
     engine_dirs = get_mcs_game_engine_dirs()
     if not engine_dirs:
-        console.print("❌ 未找到MC Studio游戏引擎，请确保已安装MC Studio", style="red bold")
-        return False
+        log_message("❌ 未找到MC Studio游戏引擎，请确保已安装MC Studio", "error")
+        return False, None
     
     # 获取游戏引擎数据目录
     engine_data_path = get_mcs_game_engine_data_path()
 
     # 使用最新版本的引擎
     latest_engine = engine_dirs[0]
-    console.print(f"🎮 使用引擎版本: {latest_engine}", style="cyan")
+    log_message(f"🎮 使用引擎版本: {latest_engine}", "info")
 
     # 生成世界名称
     world_name = project_name
@@ -194,18 +218,22 @@ def _run_game_with_instance(config_path, level_id, all_packs):
     # 使用Live组件显示整个设置过程
     with Live(auto_refresh=True, console=console) as live:
         # 设置软链接
-        live.update(Text("🔄 正在设置软链接...", style="cyan"))
+        live.update(Text("🔄 正在设置软链接...", "cyan"))
+        log_message("🔄 正在设置软链接...", "info")
         link_suc, behavior_links, resource_links = setup_global_addons_symlinks(all_packs)
 
         if not link_suc:
-            live.update(Text("❌ 软链接创建失败，请检查权限", style="red bold"))
-            return False
+            live.update(Text("❌ 软链接创建失败，请检查权限", "red bold"))
+            log_message("❌ 软链接创建失败，请检查权限", "error")
+            return False, None
 
         # 显示世界名称
-        live.update(Text(f"🌍 世界名称: {world_name}", style="cyan"))
+        live.update(Text(f"🌍 世界名称: {world_name}", "cyan"))
+        log_message(f"🌍 世界名称: {world_name}", "info")
 
         # 生成运行时配置
-        live.update(Text("📝 生成运行时配置中...", style="cyan"))
+        live.update(Text("📝 生成运行时配置中...", "cyan"))
+        log_message("📝 生成运行时配置中...", "info")
         runtime_config = gen_runtime_config(
             latest_engine,
             world_name,
@@ -220,7 +248,8 @@ def _run_game_with_instance(config_path, level_id, all_packs):
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(runtime_config, f, ensure_ascii=False, indent=2)
 
-        live.update(Text(f"📝 配置文件已生成: {os.path.basename(config_path)}", style="green"))
+        live.update(Text(f"📝 配置文件已生成: {os.path.basename(config_path)}", "green"))
+        log_message(f"📝 配置文件已生成: {os.path.basename(config_path)}", "success")
 
         # 地图存档创建
         if project_type == 'map':
@@ -228,7 +257,8 @@ def _run_game_with_instance(config_path, level_id, all_packs):
             runtime_map_dir = os.path.join(engine_data_path, "minecraftWorlds", level_id)
             ensure_dir(runtime_map_dir)
             
-            live.update(Text("🗺️ 正在准备地图存档...", style="cyan"))
+            live.update(Text("🗺️ 正在准备地图存档...", "cyan"))
+            log_message("🗺️ 正在准备地图存档...", "info")
             
             # 判断是否有level.dat，没有的话就复制
             level_dat_path = os.path.join(runtime_map_dir, "level.dat")
@@ -236,28 +266,59 @@ def _run_game_with_instance(config_path, level_id, all_packs):
                 origin_level_dat_path = os.path.join(base_dir, "level.dat")
                 if os.path.exists(origin_level_dat_path):
                     shutil.copy2(origin_level_dat_path, level_dat_path)
-                    live.update(Text(f"✓ 已复制level.dat文件", style="green"))
+                    live.update(Text(f"✓ 已复制level.dat文件", "green"))
+                    log_message(f"✓ 已复制level.dat文件", "success")
                 
             level_db_dir = os.path.join(runtime_map_dir, "db")
             if not os.path.exists(level_db_dir) and os.path.exists(os.path.join(base_dir, "db")):
                 shutil.copytree(os.path.join(base_dir, "db"), level_db_dir)
-                live.update(Text(f"✓ 已复制db文件夹", style="green"))
+                live.update(Text(f"✓ 已复制db文件夹", "green"))
+                log_message(f"✓ 已复制db文件夹", "success")
                 
             # 链接
-            live.update(Text("🔗 正在设置地图软链接...", style="cyan"))
+            live.update(Text("🔗 正在设置地图软链接...", "cyan"))
+            log_message("🔗 正在设置地图软链接...", "info")
             setup_map_packs_symlinks(base_dir, level_id)
 
+            # 创建world_behavior_packs.json和world_resource_packs.json
+            live.update(Text("📄 正在生成包配置文件...", "cyan"))
+            log_message("📄 正在生成包配置文件...", "info")
+            
+            # 处理行为包
+            behavior_packs_dir = os.path.join(base_dir, "behavior_packs")
+            behavior_packs_config = []
+            if os.path.exists(behavior_packs_dir):
+                behavior_packs_config = _find_and_extract_pack_info(behavior_packs_dir)
+                if behavior_packs_config:
+                    world_behavior_packs_path = os.path.join(runtime_map_dir, "world_behavior_packs.json")
+                    with open(world_behavior_packs_path, 'w', encoding='utf-8') as f:
+                        json.dump(behavior_packs_config, f, ensure_ascii=False, indent=4)
+                    live.update(Text(f"✓ 已创建world_behavior_packs.json，包含{len(behavior_packs_config)}个行为包", "green"))
+                    log_message(f"✓ 已创建world_behavior_packs.json，包含{len(behavior_packs_config)}个行为包", "success")
+            
+            # 处理资源包
+            resource_packs_dir = os.path.join(base_dir, "resource_packs")
+            resource_packs_config = []
+            if os.path.exists(resource_packs_dir):
+                resource_packs_config = _find_and_extract_pack_info(resource_packs_dir)
+                if resource_packs_config:
+                    world_resource_packs_path = os.path.join(runtime_map_dir, "world_resource_packs.json")
+                    with open(world_resource_packs_path, 'w', encoding='utf-8') as f:
+                        json.dump(resource_packs_config, f, ensure_ascii=False, indent=4)
+                    live.update(Text(f"✓ 已创建world_resource_packs.json，包含{len(resource_packs_config)}个资源包", "green"))
+                    log_message(f"✓ 已创建world_resource_packs.json，包含{len(resource_packs_config)}个资源包", "success")
+            
     # 启动游戏
     logging_port = 8678
 
-    console.print(f"🚀 正在启动游戏实例: {level_id[:8]}...", style="bright_blue bold")
+    log_message(f"🚀 正在启动游戏实例: {level_id[:8]}...", "bright_blue")
     
     with console.status("启动游戏中...", spinner="dots"):
-        game_process = open_game(config_path, logging_port=logging_port)
+        game_process = open_game(config_path, logging_port=logging_port, wait=False)
 
     if game_process is None:
-        console.print("❌ 游戏启动失败", style="red bold")
-        return False
+        log_message("❌ 游戏启动失败", "error")
+        return False, None
 
     # 启动studio_logging_server
     run_studio_server_ui_subprocess(port=logging_port)
@@ -265,19 +326,21 @@ def _run_game_with_instance(config_path, level_id, all_packs):
     # 启动日志与调试工具
     open_safaia()
 
-    # 等待游戏进程结束
-    console.print("✨ 游戏已启动，正在运行中...", style="bright_green bold")
-    console.print("⏱️ 按 Ctrl+C 可以中止等待", style="yellow")
-
-    try:
-        # 等待游戏进程结束
-        game_process.wait()
-        console.print("👋 游戏已退出", style="bright_cyan bold")
-    except KeyboardInterrupt:
-        # 捕获 Ctrl+C，但不终止游戏进程
-        console.print("\n🛑 收到中止信号，脚本将退出但游戏继续运行", style="yellow")
+    # 输出成功启动信息
+    log_message("✨ 游戏已启动，正在运行中...", "bright_green")
     
-    return True
+    # 根据wait参数决定是否等待游戏进程结束
+    if wait:
+        log_message("⏱️ 按 Ctrl+C 可以中止等待", "yellow")
+        try:
+            # 等待游戏进程结束
+            game_process.wait()
+            log_message("👋 游戏已退出", "bright_cyan")
+        except KeyboardInterrupt:
+            # 捕获 Ctrl+C，但不终止游戏进程
+            log_message("\n🛑 收到中止信号，脚本将退出但游戏继续运行", "yellow")
+    
+    return True, game_process
 
 
 @click.command()
@@ -547,3 +610,60 @@ def _print_dependency_tree(node, level):
 
     for child in node.children:
         _print_dependency_tree(child, level + 1)
+
+
+def _find_and_extract_pack_info(packs_dir):
+    """
+    搜索指定目录中的所有包，并从manifest.json中提取信息
+    
+    Args:
+        packs_dir: 包目录路径
+        
+    Returns:
+        list: 包配置列表
+    """
+    packs_config = []
+    
+    # 遍历目录下的所有子目录
+    for pack_name in os.listdir(packs_dir):
+        pack_path = os.path.join(packs_dir, pack_name)
+        
+        # 只处理目录
+        if not os.path.isdir(pack_path):
+            continue
+        
+        # 查找manifest.json或pack_manifest.json
+        manifest_path = os.path.join(pack_path, "manifest.json")
+        if not os.path.exists(manifest_path):
+            manifest_path = os.path.join(pack_path, "pack_manifest.json")
+            if not os.path.exists(manifest_path):
+                continue
+        
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as f:
+                manifest = json.load(f)
+            
+            # 提取UUID和版本信息
+            if 'header' in manifest:
+                pack_id = manifest['header'].get('uuid')
+                version = manifest['header'].get('version', [0, 0, 1])
+                
+                # 确保版本是列表格式
+                if isinstance(version, list):
+                    version_array = version
+                elif isinstance(version, dict) and 'major' in version and 'minor' in version and 'patch' in version:
+                    version_array = [version['major'], version['minor'], version['patch']]
+                else:
+                    version_array = [0, 0, 1]  # 默认版本
+                
+                if pack_id:
+                    pack_config = {
+                        "pack_id": pack_id,
+                        "type": "Addon",
+                        "version": version_array
+                    }
+                    packs_config.append(pack_config)
+        except Exception as e:
+            console.print(f"⚠️ 读取包配置失败: {pack_name} - {str(e)}", style="yellow")
+    
+    return packs_config

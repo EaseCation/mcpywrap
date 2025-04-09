@@ -266,28 +266,7 @@ class GameInstanceManager(QMainWindow):
         # 使用QThread启动游戏，避免UI卡死
         self.game_thread = GameRunThread(config_path, level_id, self.all_packs)
         self.game_thread.log_message.connect(self.log)
-        self.game_thread.finished.connect(self.on_game_finished)
         self.game_thread.start()
-        
-        self.disable_ui_during_game()
-    
-    def disable_ui_during_game(self):
-        """游戏运行期间禁用UI"""
-        self.new_btn.setEnabled(False)
-        self.run_btn.setEnabled(False)
-        self.delete_btn.setEnabled(False)
-        self.clean_btn.setEnabled(False)
-        self.instance_table.setEnabled(False)
-        self.status_bar.showMessage("游戏运行中...")
-    
-    def on_game_finished(self):
-        """游戏结束后的处理"""
-        self.log("👋 游戏已退出", "info")
-        self.new_btn.setEnabled(True)
-        self.clean_btn.setEnabled(True)
-        self.instance_table.setEnabled(True)
-        self.status_bar.showMessage("就绪")
-        self.refresh_instances()
     
     def delete_selected_instance(self):
         """删除选中的游戏实例"""
@@ -389,140 +368,23 @@ class GameRunThread(QThread):
         try:
             self.log_message.emit(f"🚀 正在启动游戏实例: {self.level_id[:8]}...", "info")
             
-            # 从原模块中导入必要的函数
-            from mcpywrap.commands.run_cmd import get_mcs_download_path, get_mcs_game_engine_dirs
-            from mcpywrap.commands.run_cmd import setup_global_addons_symlinks, get_project_type, get_project_name
-            from mcpywrap.mcstudio.runtime_cppconfig import gen_runtime_config
-            from mcpywrap.mcstudio.game import open_game, open_safaia
-            from mcpywrap.mcstudio.studio_server_ui import run_studio_server_ui_subprocess
-            from mcpywrap.utils.utils import ensure_dir
-            from mcpywrap.mcstudio.symlinks import setup_map_packs_symlinks
-            from mcpywrap.mcstudio.mcs import get_mcs_game_engine_data_path
-            import json
-            import shutil
-            
-            project_type = get_project_type()
-            project_name = get_project_name()
-            
-            # 获取MC Studio安装目录
-            mcs_download_dir = get_mcs_download_path()
-            if not mcs_download_dir:
-                self.log_message.emit("❌ 未找到MC Studio下载目录，请确保已安装MC Studio", "error")
-                return
-                
-            # 获取游戏引擎版本
-            engine_dirs = get_mcs_game_engine_dirs()
-            if not engine_dirs:
-                self.log_message.emit("❌ 未找到MC Studio游戏引擎，请确保已安装MC Studio", "error")
-                return
-                
-            # 使用最新版本的引擟
-            latest_engine = engine_dirs[0]
-            self.log_message.emit(f"🎮 使用引擎版本: {latest_engine}", "info")
-
-            # 设置软链接
-            self.log_message.emit("🔄 正在设置软链接...", "info")
-            link_suc, behavior_links, resource_links = setup_global_addons_symlinks(self.all_packs)
-            
-            if not link_suc:
-                self.log_message.emit("❌ 软链接创建失败，请检查权限", "error")
-                return
-                
-            # 生成世界名称
-            world_name = project_name
-            self.log_message.emit(f"🌍 世界名称: {world_name}", "info")
-                
-            # 生成运行时配置
-            self.log_message.emit("📝 生成运行时配置中...", "info")
-            runtime_config = gen_runtime_config(
-                latest_engine,
-                world_name,
-                self.level_id,
-                mcs_download_dir,
-                project_name,
-                behavior_links,
-                resource_links
+            # 使用run_cmd.py中的函数启动游戏，传递日志回调函数
+            success, self.game_process = _run_game_with_instance(
+                self.config_path, 
+                self.level_id, 
+                self.all_packs,
+                wait=False,  # 不阻塞等待
+                log_callback=lambda msg, level: self.log_message.emit(msg, level)
             )
-                
-            # 写入配置文件
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(runtime_config, f, ensure_ascii=False, indent=2)
-                
-            self.log_message.emit(f"📝 配置文件已生成: {os.path.basename(self.config_path)}", "success")
             
-            # 地图存档创建 - 为地图类型项目添加特殊处理
-            if project_type == 'map':
-                # 获取游戏引擎数据目录
-                engine_data_path = get_mcs_game_engine_data_path()
-                if not engine_data_path:
-                    self.log_message.emit("⚠️ 未找到游戏数据目录，地图文件可能无法正确加载", "warning")
-                else:
-                    # 判断目标地图存档路径
-                    runtime_map_dir = os.path.join(engine_data_path, "minecraftWorlds", self.level_id)
-                    ensure_dir(runtime_map_dir)
-                    
-                    self.log_message.emit("🗺️ 正在准备地图存档...", "info")
-                    
-                    # 判断是否有level.dat，没有的话就复制
-                    level_dat_path = os.path.join(runtime_map_dir, "level.dat")
-                    if not os.path.exists(level_dat_path):
-                        origin_level_dat_path = os.path.join(os.getcwd(), "level.dat")
-                        if os.path.exists(origin_level_dat_path):
-                            shutil.copy2(origin_level_dat_path, level_dat_path)
-                            self.log_message.emit("✓ 已复制level.dat文件", "success")
-                    
-                    # 复制db文件夹
-                    level_db_dir = os.path.join(runtime_map_dir, "db")
-                    if not os.path.exists(level_db_dir) and os.path.exists(os.path.join(os.getcwd(), "db")):
-                        shutil.copytree(os.path.join(os.getcwd(), "db"), level_db_dir)
-                        self.log_message.emit("✓ 已复制db文件夹", "success")
-                    
-                    # 设置地图软链接
-                    self.log_message.emit("🔗 正在设置地图软链接...", "info")
-                    link_result = setup_map_packs_symlinks(os.getcwd(), self.level_id)
-                    if link_result:
-                        self.log_message.emit("✓ 地图软链接设置成功", "success")
-                    else:
-                        self.log_message.emit("⚠️ 地图软链接设置可能不完整", "warning")
-                
-            # 启动游戏 - 非阻塞模式
-            logging_port = 8678
-            self.log_message.emit("🚀 正在启动游戏...", "info")
-            self.game_process = open_game(self.config_path, logging_port=logging_port, wait=False)
-            
-            if self.game_process is None:
-                self.log_message.emit("❌ 游戏启动失败", "error")
-                return
-                
-            # 启动studio_logging_server
-            run_studio_server_ui_subprocess(port=logging_port)
-            
-            # 启动日志与调试工具
-            open_safaia()
-            
-            self.log_message.emit("✨ 游戏已启动，UI现在可以响应", "success")
-            self.game_started.emit()  # 发送游戏已启动信号
-            
-            # 后台监控游戏进程，不阻塞UI
-            self.monitor_game_process()
+            if success and self.game_process:
+                self.game_started.emit()  # 发送游戏已启动信号
             
         except Exception as e:
             self.log_message.emit(f"❌ 运行游戏时出错: {str(e)}", "error")
             import traceback
             error_details = traceback.format_exc()
             self.log_message.emit(f"错误详情:\n{error_details}", "error")
-    
-    def monitor_game_process(self):
-        """后台监控游戏进程"""
-        if not self.game_process:
-            return
-            
-        # 每3秒检查一次游戏进程状态，不阻塞线程
-        while self.game_process.poll() is None:
-            time.sleep(3)
-            
-        # 游戏进程已结束
-        self.log_message.emit("👋 游戏进程已结束", "info")
 
 
 def show_run_ui(base_dir=default_base_dir):
