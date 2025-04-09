@@ -9,7 +9,7 @@ mcpywrap 是基于 Python 生态的《我的世界》中国版 ModSDK/资源包�
 
 ## 🌟 核心特性
 
-- 🧩 **模块化开发** - 基于 Addons 维度的依赖管理
+- 🧩 **模块化开发** - 基于 Addons 维度的依赖管理（基于包管理和依赖的开发与测试流程）
 - 🔄 **语法无忧** - 开发阶段支持 Python3 语法，构建时自动转换为 Python2
 - 📦 **生态兼容** - 无缝对接 PyPI 生态，支持标准 `pyproject.toml` 配置
 - 🚀 **智能构建** - 一键打包符合 MCStudio 规范的成品 Addons
@@ -26,8 +26,9 @@ mcpywrap 是基于 Python 生态的《我的世界》中国版 ModSDK/资源包�
 1. **标准化开发**  
 通过 `pyproject.toml` 声明项目元数据和依赖关系，实现真正的模块化开发
 
-2. **现代开发体验**  
-开发阶段使用 Python3 语法，构建时通过 3to2 自动转换，兼顾开发效率与运行兼容
+2. **直接启动测试和编辑**  
+- 直接通过 `mcpy run` 启动游戏实例，支持热重载和实时构建，提升开发效率
+- 通过 `mcpy edit` 命令，使用 MC Studio Editor 编辑器进行编辑
 
 3. **生态集成**  
 依托 pip 包管理体系，支持依赖的版本锁定和自动解析
@@ -46,9 +47,15 @@ pip install mcpywrap
 
 ### 初始化项目
 ```bash
+# 首先进入项目目录
 mcpy init
 ```
 交互式创建项目结构，自动生成标准的 Mod 框架。
+
+### 运行测试
+```bash
+mcpy run
+```
 
 ## 🛠 工作流指南
 
@@ -58,15 +65,6 @@ mcpy init
 | `mcpy`                 | 维护项目，将项目安装到系统 site-package 环境            |
 | `mcpy add <package> [version]` | 添加指定版本依赖          |
 | `mcpy remove <package>`        | 移除依赖               |
-
-### 构建与开发
-```bash
-# 生产构建（输出到配置的 build 目录）
-mcpy build
-
-# 开发模式（热重载 + 实时构建）
-mcpy dev
-```
 
 ### 完整命令参考
 
@@ -114,9 +112,6 @@ mcpy run -l
 
 # 删除指定的游戏实例
 mcpy run -d <实例ID前缀>
-
-# 使用图形界面管理游戏实例
-mcpy run --ui
 ```
 
 ## 🤝 参与贡献
