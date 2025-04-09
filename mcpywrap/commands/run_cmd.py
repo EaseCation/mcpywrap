@@ -17,7 +17,6 @@ from ..builders.AddonsPack import AddonsPack
 from ..mcstudio.game import open_game, open_safaia
 from ..mcstudio.mcs import *
 from ..mcstudio.runtime_cppconfig import gen_runtime_config
-from ..mcstudio.studio_server_ui import run_studio_server_ui_subprocess
 from ..mcstudio.symlinks import setup_global_addons_symlinks, setup_map_packs_symlinks
 from ..utils.project_setup import find_and_configure_behavior_pack
 from ..utils.utils import ensure_dir
@@ -320,7 +319,9 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
         return False, None
 
     # 启动studio_logging_server
-    run_studio_server_ui_subprocess(port=logging_port)
+    if is_windows():
+        from ..mcstudio.studio_server_ui import run_studio_server_ui_subprocess
+        run_studio_server_ui_subprocess(port=logging_port)
 
     # 启动日志与调试工具
     open_safaia()
