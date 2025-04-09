@@ -15,7 +15,7 @@ from rich.text import Text
 from rich.layout import Layout
 
 # 强制请求管理员权限
-FORCE_ADMIN = True
+FORCE_ADMIN = False
 
 # 创建rich console对象
 console = Console()
