@@ -159,6 +159,26 @@ class StudioLogServer(QObject if PYQT_AVAILABLE else object):
         if client_id >= len(self.clients):
             print(f"[!] 客户端ID {client_id} 不存在")
             return False
+
+        if command == "help":
+            print(f"""
+================
+MC Studio 日志控制台 帮助：
+reload_pack 重新加载脚本
+reload_cache 重新加载位于缓存目录(packcache)的脚本
+start_profile 启动客户端脚本性能分析(PC端)
+stop_profile 停止客户端脚本性能分析(PC端)
+start_mem_profile 停止客户端内存性能分析(PC端)
+stop_mem_profile 停止客户端内存性能分析(PC端)
+create_world 创建新世界
+restart_local_game 重载存档
+release_mouse 释放鼠标
+begin_performance_profile 开始性能分析
+end_performance_profile 停止性能分析
+log_performance_profile_data 打印性能分析日志
+================
+""")
+            return
             
         client = self.clients[client_id]
         command_str = f"{command} {' '.join(args)}"
