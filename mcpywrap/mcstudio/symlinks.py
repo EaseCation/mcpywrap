@@ -15,7 +15,7 @@ from rich.text import Text
 from rich.layout import Layout
 
 # 强制请求管理员权限
-FORCE_ADMIN = False
+FORCE_ADMIN = True
 
 # 创建rich console对象
 console = Console()
@@ -215,13 +215,13 @@ def is_admin():
 
 def has_write_permission(path):
     """
-    检查是否有对指定路径的写入权限
+    检查是否有对指定路径创建软链接的权限
 
     Args:
         path: 要检查的路径
 
     Returns:
-        bool: 是否有写入权限
+        bool: 是否有创建软链接的权限
     """
     if not os.path.exists(path):
         try:
@@ -229,22 +229,58 @@ def has_write_permission(path):
         except:
             return False
     
-    test_file = os.path.join(path, '.write_permission_test')
+    # 创建一个测试目录和一个测试链接的目标
+    test_dir = os.path.join(path, '.symlink_test_dir')
+    test_link = os.path.join(path, '.symlink_test')
+    
     try:
-        # 尝试创建文件
-        with open(test_file, 'w') as f:
-            f.write('test')
-        # 如果成功创建，删除测试文件
-        os.remove(test_file)
-        return True
-    except (IOError, PermissionError):
+        # 确保测试目录存在
+        os.makedirs(test_dir, exist_ok=True)
+        
+        # 如果测试链接已经存在，先删除它
+        if os.path.exists(test_link):
+            if os.path.islink(test_link):
+                os.unlink(test_link)
+            else:
+                os.remove(test_link)
+        
+        # 尝试创建一个软链接
+        os.symlink(test_dir, test_link)
+        
+        # 验证链接是否成功创建
+        has_permission = os.path.islink(test_link)
+        
+        # 清理测试资源
+        if os.path.islink(test_link):
+            os.unlink(test_link)
+        if os.path.exists(test_dir):
+            os.rmdir(test_dir)
+            
+        return has_permission
+    
+    except (IOError, PermissionError, OSError):
+        # 删除可能创建的测试资源
+        try:
+            if os.path.islink(test_link):
+                os.unlink(test_link)
+            if os.path.exists(test_dir):
+                os.rmdir(test_dir)
+        except:
+            pass
         return False
     except Exception:
-        # 其他异常
+        # 其他异常，也尝试清理
+        try:
+            if os.path.islink(test_link):
+                os.unlink(test_link)
+            if os.path.exists(test_dir):
+                os.rmdir(test_dir)
+        except:
+            pass
         return False
 
 
-def run_as_admin(script_path, packs_data, user_data_path):
+def admin_global_link(script_path, packs_data, user_data_path):
     """
     以管理员权限运行脚本
     
@@ -269,7 +305,7 @@ def run_as_admin(script_path, packs_data, user_data_path):
         params = f'"{script_path}" {encoded_packs} {encoded_path} {encoded_result}'
         
         # 执行提权操作
-        console.print("🔒 需要管理员权限创建软链接，正在提权...", style="yellow")
+        console.print("🔒 需要管理员权限创建[全局]软链接，正在提权...", style="yellow")
         shellExecute = ctypes.windll.shell32.ShellExecuteW
         result = shellExecute(None, "runas", sys.executable, params, None, 0)
         
@@ -367,14 +403,14 @@ def setup_global_addons_symlinks(packs: list):
         
         # 获取辅助脚本路径
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        script_path = os.path.join(current_dir, "symlink_helper.py")
+        script_path = os.path.join(current_dir, "symlink_helper_global.py")
         
         if not os.path.exists(script_path):
             console.print(f"⚠️ 辅助脚本不存在: {script_path}", style="yellow")
             return False, [], []
         
         # 以管理员权限运行辅助脚本
-        return run_as_admin(script_path, simple_packs, user_data_path)
+        return admin_global_link(script_path, simple_packs, user_data_path)
         
     except Exception as e:
         console.print(f"❌ 设置软链接失败: {str(e)}", style="red bold")
@@ -528,60 +564,25 @@ def setup_map_packs_symlinks(src_map_dir: str, level_id: str):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         script_path = os.path.join(current_dir, "symlink_helper_map.py")
         
-        # 创建辅助脚本文件
-        with open(script_path, "w") as f:
-            f.write("""# -*- coding: utf-8 -*-
-import os
-import json
-import sys
-import base64
-import traceback
-
-def main():
-    \"\"\"辅助创建地图软链接的脚本\"\"\"
-    # 检查命令行参数
-    if len(sys.argv) != 2:
-        print("参数错误: 需要1个参数 (链接信息)")
-        sys.exit(1)
-
-    try:
-        # 从Base64编码的命令行参数中获取数据
-        links_data = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+        # 创建临时结果文件
+        result_file = tempfile.mktemp(suffix='.json')
+        start_marker = f"{result_file}.started"
+        encoded_result = base64.b64encode(result_file.encode('utf-8')).decode('utf-8')
         
-        success = True
-        for link in links_data:
-            try:
-                # 如果目标已存在，先删除
-                if os.path.exists(link["target"]):
-                    if os.path.islink(link["target"]):
-                        os.unlink(link["target"])
-                
-                # 创建链接
-                os.symlink(link["source"], link["target"])
-                print(f"链接创建成功: {link['target']}")
-            except Exception as e:
-                print(f"链接创建失败: {str(e)}")
-                success = False
-                
-        return 0 if success else 1
-        
-    except Exception as e:
-        print(f"执行过程中出错: {str(e)}")
-        print(traceback.format_exc())
-        return 1
-
-if __name__ == "__main__":
-    sys.exit(main())
-""")
+        # 确保脚本文件存在并有正确的内容
+        # 这里现在不需要创建脚本，因为我们已经有单独的symlink_helper_map.py文件
+        if not os.path.exists(script_path):
+            console.print(f"⚠️ 辅助脚本不存在: {script_path}", style="yellow")
+            return False
         
         # 执行提权操作
-        console.print("🔒 需要管理员权限创建软链接，正在提权...", style="yellow")
+        console.print("🔒 需要管理员权限创建[地图]软链接，正在提权...", style="yellow")
         
         # 将链接数据编码为Base64
         encoded_links = base64.b64encode(json.dumps(links_to_create).encode('utf-8')).decode('utf-8')
         
         # 构建命令行参数
-        params = f'"{script_path}" {encoded_links}'
+        params = f'"{script_path}" {encoded_links} {encoded_result}'
         
         # 执行提权
         shellExecute = ctypes.windll.shell32.ShellExecuteW
@@ -590,10 +591,82 @@ if __name__ == "__main__":
         if result <= 32:  # ShellExecute返回值小于等于32表示失败
             console.print("❌ 提权失败，无法创建软链接", style="red")
             return False
-            
-        console.print("✅ 地图软链接设置完成！", style="green bold")
-        return True
         
+        # 使用Live显示等待过程
+        with Live("等待管理员进程完成...", console=console, refresh_per_second=4) as live:
+            max_wait_time = 30  # 最多等待30秒
+            start_time = time.time()
+            script_started = False
+            
+            while time.time() - start_time < max_wait_time:
+                elapsed = time.time() - start_time
+                
+                # 检查启动标记
+                if not script_started and os.path.exists(start_marker):
+                    script_started = True
+                    live.update(Text(f"管理员进程已启动，正在执行... ({elapsed:.1f}秒)", style="cyan"))
+                else:
+                    live.update(Text(f"等待管理员进程完成... ({elapsed:.1f}秒)", style="yellow"))
+                
+                # 检查结果文件
+                if os.path.exists(result_file):
+                    try:
+                        with open(result_file, 'r') as f:
+                            result_data = json.load(f)
+                        
+                        # 删除临时文件
+                        try:
+                            os.remove(result_file)
+                            if os.path.exists(start_marker):
+                                os.remove(start_marker)
+                        except Exception as e:
+                            console.print(f"⚠️ 无法删除临时文件: {str(e)}", style="yellow")
+                        
+                        success = result_data.get("success", False)
+                        created_links = result_data.get("created_links", [])
+                        errors = result_data.get("errors", [])
+                        
+                        if success:
+                            live.update(Text("✅ 管理员进程成功完成", style="green"))
+                            console.print("✅ 地图软链接设置完成！", style="green bold")
+                            for link in created_links:
+                                console.print(f"  ✓ {link}", style="green")
+                        else:
+                            error = result_data.get("error", "详见错误列表")
+                            live.update(Text(f"⚠️ 管理员进程执行遇到问题: {error}", style="yellow"))
+                            console.print("❌ 地图软链接设置失败", style="red bold")
+                            for err in errors:
+                                console.print(f"  ✗ {err}", style="red")
+                        
+                        return success
+                    except json.JSONDecodeError:
+                        # 文件可能还在写入或格式不正确，等待一下
+                        pass
+                    except Exception as e:
+                        console.print(f"⚠️ 读取结果文件失败: {str(e)}", style="yellow")
+                
+                # 短暂休眠避免CPU占用过高
+                time.sleep(0.1)
+                
+            # 检查是否至少脚本已开始运行
+            if script_started:
+                live.update(Text("⚠️ 管理员进程启动了但未在规定时间内完成", style="yellow"))
+            else:
+                live.update(Text("⚠️ 管理员进程似乎没有启动", style="red"))
+            
+        console.print("⚠️ 等待操作完成超时", style="yellow")
+        
+        # 清理可能存在的临时文件
+        try:
+            if os.path.exists(result_file):
+                os.remove(result_file)
+            if os.path.exists(start_marker):
+                os.remove(start_marker)
+        except:
+            pass
+            
+        return False
+            
     except Exception as e:
         console.print(f"❌ 设置地图软链接失败: {str(e)}", style="red bold")
         return False

@@ -91,7 +91,7 @@ class GameInstanceManager(QMainWindow):
         
         # 实例列表表格
         self.instance_table = QTableWidget(0, 4)
-        self.instance_table.setHorizontalHeaderLabels(["状态", "实例ID", "创建时间", "世界名称"])
+        self.instance_table.setHorizontalHeaderLabels(["默认", "实例ID", "创建时间", "世界名称"])
         self.instance_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.instance_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.instance_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
