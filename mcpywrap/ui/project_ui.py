@@ -20,11 +20,11 @@ from PyQt5.QtGui import QIcon, QFont, QTextCursor, QColor, QPalette
 # 导入项目模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from mcpywrap.commands.run_cmd import (
-    _get_all_instances, _get_latest_instance, _match_instance_by_prefix,
-    _generate_new_instance_config, _setup_dependencies, _run_game_with_instance,
+    _get_all_instances, _generate_new_instance_config, _setup_dependencies, _run_game_with_instance,
     _delete_instance, _clean_all_instances, get_project_name, config_exists,
-    Console, base_dir as default_base_dir
+    base_dir as default_base_dir
 )
+from ..commands.edit_cmd import open_edit
 
 
 class GameInstanceManager(QMainWindow):
@@ -73,6 +73,13 @@ class GameInstanceManager(QMainWindow):
         refresh_btn.setToolTip("刷新实例列表")
         refresh_btn.clicked.connect(self.refresh_instances)
         info_layout.addWidget(refresh_btn)
+        
+        # 添加编辑器按钮
+        edit_btn = QPushButton("使用MCEditor编辑")
+        edit_btn.setToolTip("使用MC Studio Editor编辑项目")
+        edit_btn.clicked.connect(self.open_mc_editor)
+        info_layout.addWidget(edit_btn)
+        self.edit_btn = edit_btn  # 保存引用以便稍后启用/禁用
         
         main_layout.addWidget(info_frame)
         
@@ -161,6 +168,7 @@ class GameInstanceManager(QMainWindow):
             self.log("❌ 项目尚未初始化，请先运行 mcpy init", "error")
             self.new_btn.setEnabled(False)
             self.clean_btn.setEnabled(False)
+            self.edit_btn.setEnabled(False)  # 禁用编辑按钮
             return
         
         # 设置项目依赖
@@ -241,10 +249,7 @@ class GameInstanceManager(QMainWindow):
         # 使用QThread启动游戏，避免UI卡死
         self.game_thread = GameRunThread(config_path, level_id, self.all_packs)
         self.game_thread.log_message.connect(self.log)
-        self.game_thread.finished.connect(self.on_game_finished)
         self.game_thread.start()
-        
-        self.disable_ui_during_game()
     
     def run_selected_instance(self):
         """运行选中的游戏实例"""
@@ -349,6 +354,14 @@ class GameInstanceManager(QMainWindow):
         cursor = self.log_output.textCursor()
         cursor.movePosition(QTextCursor.End)
         self.log_output.setTextCursor(cursor)
+    
+    def open_mc_editor(self):
+        """打开MC Studio Editor编辑器"""
+        if not config_exists():
+            self.log("❌ 项目尚未初始化，无法打开编辑器", "error")
+            return
+            
+        open_edit()
 
 
 class GameRunThread(QThread):

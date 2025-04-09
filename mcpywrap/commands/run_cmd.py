@@ -9,7 +9,6 @@ import os
 import json
 import uuid
 import shutil
-import time
 from datetime import datetime
 
 from ..builders import DependencyManager
@@ -349,20 +348,12 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
 @click.option('--delete', '-d', help='删除指定的游戏实例 (输入实例ID前缀)')
 @click.option('--force', '-f', is_flag=True, help='强制删除，不提示确认')
 @click.option('--clean-all', is_flag=True, help='清空所有游戏实例')
-@click.option('--ui', is_flag=True, help='使用图形界面进行操作')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, clean_all, instance_prefix, ui):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例
     """
-    # 启动图形界面
-    if ui:
-        from ..ui.run_ui import show_run_ui
-        # 显示图形界面
-        show_run_ui(base_dir)
-        return
-        
     # 检查项目是否已初始化
     if not config_exists():
         console.print("❌ 项目尚未初始化，请先运行 mcpy init", style="red bold")

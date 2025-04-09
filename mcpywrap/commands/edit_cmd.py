@@ -24,7 +24,9 @@ def edit_cmd():
     if not config_exists():
         click.echo(click.style('❌ 项目尚未初始化，请先运行 mcpy init', fg='red', bold=True))
         return
+    open_edit()
 
+def open_edit():
     # 读取项目配置
     config = read_config()
 

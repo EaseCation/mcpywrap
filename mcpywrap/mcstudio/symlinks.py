@@ -15,13 +15,13 @@ from rich.text import Text
 from rich.layout import Layout
 
 # 强制请求管理员权限
-FORCE_ADMIN = False
+FORCE_ADMIN = True
 
 # 创建rich console对象
 console = Console()
 
 # 共享函数定义 - 在 symlink_helper 和 symlinks 中都可以使用
-def create_symlinks(user_data_path, packs, use_click=True):
+def create_symlinks(user_data_path, packs):
     """
     在指定目录下为行为包和资源包创建软链接
     

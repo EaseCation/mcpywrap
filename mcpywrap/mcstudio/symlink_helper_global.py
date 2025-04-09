@@ -39,7 +39,7 @@ def main():
         # 如果可以导入共享函数，直接使用
         if create_symlinks is not None:
             # 使用共享函数创建链接，不使用click输出
-            success, behavior_links, resource_links = create_symlinks(user_data_path, packs_data, use_click=False)
+            success, behavior_links, resource_links = create_symlinks(user_data_path, packs_data)
         else:
             # 如果导入失败，使用本地实现（这部分代码通常不会执行，作为备份）
             print("⚠️ 无法导入共享函数")
