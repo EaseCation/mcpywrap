@@ -421,7 +421,7 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix):
     else:
         # 使用最新实例，如果没有则创建新实例
         latest_instance = _get_latest_instance()
-        if latest_instance:
+        if (latest_instance):
             level_id = latest_instance['level_id']
             config_path = latest_instance['config_path']
             console.print(f"📅 使用最新实例: {level_id[:8]}...", style="green")
@@ -475,6 +475,38 @@ def _list_instances():
     console.print(tips)
 
 
+def _safe_remove_directory(path):
+    """
+    安全地递归删除目录，对于软链接只删除链接本身而不删除其指向的内容
+    
+    Args:
+        path: 要删除的目录路径
+    """
+    if not os.path.exists(path) and not os.path.islink(path):
+        return
+        
+    if os.path.islink(path):
+        # 如果是软链接，只删除链接本身
+        os.unlink(path)
+    elif os.path.isdir(path):
+        # 如果是目录，先处理其内容
+        for item in os.listdir(path):
+            item_path = os.path.join(path, item)
+            if os.path.islink(item_path):
+                # 如果是软链接，只删除链接本身
+                os.unlink(item_path)
+            elif os.path.isdir(item_path):
+                # 递归处理子目录
+                _safe_remove_directory(item_path)
+            else:
+                # 删除文件
+                os.remove(item_path)
+        # 删除空目录
+        os.rmdir(path)
+    elif os.path.isfile(path):
+        # 删除文件
+        os.remove(path)
+
 def _delete_instance(instance_prefix, force):
     """删除指定的游戏实例"""
     instance = _match_instance_by_prefix(instance_prefix)
@@ -501,9 +533,9 @@ def _delete_instance(instance_prefix, force):
             
             # 删除游戏世界目录
             world_dir = os.path.join(engine_data_path, "minecraftWorlds", level_id)
-            if os.path.exists(world_dir):
-                console.log(f"🗑️ 正在删除游戏存档: {world_dir}")
-                shutil.rmtree(world_dir, ignore_errors=True)
+            if os.path.exists(world_dir) or os.path.islink(world_dir):
+                console.log(f"🗑️ 正在安全删除游戏存档: {world_dir}")
+                _safe_remove_directory(world_dir)
             else:
                 console.log(f"ℹ️ 未找到对应的游戏存档")
         
@@ -572,8 +604,8 @@ def _clean_all_instances(force):
                 
                 # 删除游戏世界目录
                 world_dir = os.path.join(engine_data_path, "minecraftWorlds", level_id)
-                if os.path.exists(world_dir):
-                    shutil.rmtree(world_dir, ignore_errors=True)
+                if os.path.exists(world_dir) or os.path.islink(world_dir):
+                    _safe_remove_directory(world_dir)
                     
                 success_count += 1
             except Exception as e:
