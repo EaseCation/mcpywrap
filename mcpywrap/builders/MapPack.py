@@ -58,6 +58,31 @@ class MapPack(object):
         level_db_dir = os.path.join(target_dir, "db")
         if not os.path.exists(level_db_dir) and os.path.exists(os.path.join(self.path, "db")):
             shutil.copytree(os.path.join(self.path, "db"), level_db_dir)
+
+    def copy_resource_packs_to(self, target_map_dir: str):
+        """
+        复制资源包到目标目录
+        """
+        for pack in self.resource_packs:
+            pack_name = os.path.basename(pack)
+            target_pack_dir = os.path.join(target_map_dir, "resource_packs", pack_name)
+            # 先删除目标目录下的包
+            if os.path.exists(target_pack_dir):
+                shutil.rmtree(target_pack_dir)
+            shutil.copytree(pack, target_pack_dir)
+    
+    def copy_behavior_packs_to(self, target_map_dir: str):
+        """
+        复制行为包到目标目录
+        """
+        for pack in self.behavior_packs:
+            pack_name = os.path.basename(pack)
+            target_pack_dir = os.path.join(target_map_dir, "behavior_packs", pack_name)
+            # 先删除目标目录下的包
+            if os.path.exists(target_pack_dir):
+                shutil.rmtree(target_pack_dir)
+            shutil.copytree(pack, target_pack_dir)
+
     
     def setup_packs_symlinks_to(self, level_id: str, target_dir: str):
         """
@@ -137,6 +162,6 @@ def _find_and_extract_pack_info(packs_dir):
                     }
                     packs_config.append(pack_config)
         except Exception as e:
-            console.print(f"⚠️ 读取包配置失败: {pack_name} - {str(e)}", style="yellow")
+            click.echo(f"⚠️ 读取包配置失败: {pack_name} - {str(e)}", style="yellow")
     
     return packs_config

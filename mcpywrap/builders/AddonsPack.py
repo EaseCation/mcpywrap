@@ -78,13 +78,13 @@ class AddonsPack(object):
             return True
         return False
 
-    def copy_behavior_to(self, target_dir: str):
+    def copy_behavior_to(self, target_dir: str, rename: str = None):
         """
         复制行为包和资源包到目标目录
         target_dir为父目录
         """
         if self.behavior_pack_dir:
-            target_path = os.path.join(target_dir, os.path.basename(self.behavior_pack_dir))
+            target_path = os.path.join(target_dir, os.path.basename(self.behavior_pack_dir) if not rename else rename)
             os.makedirs(target_path, exist_ok=True)
 
             # 使用自定义复制函数而不是shutil.copytree
@@ -109,13 +109,13 @@ class AddonsPack(object):
                         else:
                             shutil.copy2(src_file, dest_file)
 
-    def copy_resource_to(self, target_dir: str):
+    def copy_resource_to(self, target_dir: str, rename: str = None):
         """
         复制资源包到目标目录
         target_dir为父目录
         """
         if self.resource_pack_dir:
-            target_path = os.path.join(target_dir, os.path.basename(self.resource_pack_dir))
+            target_path = os.path.join(target_dir, os.path.basename(self.resource_pack_dir) if not rename else rename)
             os.makedirs(target_path, exist_ok=True)
 
             # 使用自定义复制函数而不是shutil.copytree

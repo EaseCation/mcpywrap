@@ -17,7 +17,7 @@ class DependencyNode:
     """依赖树节点"""
     def __init__(self, name: str, addon_pack: AddonsPack, parent=None):
         self.name = name
-        self.addon_pack = addon_pack
+        self.addon_pack: AddonsPack = addon_pack
         self.parent = parent
         self.children: List[DependencyNode] = []
         
