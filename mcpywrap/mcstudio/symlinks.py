@@ -417,7 +417,7 @@ def setup_global_addons_symlinks(packs: list):
         return False, [], []
     
     
-def setup_map_packs_symlinks(src_map_dir: str, level_id: str):
+def setup_map_packs_symlinks(src_map_dir: str, level_id: str, runtime_map_dir: str):
     """
     为地图创建资源包和行为包的软链接
     
@@ -445,7 +445,6 @@ def setup_map_packs_symlinks(src_map_dir: str, level_id: str):
             return False
             
         # 运行时地图目录
-        runtime_map_dir = os.path.join(user_data_path, "minecraftWorlds", level_id)
         if not os.path.exists(runtime_map_dir):
             click.secho(f"❌ 运行时地图不存在: {level_id}", fg="red", bold=True)
             return False

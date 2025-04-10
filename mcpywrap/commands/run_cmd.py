@@ -12,6 +12,7 @@ import shutil
 from datetime import datetime
 
 from ..builders import DependencyManager
+from ..builders.MapPack import MapPack
 from ..config import config_exists, read_config, get_project_dependencies, get_project_type, get_project_name
 from ..builders.AddonsPack import AddonsPack
 from ..mcstudio.game import open_game, open_safaia
@@ -254,60 +255,39 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
             # 判断目标地图存档路径
             runtime_map_dir = os.path.join(engine_data_path, "minecraftWorlds", level_id)
             ensure_dir(runtime_map_dir)
+
+            # MapPack
+            map_pack_origin = MapPack(project_name, base_dir)
+            map_pack_target = MapPack(project_name, runtime_map_dir)
             
             live.update(Text("🗺️ 正在准备地图存档...", "cyan"))
             log_message("🗺️ 正在准备地图存档...", "info")
             
-            # 判断是否有level.dat，没有的话就复制
-            level_dat_path = os.path.join(runtime_map_dir, "level.dat")
-            if not os.path.exists(level_dat_path):
-                origin_level_dat_path = os.path.join(base_dir, "level.dat")
-                if os.path.exists(origin_level_dat_path):
-                    shutil.copy2(origin_level_dat_path, level_dat_path)
-                    live.update(Text(f"✓ 已复制level.dat文件", "green"))
-                    log_message(f"✓ 已复制level.dat文件", "success")
-                
-            level_db_dir = os.path.join(runtime_map_dir, "db")
-            if not os.path.exists(level_db_dir) and os.path.exists(os.path.join(base_dir, "db")):
-                shutil.copytree(os.path.join(base_dir, "db"), level_db_dir)
-                live.update(Text(f"✓ 已复制db文件夹", "green"))
-                log_message(f"✓ 已复制db文件夹", "success")
+            map_pack_origin.copy_level_data_to(runtime_map_dir)
+
+            live.update(Text(f"✓ 已复制地图存档", "green"))
+            log_message(f"✓ 已复制地图存档", "success")
                 
             # 链接
             live.update(Text("🔗 正在设置地图软链接...", "cyan"))
             log_message("🔗 正在设置地图软链接...", "info")
-            setup_map_packs_symlinks(base_dir, level_id)
+            map_pack_origin.setup_packs_symlinks_to(level_id, runtime_map_dir)
 
             # 创建world_behavior_packs.json和world_resource_packs.json
             live.update(Text("📄 正在生成包配置文件...", "cyan"))
             log_message("📄 正在生成包配置文件...", "info")
             
             # 处理行为包
-            behavior_packs_dir = os.path.join(base_dir, "behavior_packs")
-            behavior_packs_config = []
-            if os.path.exists(behavior_packs_dir):
-                behavior_packs_config = _find_and_extract_pack_info(behavior_packs_dir)
-                if behavior_packs_config:
-                    world_behavior_packs_path = os.path.join(runtime_map_dir, "world_behavior_packs.json")
-                    with open(world_behavior_packs_path, 'w', encoding='utf-8') as f:
-                        json.dump(behavior_packs_config, f, ensure_ascii=False, indent=4)
-                    live.update(Text(f"✓ 已创建world_behavior_packs.json，包含{len(behavior_packs_config)}个行为包", "green"))
-                    log_message(f"✓ 已创建world_behavior_packs.json，包含{len(behavior_packs_config)}个行为包", "success")
+            behavior_packs_config, resource_packs_config = map_pack_target.setup_world_packs_config()
             
-            # 处理资源包
-            resource_packs_dir = os.path.join(base_dir, "resource_packs")
-            resource_packs_config = []
-            if os.path.exists(resource_packs_dir):
-                resource_packs_config = _find_and_extract_pack_info(resource_packs_dir)
-                if resource_packs_config:
-                    world_resource_packs_path = os.path.join(runtime_map_dir, "world_resource_packs.json")
-                    with open(world_resource_packs_path, 'w', encoding='utf-8') as f:
-                        json.dump(resource_packs_config, f, ensure_ascii=False, indent=4)
-                    live.update(Text(f"✓ 已创建world_resource_packs.json，包含{len(resource_packs_config)}个资源包", "green"))
-                    log_message(f"✓ 已创建world_resource_packs.json，包含{len(resource_packs_config)}个资源包", "success")
+            live.update(Text(f"✓ 已创建world_behavior_packs.json，包含{len(behavior_packs_config)}个行为包", "green"))
+            log_message(f"✓ 已创建world_behavior_packs.json，包含{len(behavior_packs_config)}个行为包", "success")
+            
+            live.update(Text(f"✓ 已创建world_resource_packs.json，包含{len(resource_packs_config)}个资源包", "green"))
+            log_message(f"✓ 已创建world_resource_packs.json，包含{len(resource_packs_config)}个资源包", "success")
             
     # 启动游戏
-    logging_port = 8678
+    logging_port = _gen_random_port()
 
     log_message(f"🚀 正在启动游戏实例: {level_id[:8]}...", "bright_blue")
     
@@ -341,6 +321,35 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
             log_message("\n🛑 收到中止信号，脚本将退出但游戏继续运行", "yellow")
     
     return True, game_process
+
+using_ports = []
+
+def _is_port_in_use(port):
+    """检查端口是否被系统占用"""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("localhost", port))
+            return False
+        except socket.error:
+            return True
+
+def _gen_random_port():
+    """生成随机端口，确保在系统中未被占用"""
+    import random
+    max_attempts = 50  # 设置最大尝试次数，避免无限循环
+    attempts = 0
+    
+    while attempts < max_attempts:
+        port = random.randint(1024, 65535)
+        if port not in using_ports and not _is_port_in_use(port):
+            using_ports.append(port)
+            return port
+        attempts += 1
+    
+    # 如果尝试多次仍无法找到可用端口，使用一个高概率可用的端口
+    console.print("⚠️ 无法找到空闲端口，将使用默认值", style="yellow")
+    return 0  # 返回0让操作系统自动分配端口
 
 
 @click.command()
@@ -635,59 +644,3 @@ def _print_dependency_tree(node, level):
     for child in node.children:
         _print_dependency_tree(child, level + 1)
 
-
-def _find_and_extract_pack_info(packs_dir):
-    """
-    搜索指定目录中的所有包，并从manifest.json中提取信息
-    
-    Args:
-        packs_dir: 包目录路径
-        
-    Returns:
-        list: 包配置列表
-    """
-    packs_config = []
-    
-    # 遍历目录下的所有子目录
-    for pack_name in os.listdir(packs_dir):
-        pack_path = os.path.join(packs_dir, pack_name)
-        
-        # 只处理目录
-        if not os.path.isdir(pack_path):
-            continue
-        
-        # 查找manifest.json或pack_manifest.json
-        manifest_path = os.path.join(pack_path, "manifest.json")
-        if not os.path.exists(manifest_path):
-            manifest_path = os.path.join(pack_path, "pack_manifest.json")
-            if not os.path.exists(manifest_path):
-                continue
-        
-        try:
-            with open(manifest_path, 'r', encoding='utf-8') as f:
-                manifest = json.load(f)
-            
-            # 提取UUID和版本信息
-            if 'header' in manifest:
-                pack_id = manifest['header'].get('uuid')
-                version = manifest['header'].get('version', [0, 0, 1])
-                
-                # 确保版本是列表格式
-                if isinstance(version, list):
-                    version_array = version
-                elif isinstance(version, dict) and 'major' in version and 'minor' in version and 'patch' in version:
-                    version_array = [version['major'], version['minor'], version['patch']]
-                else:
-                    version_array = [0, 0, 1]  # 默认版本
-                
-                if pack_id:
-                    pack_config = {
-                        "pack_id": pack_id,
-                        "type": "Addon",
-                        "version": version_array
-                    }
-                    packs_config.append(pack_config)
-        except Exception as e:
-            console.print(f"⚠️ 读取包配置失败: {pack_name} - {str(e)}", style="yellow")
-    
-    return packs_config
