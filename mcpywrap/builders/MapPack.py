@@ -48,13 +48,19 @@ class MapPack(object):
         """
         复制地图数据到目标目录
         """
-        # 判断是否有level.dat，没有的话就复制
+        # level.dat
         level_dat_path = os.path.join(target_dir, "level.dat")
         if not os.path.exists(level_dat_path):
             origin_level_dat_path = os.path.join(self.path, "level.dat")
             if os.path.exists(origin_level_dat_path):
                 shutil.copy2(origin_level_dat_path, level_dat_path)
-            
+        # levelname.txt
+        levelname_txt_path = os.path.join(target_dir, "levelname.txt")
+        if not os.path.exists(levelname_txt_path):
+            origin_levelname_txt_path = os.path.join(self.path, "levelname.txt")
+            if os.path.exists(origin_levelname_txt_path):
+                shutil.copy2(origin_levelname_txt_path, levelname_txt_path)
+        # db
         level_db_dir = os.path.join(target_dir, "db")
         if not os.path.exists(level_db_dir) and os.path.exists(os.path.join(self.path, "db")):
             shutil.copytree(os.path.join(self.path, "db"), level_db_dir)
