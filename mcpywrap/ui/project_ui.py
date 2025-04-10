@@ -12,9 +12,10 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QHeaderView, 
     QMessageBox, QSplitter, QTextEdit, QProgressBar, QFrame,
-    QStyleFactory, QStatusBar, QCheckBox, QFileDialog, QGroupBox
+    QStyleFactory, QStatusBar, QCheckBox, QFileDialog, QGroupBox,
+    QLineEdit, QListWidget, QListWidgetItem, QComboBox, QCompleter
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QStringListModel
 from PyQt5.QtGui import QIcon, QFont, QTextCursor, QColor, QPalette
 
 # 导入项目模块
@@ -25,6 +26,10 @@ from mcpywrap.commands.run_cmd import (
     base_dir as default_base_dir
 )
 from ..commands.edit_cmd import open_edit
+from ..config import get_project_dependencies
+from ..commands.add_cmd import add_dependency
+from ..commands.remove_cmd import remove_dependency
+from ..builders.dependency_manager import find_all_mcpywrap_packages
 
 
 class GameInstanceManager(QMainWindow):
@@ -36,6 +41,7 @@ class GameInstanceManager(QMainWindow):
         self.current_project = get_project_name() if config_exists() else "未初始化项目"
         self.instances = []
         self.all_packs = None
+        self.dependencies = []
         self.setup_ui()
         self.init_data()
 
@@ -49,7 +55,7 @@ class GameInstanceManager(QMainWindow):
         """设置UI界面"""
         self.setWindowTitle(f"Minecraft游戏实例管理器 - {self.current_project}")
         self.setMinimumSize(800, 600)
-        self.resize(1000, 700)
+        self.resize(1200, 800)
         self.setWindowIcon(QIcon())
 
         self.setup_global_font()
@@ -63,6 +69,11 @@ class GameInstanceManager(QMainWindow):
         info_frame = QFrame()
         info_frame.setFrameShape(QFrame.StyledPanel)
         info_layout = QHBoxLayout(info_frame)
+        
+        # 设置固定高度策略
+        size_policy = info_frame.sizePolicy()
+        size_policy.setVerticalPolicy(size_policy.Fixed)
+        info_frame.setSizePolicy(size_policy)
         
         # 项目名称和路径
         project_info = QLabel(f"<b>项目:</b> {self.current_project} | <b>路径:</b> {self.base_dir}")
@@ -83,18 +94,70 @@ class GameInstanceManager(QMainWindow):
         
         main_layout.addWidget(info_frame)
         
-        # 创建分割器
-        splitter = QSplitter(Qt.Vertical)
-        main_layout.addWidget(splitter)
+        # 创建水平分割器用于左侧依赖管理和右侧实例管理
+        h_splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(h_splitter)
         
-        # 实例列表区域
+        # 左侧依赖管理区域
+        dependency_widget = QWidget()
+        dependency_layout = QVBoxLayout(dependency_widget)
+        
+        # 依赖管理标题
+        dependency_title = QLabel("<h3>依赖管理</h3>")
+        dependency_layout.addWidget(dependency_title)
+        
+        # 依赖列表
+        self.dependency_list = QListWidget()
+        self.dependency_list.setAlternatingRowColors(True)
+        self.dependency_list.itemClicked.connect(self.on_dependency_selected)
+        dependency_layout.addWidget(self.dependency_list)
+        
+        # 依赖操作按钮
+        self.remove_dep_btn = QPushButton("移除选中依赖")
+        self.remove_dep_btn.setEnabled(False)
+        self.remove_dep_btn.clicked.connect(self.remove_selected_dependency)
+        dependency_layout.addWidget(self.remove_dep_btn)
+        
+        # 添加依赖区域
+        add_dep_group = QGroupBox("添加新依赖")
+        add_dep_layout = QVBoxLayout(add_dep_group)
+        
+        # 依赖输入框 - 使用QComboBox替代QLineEdit
+        self.new_dep_input = QComboBox()
+        self.new_dep_input.setEditable(True)  # 允许用户输入自定义值
+        self.new_dep_input.setInsertPolicy(QComboBox.NoInsert)  # 不自动插入用户输入
+        self.new_dep_input.lineEdit().returnPressed.connect(self.add_dependency)
+        self.new_dep_input.setPlaceholderText = lambda text: self.new_dep_input.lineEdit().setPlaceholderText(text)
+        self.new_dep_input.setPlaceholderText("输入依赖包名称")
+        self.new_dep_input.currentIndexChanged.connect(self.on_dependency_selected_from_dropdown)
+        add_dep_layout.addWidget(self.new_dep_input)
+        
+        # 添加依赖按钮
+        add_dep_btn = QPushButton("添加依赖")
+        add_dep_btn.clicked.connect(self.add_dependency)
+        add_dep_layout.addWidget(add_dep_btn)
+        
+        dependency_layout.addWidget(add_dep_group)
+        
+        # 将依赖管理界面添加到分割器
+        h_splitter.addWidget(dependency_widget)
+        
+        # 右侧实例管理区域
         instance_widget = QWidget()
         instance_layout = QVBoxLayout(instance_widget)
-        instance_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # 创建垂直分割器用于实例列表和日志区域
+        v_splitter = QSplitter(Qt.Vertical)
+        instance_layout.addWidget(v_splitter)
+        
+        # 实例列表区域
+        instance_list_widget = QWidget()
+        instance_list_layout = QVBoxLayout(instance_list_widget)
+        instance_list_layout.setContentsMargins(0, 0, 0, 0)
         
         # 实例列表标题
         instance_title = QLabel("<h3>游戏实例列表</h3>")
-        instance_layout.addWidget(instance_title)
+        instance_list_layout.addWidget(instance_title)
         
         # 实例列表表格
         self.instance_table = QTableWidget(0, 4)
@@ -108,7 +171,7 @@ class GameInstanceManager(QMainWindow):
         self.instance_table.setAlternatingRowColors(True)
         self.instance_table.itemDoubleClicked.connect(self.on_instance_double_clicked)
         self.instance_table.setStyleSheet("QTableView::item:selected { background-color: #e0f0ff; color: black; }")
-        instance_layout.addWidget(self.instance_table)
+        instance_list_layout.addWidget(self.instance_table)
         
         # 实例操作按钮
         btn_layout = QHBoxLayout()
@@ -131,10 +194,10 @@ class GameInstanceManager(QMainWindow):
         self.clean_btn.clicked.connect(self.clean_all_instances)
         btn_layout.addWidget(self.clean_btn)
         
-        instance_layout.addLayout(btn_layout)
+        instance_list_layout.addLayout(btn_layout)
         
-        # 添加实例部分到分割器
-        splitter.addWidget(instance_widget)
+        # 添加实例管理区域到垂直分割器
+        v_splitter.addWidget(instance_list_widget)
         
         # 日志输出区域
         log_frame = QFrame()
@@ -148,16 +211,17 @@ class GameInstanceManager(QMainWindow):
         self.log_output.setReadOnly(True)
         log_layout.addWidget(self.log_output)
         
-        # 添加日志部分到分割器
-        splitter.addWidget(log_frame)
+        # 添加日志区域到垂直分割器
+        v_splitter.addWidget(log_frame)
         
-        # 设置分割器初始大小
-        splitter.setSizes([400, 200])
+        # 设置垂直分割器比例
+        v_splitter.setSizes([400, 200])
         
-        # 状态栏
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("就绪")
+        # 将实例管理区域添加到水平分割器
+        h_splitter.addWidget(instance_widget)
+        
+        # 设置水平分割器比例
+        h_splitter.setSizes([300, 700])
         
         # 连接选择变更信号
         self.instance_table.itemSelectionChanged.connect(self.on_selection_changed)
@@ -177,6 +241,43 @@ class GameInstanceManager(QMainWindow):
         
         # 加载实例列表
         self.refresh_instances()
+        
+        # 加载依赖列表
+        self.refresh_dependencies()
+        
+        # 加载可用mcpywrap包
+        self.load_available_packages()
+    
+    def load_available_packages(self):
+        """加载系统中可用的mcpywrap包"""
+        self.log("🔍 正在搜索系统中可用的mcpywrap包...", "info")
+        try:
+            available_packages = find_all_mcpywrap_packages()
+            if available_packages:
+                self.new_dep_input.clear()
+                for package in available_packages:
+                    if package != self.current_project:  # 排除当前项目
+                        self.new_dep_input.addItem(package)
+                
+                # 添加自动补全功能
+                completer = QCompleter(available_packages)
+                completer.setCaseSensitivity(Qt.CaseInsensitive)
+                self.new_dep_input.setCompleter(completer)
+                
+                # 设置当前索引为-1，表示不选择任何项
+                self.new_dep_input.setCurrentIndex(-1)
+                
+                self.log(f"✅ 找到 {len(available_packages)} 个可用的mcpywrap包", "success")
+            else:
+                self.log("📦 没有找到可用的mcpywrap包", "info")
+        except Exception as e:
+            self.log(f"❌ 搜索可用包时出错: {str(e)}", "error")
+    
+    def on_dependency_selected_from_dropdown(self, index):
+        """从下拉列表选择依赖时触发"""
+        if index >= 0:
+            # 可以在这里添加额外的处理逻辑
+            pass
     
     def refresh_instances(self):
         """刷新实例列表"""
@@ -220,6 +321,25 @@ class GameInstanceManager(QMainWindow):
         self.instance_table.selectRow(0)  # 默认选择第一行
         self.log(f"✅ 已加载 {len(self.instances)} 个游戏实例", "success")
     
+    def refresh_dependencies(self):
+        """刷新依赖列表"""
+        self.dependency_list.clear()
+        if not config_exists():
+            return
+            
+        self.dependencies = get_project_dependencies()
+        for dep in self.dependencies:
+            item = QListWidgetItem(dep)
+            self.dependency_list.addItem(item)
+        
+        if self.dependencies:
+            self.log(f"📦 已加载 {len(self.dependencies)} 个项目依赖", "info")
+        else:
+            self.log("📦 项目没有任何依赖", "info")
+        
+        # 禁用移除按钮，等待用户选择
+        self.remove_dep_btn.setEnabled(False)
+    
     def on_selection_changed(self):
         """选择变更事件处理"""
         selected_rows = self.instance_table.selectionModel().selectedRows()
@@ -230,6 +350,10 @@ class GameInstanceManager(QMainWindow):
     def on_instance_double_clicked(self, item):
         """双击实例表格项事件处理"""
         self.run_selected_instance()
+    
+    def on_dependency_selected(self, item):
+        """依赖项目被选中"""
+        self.remove_dep_btn.setEnabled(True)
     
     def create_new_instance(self):
         """创建新的游戏实例"""
@@ -249,6 +373,7 @@ class GameInstanceManager(QMainWindow):
         # 使用QThread启动游戏，避免UI卡死
         self.game_thread = GameRunThread(config_path, level_id, self.all_packs)
         self.game_thread.log_message.connect(self.log)
+        self.game_thread.finished.connect(self.refresh_instances)
         self.game_thread.start()
     
     def run_selected_instance(self):
@@ -362,6 +487,65 @@ class GameInstanceManager(QMainWindow):
             return
             
         open_edit()
+    
+    def remove_selected_dependency(self):
+        """删除选中的依赖"""
+        selected_items = self.dependency_list.selectedItems()
+        if not selected_items:
+            return
+            
+        package = selected_items[0].text()
+        
+        # 二次确认
+        reply = QMessageBox.question(
+            self,
+            "确认删除依赖",
+            f"确定要从项目中移除依赖 {package} 吗？\n注意：这不会卸载依赖，仅从项目配置中移除。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            self.log(f"🗑️ 正在移除依赖: {package}...")
+            if remove_dependency(package):
+                self.log(f"✅ 依赖 {package} 已从项目配置中移除", "success")
+                self.refresh_dependencies()
+            else:
+                self.log(f"❌ 移除依赖 {package} 失败", "error")
+    
+    def add_dependency(self):
+        """添加新依赖"""
+        package = self.new_dep_input.currentText().strip()
+        if not package:
+            QMessageBox.warning(self, "输入错误", "请输入或选择依赖包名称")
+            return
+            
+        # 检查是否已存在
+        if package in self.dependencies:
+            self.log(f"ℹ️ 依赖 {package} 已存在于项目配置中", "info")
+        else:
+            self.log(f"📦 正在添加依赖: {package}...")
+            if add_dependency(package):
+                self.log(f"✅ 依赖 {package} 已添加到项目配置", "success")
+            else:
+                self.log(f"❌ 添加依赖 {package} 失败", "error")
+                return
+        
+        # 安装依赖
+        self.log(f"📦 正在安装 {package}...")
+        
+        # 使用QThread安装依赖，避免UI卡死
+        self.install_thread = DependencyInstallThread(package)
+        self.install_thread.log_message.connect(self.log)
+        self.install_thread.finished.connect(self.on_dependency_installed)
+        self.install_thread.start()
+        
+        # 清空输入框
+        self.new_dep_input.setCurrentText("")
+    
+    def on_dependency_installed(self):
+        """依赖安装完成后刷新列表"""
+        self.refresh_dependencies()
 
 
 class GameRunThread(QThread):
@@ -398,6 +582,34 @@ class GameRunThread(QThread):
             import traceback
             error_details = traceback.format_exc()
             self.log_message.emit(f"错误详情:\n{error_details}", "error")
+
+
+class DependencyInstallThread(QThread):
+    """依赖安装线程"""
+    log_message = pyqtSignal(str, str)
+    
+    def __init__(self, package):
+        super().__init__()
+        self.package = package
+    
+    def run(self):
+        try:
+            import subprocess
+            self.log_message.emit(f"📦 正在安装 {self.package}...", "info")
+            
+            result = subprocess.run(
+                [sys.executable, '-m', 'pip', 'install', self.package],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                self.log_message.emit(f"✅ {self.package} 安装成功！", "success")
+            else:
+                error_msg = result.stderr.strip() if result.stderr else "未知错误"
+                self.log_message.emit(f"❌ {self.package} 安装失败: {error_msg}", "error")
+        except Exception as e:
+            self.log_message.emit(f"❌ 安装依赖过程中出错: {str(e)}", "error")
 
 
 def show_run_ui(base_dir=default_base_dir):

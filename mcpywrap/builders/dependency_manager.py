@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 import click
 
+from ..config import CONFIG_FILE, check_has_mcpywrap_config
 from .AddonsPack import AddonsPack
 
 class DependencyNode:
@@ -30,6 +31,39 @@ class DependencyNode:
         
     def __repr__(self):
         return self.__str__()
+    
+
+def _decode_direct_url(direct_url_path: str) -> Optional[str]:
+    with open(direct_url_path, 'r', encoding='utf-8') as f:
+        try:
+            direct_url = json.load(f)
+            # 读取其中的url
+            if "url" in direct_url:
+                url = direct_url["url"]
+                # 处理file://开头的路径
+                if url.startswith("file:///"):
+                    # 移除file:/// 前缀
+                    if sys.platform == "win32":
+                        # Windows 路径处理 (例如 file:///D:/path)
+                        url = url[8:]  # 去除 file:///
+                    else:
+                        url = "/" + url[8:]  # 保留根目录斜杠
+                    url = os.path.abspath(url)
+                # 兼容处理旧格式 file://
+                elif url.startswith("file://"):
+                    url = url[7:]
+                # 对URL进行解码，处理%编码的特殊字符
+                from urllib.parse import unquote
+                url = unquote(url)
+                url = os.path.abspath(url)
+
+                # 确保路径格式一致
+                if sys.platform == "win32":
+                    url = url.replace("\\", "/")
+
+                return url
+        except json.JSONDecodeError:
+            logging.warning(f"无法解析 {direct_url_path} 的JSON内容")
 
 class DependencyManager:
     """依赖管理器"""
@@ -37,7 +71,7 @@ class DependencyManager:
         self.dependency_map: Dict[str, AddonsPack] = {}
         self.root_node: Optional[DependencyNode] = None
         self.processed_deps: Set[str] = set()
-        
+
     def find_dependency_path(self, package_name: str) -> Optional[str]:
         """
         查找依赖包的真实路径，支持常规安装和pip install -e (编辑安装)
@@ -62,39 +96,13 @@ class DependencyManager:
                     # 处理direct_url.json获取包路径
                     direct_url_path = dist_info / "direct_url.json"
                     if direct_url_path.exists():
-                        with open(direct_url_path, 'r', encoding='utf-8') as f:
-                            try:
-                                direct_url = json.load(f)
-                                # 读取其中的url
-                                if "url" in direct_url:
-                                    url = direct_url["url"]
-                                    # 处理file://开头的路径
-                                    if url.startswith("file:///"):
-                                        # 移除file:/// 前缀
-                                        if sys.platform == "win32":
-                                            # Windows 路径处理 (例如 file:///D:/path)
-                                            url = url[8:]  # 去除 file:///
-                                        else:
-                                            url = "/" + url[8:]  # 保留根目录斜杠
-                                        url = os.path.abspath(url)
-                                    # 兼容处理旧格式 file://
-                                    elif url.startswith("file://"):
-                                        url = url[7:]
-                                    # 对URL进行解码，处理%编码的特殊字符
-                                    from urllib.parse import unquote
-                                    url = unquote(url)
-                                    url = os.path.abspath(url)
-
-                                    # 确保路径格式一致
-                                    if sys.platform == "win32":
-                                        url = url.replace("\\", "/")
-
-                                    return url
-                            except json.JSONDecodeError:
-                                logging.warning(f"无法解析 {direct_url_path} 的JSON内容")
-                                continue
+                        origin_path = _decode_direct_url(str(direct_url_path))
+                        if origin_path:
+                            # 返回绝对路径
+                            return origin_path
+                        continue
         return None
-                
+    
     def build_dependency_tree(self, project_name: str, project_path: str, dependencies: List[str]) -> DependencyNode:
         """
         构建依赖树
@@ -172,3 +180,30 @@ class DependencyManager:
     def get_dependency_tree(self) -> Optional[DependencyNode]:
         """获取依赖树"""
         return self.root_node
+
+
+def find_all_mcpywrap_packages() -> List[str]:
+        packages = []
+        # 得到site-packages路径
+        for site_package_dir in __import__('site').getsitepackages():
+            site_packages = Path(site_package_dir)
+            for dist_info in site_packages.glob("*.dist-info"):
+                # 读取METADATA文件获取真实包名
+                metadata_path = dist_info / "METADATA"
+                if metadata_path.exists():
+                    pkg_name = None
+                    with open(metadata_path, 'r', encoding='utf-8') as f:
+                        for line in f:
+                            if line.startswith("Name:"):
+                                pkg_name = line.split(":", 1)[1].strip()
+                                break
+                    if pkg_name is None:
+                        continue
+                    # 处理direct_url.json获取包路径
+                    direct_url_path = dist_info / "direct_url.json"
+                    if direct_url_path.exists():
+                        origin_path = _decode_direct_url(str(direct_url_path))
+                        if origin_path:
+                            if check_has_mcpywrap_config(os.path.join(origin_path, CONFIG_FILE)):
+                                packages.append(pkg_name)
+        return packages

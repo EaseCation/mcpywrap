@@ -45,6 +45,22 @@ def read_config(config_path=None) -> dict:
         except tomli.TOMLDecodeError:
             click.echo(click.style(f"❌ {config_path} 格式错误", fg='red', bold=True))
             return {}
+        
+def check_has_mcpywrap_config(config_path=None) -> bool:
+    """检查配置文件是否包含mcpywrap配置"""
+    if config_path is None:
+        config_path = get_config_path()
+        
+    if not os.path.exists(config_path):
+        return False
+    
+    with open(config_path, 'rb') as f:
+        try:
+            config = tomli.load(f)
+            return 'tool' in config and 'mcpywrap' in config['tool']
+        except tomli.TOMLDecodeError:
+            click.echo(click.style(f"❌ {config_path} 格式错误", fg='red', bold=True))
+            return False
 
 def write_config(config_data):
     """写入配置文件"""
@@ -117,10 +133,11 @@ def remove_dependency(package_name):
     """
     try:
         config = read_config()
-        if 'dependencies' in config and package_name in config['dependencies']:
-            config['dependencies'].remove(package_name)
+        if 'project' in config and 'dependencies' in config['project'] and package_name in config['project']['dependencies']:
+            config['project']['dependencies'].remove(package_name)
             write_config(config)
             return True
         return False
-    except Exception:
+    except Exception as e:
+        click.echo(f"❌ 删除依赖失败: {e}", err=True)
         return False

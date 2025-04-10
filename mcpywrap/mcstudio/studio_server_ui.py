@@ -12,10 +12,10 @@ import click
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QTextEdit, QLabel, QComboBox, QFrame, QStyleFactory,
-    QCheckBox, QDesktopWidget
+    QCheckBox, QDesktopWidget, QLineEdit
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QObject, pyqtSlot, QSettings, QTimer
-from PyQt5.QtGui import QFont, QPalette, QColor
+from PyQt5.QtGui import QFont, QPalette, QColor, QTextCharFormat, QTextCursor, QTextDocument
 
 
 def set_windows_dark_titlebar(hwnd):
@@ -151,11 +151,45 @@ class StudioLoggerUI(QMainWindow):
         log_container_layout = QVBoxLayout(self.log_container)
         log_container_layout.setContentsMargins(0, 0, 0, 0)
         
-        # 创建日志显示区域
+        # 添加搜索栏
+        search_layout = QHBoxLayout()
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("搜索文本...")
+        self.search_input.returnPressed.connect(self.search_text)
+        
+        self.search_button = QPushButton("搜索")
+        self.search_button.clicked.connect(self.search_text)
+        
+        self.clear_search_button = QPushButton("取消")
+        self.clear_search_button.clicked.connect(self.clear_search)
+        self.clear_search_button.setEnabled(False)
+        
+        self.prev_button = QPushButton("上一个")
+        self.prev_button.clicked.connect(self.find_previous)
+        self.prev_button.setEnabled(False)
+        
+        self.next_button = QPushButton("下一个")
+        self.next_button.clicked.connect(self.find_next)
+        self.next_button.setEnabled(False)
+        
+        self.match_label = QLabel("0/0")
+        
+        search_layout.addWidget(self.search_input)
+        search_layout.addWidget(self.search_button)
+        search_layout.addWidget(self.clear_search_button)
+        search_layout.addWidget(self.prev_button)
+        search_layout.addWidget(self.next_button)
+        search_layout.addWidget(self.match_label)
+        
+        # 创建日志显示区域 - 设置为支持富文本
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
+        self.log_text.setAcceptRichText(True)  # 支持富文本
         font = QFont("Microsoft YaHei", 9)
         self.log_text.setFont(font)
+        
+        # 设置日志区域的背景色为深色
+        self.log_text.setStyleSheet("background-color: #232323; color: #E0E0E0;")
         
         # 添加命令输入区域
         input_layout = QHBoxLayout()
@@ -172,6 +206,7 @@ class StudioLoggerUI(QMainWindow):
         input_layout.addWidget(self.send_btn)
 
         # 将日志相关控件添加到日志容器
+        log_container_layout.addLayout(search_layout)
         log_container_layout.addWidget(self.log_text, 1)
         log_container_layout.addLayout(input_layout)
         
@@ -251,6 +286,9 @@ class StudioLoggerUI(QMainWindow):
         self.log_server.client_connected_signal.connect(self.on_client_connected)
         self.log_server.client_disconnected_signal.connect(self.on_client_disconnected)
         
+        # 连接日志接收信号 - 更新为新的颜色段处理方式
+        self.log_server.log_received_signal.connect(self.update_colored_log)
+        
         self.server_thread = threading.Thread(target=self.log_server.start)
         self.server_thread.daemon = True
         self.server_thread.start()
@@ -267,10 +305,52 @@ class StudioLoggerUI(QMainWindow):
         """当客户端断开连接时调用"""
         self.update_connection_status(False)
 
+    @pyqtSlot(str, list)
+    def update_colored_log(self, text, color_segments):
+        """更新彩色日志文本"""
+        # 移动到文本末尾
+        cursor = self.log_text.textCursor()
+        cursor.movePosition(cursor.End)
+        self.log_text.setTextCursor(cursor)
+        
+        # 如果没有颜色分段信息，直接插入纯文本
+        if not color_segments:
+            self.log_text.insertPlainText(text)
+            self.log_text.ensureCursorVisible()
+            return
+        
+        # 使用QTextCharFormat设置文本颜色
+        for segment_text, color_name in color_segments:
+            fmt = QTextCharFormat()
+            color = self.log_server.colorizer.QT_COLORS.get(color_name)
+            if color:
+                fmt.setForeground(color)
+            
+            # 插入带格式的文本
+            cursor = self.log_text.textCursor()
+            cursor.insertText(segment_text, fmt)
+            self.log_text.setTextCursor(cursor)
+        
+        # 自动滚动到底部
+        self.log_text.ensureCursorVisible()
+        
+        # 如果有活动搜索，重新应用搜索以高亮新内容中的匹配项
+        if hasattr(self, 'found_positions') and self.found_positions and self.search_input.text():
+            # 保存当前匹配索引
+            current_match_idx = self.current_match
+            self.search_text()
+            # 如果原来的匹配项仍然存在，移动到对应位置
+            if current_match_idx < len(self.found_positions):
+                self.move_to_match(current_match_idx)
+
     @pyqtSlot(str)
     def update_log(self, text):
-        """更新日志文本显示"""
-        self.log_text.moveCursor(self.log_text.textCursor().End)
+        """更新日志文本显示（普通文本）"""
+        # 当使用彩色日志时，这个方法可能不会被使用
+        # 但保留它以确保向后兼容性
+        cursor = self.log_text.textCursor()
+        cursor.movePosition(cursor.End)
+        self.log_text.setTextCursor(cursor)
         self.log_text.insertPlainText(text)
         self.log_text.ensureCursorVisible()
 
@@ -348,7 +428,23 @@ class StudioLoggerUI(QMainWindow):
         self.restart_btn.setStyleSheet(button_style)
         self.toggle_btn.setStyleSheet(button_style)
         self.send_btn.setStyleSheet(button_style)
+        self.search_button.setStyleSheet(button_style)
+        self.clear_search_button.setStyleSheet(button_style)
+        self.prev_button.setStyleSheet(button_style)
+        self.next_button.setStyleSheet(button_style)
 
+        # 设置搜索框样式
+        search_style = """
+        QLineEdit {
+            background-color: #333333;
+            color: #FFFFFF;
+            border: 1px solid #555555;
+            padding: 3px;
+            border-radius: 3px;
+        }
+        """
+        self.search_input.setStyleSheet(search_style)
+        
         # 设置输入框样式
         input_style = """
         QComboBox {
@@ -453,6 +549,184 @@ class StudioLoggerUI(QMainWindow):
         # 保存初始位置信息
         self.settings.setValue("window_position_x", x)
         self.settings.setValue("window_position_y", y)
+
+    # 修改搜索功能的方法
+    def search_text(self):
+        """执行文本搜索并高亮显示结果"""
+        search_term = self.search_input.text()
+        if not search_term:
+            return
+        
+        # 清除当前高亮
+        self.clear_highlights(preserve_search=True)
+        
+        # 保存当前位置
+        current_cursor = self.log_text.textCursor()
+        
+        # 执行搜索
+        self.found_positions = []
+        self.current_match = -1
+        
+        document = self.log_text.document()
+        cursor = QTextCursor(document)
+        
+        # 使用QTextDocument的find函数搜索文本
+        while True:
+            cursor = document.find(search_term, cursor)
+            if cursor.isNull():
+                break
+            
+            # 保存位置
+            start_pos = cursor.position() - len(search_term)
+            self.found_positions.append(start_pos)
+            
+            # 获取当前选定文本的格式
+            current_format = cursor.charFormat()
+            # 创建新格式，保留原前景色但修改背景色
+            new_format = QTextCharFormat(current_format)
+            new_format.setBackground(QColor(255, 165, 0))  # 橙色背景
+            
+            # 应用新格式但不改变文本颜色
+            cursor.mergeCharFormat(new_format)
+        
+        # 更新匹配计数
+        match_count = len(self.found_positions)
+        if match_count > 0:
+            self.match_label.setText(f"1/{match_count}")
+            self.current_match = 0
+            self.prev_button.setEnabled(True)
+            self.next_button.setEnabled(True)
+            self.clear_search_button.setEnabled(True)
+            
+            # 移动到第一个匹配项
+            self.move_to_match(0)
+        else:
+            self.match_label.setText("0/0")
+            self.prev_button.setEnabled(False)
+            self.next_button.setEnabled(False)
+            if search_term:
+                self.clear_search_button.setEnabled(True)
+            else:
+                self.clear_search_button.setEnabled(False)
+            
+            # 恢复光标位置
+            self.log_text.setTextCursor(current_cursor)
+    
+    def clear_search(self):
+        """清除搜索并重置状态"""
+        self.search_input.clear()
+        # 强制清除所有文本高亮
+        self.force_clear_all_highlights()
+        
+        # 重置搜索状态
+        self.found_positions = []
+        self.current_match = -1
+        self.match_label.setText("0/0")
+        self.prev_button.setEnabled(False)
+        self.next_button.setEnabled(False)
+        self.clear_search_button.setEnabled(False)
+    
+    def force_clear_all_highlights(self):
+        """强制清除所有文本高亮，无论是否有搜索记录"""
+        # 保存当前光标位置
+        cursor = self.log_text.textCursor()
+        current_position = cursor.position()
+        
+        # 选择整个文档内容
+        cursor.select(QTextCursor.Document)
+        
+        # 创建一个不含背景色的格式
+        fmt = QTextCharFormat()
+        fmt.setBackground(Qt.transparent)
+        
+        # 应用该格式到整个文档
+        cursor.mergeCharFormat(fmt)
+        
+        # 恢复光标位置
+        cursor.setPosition(current_position)
+        cursor.clearSelection()
+        self.log_text.setTextCursor(cursor)
+    
+    def clear_highlights(self, preserve_search=False):
+        """清除所有高亮"""
+        # 如果没有搜索，直接返回
+        if not hasattr(self, 'found_positions') or not self.found_positions:
+            if not preserve_search:
+                # 重置状态
+                self.match_label.setText("0/0")
+                self.prev_button.setEnabled(False)
+                self.next_button.setEnabled(False)
+                self.clear_search_button.setEnabled(False)
+            return
+            
+        # 保存当前光标位置
+        cursor = self.log_text.textCursor()
+        current_position = cursor.position()
+        
+        # 恢复高亮文本的原始背景色
+        for pos in self.found_positions:
+            search_term = self.search_input.text()
+            cursor = self.log_text.textCursor()
+            cursor.setPosition(pos)
+            cursor.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, len(search_term))
+            
+            # 获取当前格式并移除背景色
+            fmt = cursor.charFormat()
+            fmt.setBackground(Qt.transparent)
+            
+            # 应用修改后的格式
+            cursor.mergeCharFormat(fmt)
+        
+        # 恢复光标位置
+        cursor = self.log_text.textCursor()
+        cursor.setPosition(current_position)
+        self.log_text.setTextCursor(cursor)
+        
+        if not preserve_search:
+            # 重置状态
+            self.found_positions = []
+            self.current_match = -1
+            self.match_label.setText("0/0")
+            self.prev_button.setEnabled(False)
+            self.next_button.setEnabled(False)
+            self.clear_search_button.setEnabled(False)
+    
+    def move_to_match(self, index):
+        """移动到指定索引的匹配项"""
+        if not self.found_positions or index < 0 or index >= len(self.found_positions):
+            return
+        
+        cursor = self.log_text.textCursor()
+        position = self.found_positions[index]
+        search_term = self.search_input.text()
+        
+        # 设置光标位置并选择匹配的文本
+        cursor.setPosition(position)
+        cursor.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, len(search_term))
+        
+        # 应用到文本编辑器并滚动到可见区域
+        self.log_text.setTextCursor(cursor)
+        self.log_text.ensureCursorVisible()
+        
+        # 更新当前匹配索引和计数显示
+        self.current_match = index
+        self.match_label.setText(f"{index + 1}/{len(self.found_positions)}")
+    
+    def find_next(self):
+        """查找下一个匹配项"""
+        if not self.found_positions:
+            return
+        
+        next_index = (self.current_match + 1) % len(self.found_positions)
+        self.move_to_match(next_index)
+    
+    def find_previous(self):
+        """查找上一个匹配项"""
+        if not self.found_positions:
+            return
+        
+        prev_index = (self.current_match - 1) % len(self.found_positions)
+        self.move_to_match(prev_index)
 
 def run_studio_server_ui(host='0.0.0.0', port=8000):
     """主函数"""
