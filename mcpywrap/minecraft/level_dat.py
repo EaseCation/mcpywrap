@@ -1,14 +1,323 @@
 import os
 import sys
 import io
-import copy
 import datetime
 import uuid
-from amulet_nbt import (
-    NamedTag, TAG_String as String, TAG_Int as Int, TAG_Byte as Byte,
-    TAG_Float as Float, TAG_Long as Long, TAG_List as List,
-    TAG_Compound as Compound, load
-)
+import struct
+import random
+from collections import OrderedDict
+
+# 自定义 NBT 标签类型
+class TagType:
+    """NBT 标签类型枚举"""
+    END = 0
+    BYTE = 1
+    SHORT = 2
+    INT = 3
+    LONG = 4
+    FLOAT = 5
+    DOUBLE = 6
+    BYTE_ARRAY = 7
+    STRING = 8
+    LIST = 9
+    COMPOUND = 10
+    INT_ARRAY = 11
+    LONG_ARRAY = 12
+
+# 自定义 NBT 标签基类
+class NBTTag:
+    """NBT 标签基类"""
+    def __init__(self, value=None):
+        self.value = value
+    
+    def __str__(self):
+        return str(self.value)
+    
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.value!r})"
+
+class TAG_End(NBTTag):
+    tag_type = TagType.END
+    
+    def __init__(self):
+        super().__init__(None)
+    
+    def write_tag(self, buffer):
+        pass
+    
+    @classmethod
+    def read_tag(cls, buffer, little_endian=True):
+        return cls()
+
+class TAG_Byte(NBTTag):
+    tag_type = TagType.BYTE
+    
+    def __init__(self, value):
+        super().__init__(value)
+    
+    def write_tag(self, buffer, little_endian=True):
+        buffer.write(struct.pack("b", self.value))
+    
+    @classmethod
+    def read_tag(cls, buffer, little_endian=True):
+        return cls(struct.unpack("b", buffer.read(1))[0])
+
+class TAG_Short(NBTTag):
+    tag_type = TagType.SHORT
+    
+    def __init__(self, value):
+        super().__init__(value)
+    
+    def write_tag(self, buffer, little_endian=True):
+        fmt = "<h" if little_endian else ">h"
+        buffer.write(struct.pack(fmt, self.value))
+    
+    @classmethod
+    def read_tag(cls, buffer, little_endian=True):
+        fmt = "<h" if little_endian else ">h"
+        return cls(struct.unpack(fmt, buffer.read(2))[0])
+
+class TAG_Int(NBTTag):
+    tag_type = TagType.INT
+    
+    def __init__(self, value):
+        super().__init__(value)
+    
+    def write_tag(self, buffer, little_endian=True):
+        fmt = "<i" if little_endian else ">i"
+        buffer.write(struct.pack(fmt, self.value))
+    
+    @classmethod
+    def read_tag(cls, buffer, little_endian=True):
+        fmt = "<i" if little_endian else ">i"
+        return cls(struct.unpack(fmt, buffer.read(4))[0])
+
+class TAG_Long(NBTTag):
+    tag_type = TagType.LONG
+    
+    def __init__(self, value):
+        super().__init__(value)
+    
+    def write_tag(self, buffer, little_endian=True):
+        fmt = "<q" if little_endian else ">q"
+        buffer.write(struct.pack(fmt, self.value))
+    
+    @classmethod
+    def read_tag(cls, buffer, little_endian=True):
+        fmt = "<q" if little_endian else ">q"
+        return cls(struct.unpack(fmt, buffer.read(8))[0])
+
+class TAG_Float(NBTTag):
+    tag_type = TagType.FLOAT
+    
+    def __init__(self, value):
+        super().__init__(value)
+    
+    def write_tag(self, buffer, little_endian=True):
+        fmt = "<f" if little_endian else ">f"
+        buffer.write(struct.pack(fmt, self.value))
+    
+    @classmethod
+    def read_tag(cls, buffer, little_endian=True):
+        fmt = "<f" if little_endian else ">f"
+        return cls(struct.unpack(fmt, buffer.read(4))[0])
+
+class TAG_Double(NBTTag):
+    tag_type = TagType.DOUBLE
+    
+    def __init__(self, value):
+        super().__init__(value)
+    
+    def write_tag(self, buffer, little_endian=True):
+        fmt = "<d" if little_endian else ">d"
+        buffer.write(struct.pack(fmt, self.value))
+    
+    @classmethod
+    def read_tag(cls, buffer, little_endian=True):
+        fmt = "<d" if little_endian else ">d"
+        return cls(struct.unpack(fmt, buffer.read(8))[0])
+
+class TAG_String(NBTTag):
+    tag_type = TagType.STRING
+    
+    def __init__(self, value):
+        super().__init__(value)
+    
+    def write_tag(self, buffer, little_endian=True):
+        data = self.value.encode("utf-8")
+        fmt = "<H" if little_endian else ">H"
+        buffer.write(struct.pack(fmt, len(data)))
+        buffer.write(data)
+    
+    @classmethod
+    def read_tag(cls, buffer, little_endian=True):
+        fmt = "<H" if little_endian else ">H"
+        length = struct.unpack(fmt, buffer.read(2))[0]
+        data = buffer.read(length)
+        return cls(data.decode("utf-8"))
+
+class TAG_List(NBTTag):
+    tag_type = TagType.LIST
+    
+    def __init__(self, tag_type=0, values=None):
+        self.list_type = tag_type
+        super().__init__(values or [])
+    
+    def __getitem__(self, key):
+        return self.value[key]
+    
+    def __setitem__(self, key, value):
+        self.value[key] = value
+    
+    def __iter__(self):
+        return iter(self.value)
+    
+    def __len__(self):
+        return len(self.value)
+    
+    def append(self, value):
+        self.value.append(value)
+    
+    def write_tag(self, buffer, little_endian=True):
+        buffer.write(struct.pack("b", self.list_type))
+        fmt = "<i" if little_endian else ">i"
+        buffer.write(struct.pack(fmt, len(self.value)))
+        
+        for item in self.value:
+            item.write_tag(buffer, little_endian)
+    
+    @classmethod
+    def read_tag(cls, buffer, little_endian=True):
+        tag_type = struct.unpack("b", buffer.read(1))[0]
+        fmt = "<i" if little_endian else ">i"
+        length = struct.unpack(fmt, buffer.read(4))[0]
+        
+        tag_class = TAG_CLASSES.get(tag_type)
+        if not tag_class:
+            raise ValueError(f"Unknown tag type: {tag_type}")
+        
+        result = cls(tag_type, [])
+        for _ in range(length):
+            result.value.append(tag_class.read_tag(buffer, little_endian))
+        
+        return result
+
+class TAG_Compound(NBTTag):
+    tag_type = TagType.COMPOUND
+    
+    def __init__(self, value=None):
+        super().__init__(value or OrderedDict())
+    
+    def __getitem__(self, key):
+        return self.value[key]
+    
+    def __setitem__(self, key, value):
+        self.value[key] = value
+    
+    def __contains__(self, key):
+        return key in self.value
+    
+    def get(self, key, default=None):
+        return self.value.get(key, default)
+    
+    def write_tag(self, buffer, little_endian=True):
+        for name, tag in self.value.items():
+            buffer.write(struct.pack("b", tag.tag_type))
+            
+            # 写入名称
+            name_bytes = name.encode("utf-8")
+            fmt = "<H" if little_endian else ">H"
+            buffer.write(struct.pack(fmt, len(name_bytes)))
+            buffer.write(name_bytes)
+            
+            # 写入值
+            tag.write_tag(buffer, little_endian)
+        
+        # 写入结束标记
+        buffer.write(struct.pack("b", 0))
+    
+    @classmethod
+    def read_tag(cls, buffer, little_endian=True):
+        result = cls()
+        
+        while True:
+            tag_type = struct.unpack("b", buffer.read(1))[0]
+            if tag_type == 0:  # END 标签
+                break
+            
+            # 读取名称
+            fmt = "<H" if little_endian else ">H"
+            name_length = struct.unpack(fmt, buffer.read(2))[0]
+            name = buffer.read(name_length).decode("utf-8")
+            
+            # 读取标签值
+            tag_class = TAG_CLASSES.get(tag_type)
+            if not tag_class:
+                raise ValueError(f"Unknown tag type: {tag_type}")
+            
+            result.value[name] = tag_class.read_tag(buffer, little_endian)
+        
+        return result
+
+# 注册标签类
+TAG_CLASSES = {
+    TagType.END: TAG_End,
+    TagType.BYTE: TAG_Byte,
+    TagType.SHORT: TAG_Short,
+    TagType.INT: TAG_Int,
+    TagType.LONG: TAG_Long,
+    TagType.FLOAT: TAG_Float,
+    TagType.DOUBLE: TAG_Double,
+    TagType.STRING: TAG_String,
+    TagType.LIST: TAG_List,
+    TagType.COMPOUND: TAG_Compound
+}
+
+class NamedTag:
+    """命名的 NBT 标签"""
+    def __init__(self, tag, name=""):
+        self.tag = tag
+        self.name = name
+        self.compound = tag  # 兼容属性
+    
+    def save_to(self, buffer, little_endian=True):
+        """保存到缓冲区"""
+        buffer.write(struct.pack("b", self.tag.tag_type))
+        
+        # 写入名称
+        name_bytes = self.name.encode("utf-8")
+        fmt = "<H" if little_endian else ">H"
+        buffer.write(struct.pack(fmt, len(name_bytes)))
+        buffer.write(name_bytes)
+        
+        # 写入标签值
+        self.tag.write_tag(buffer, little_endian)
+
+def load(buffer, little_endian=True):
+    """从字节缓冲区加载 NBT 数据"""
+    tag_type = struct.unpack("b", buffer.read(1))[0]
+    
+    # 读取根标签名称
+    fmt = "<H" if little_endian else ">H"
+    name_length = struct.unpack(fmt, buffer.read(2))[0]
+    name = buffer.read(name_length).decode("utf-8")
+    
+    # 读取根标签值
+    tag_class = TAG_CLASSES.get(tag_type)
+    if not tag_class:
+        raise ValueError(f"Unknown root tag type: {tag_type}")
+    
+    tag = tag_class.read_tag(buffer, little_endian)
+    return NamedTag(tag, name)
+
+# 别名，兼容原有代码
+String = TAG_String
+Int = TAG_Int
+Byte = TAG_Byte
+Float = TAG_Float
+Long = TAG_Long
+List = TAG_List
+Compound = TAG_Compound
 
 class BedrockNBT:
     """Minecraft 基岩版 NBT 文件操作类"""
@@ -124,7 +433,7 @@ class BedrockNBT:
             
             # 将 NBT 数据保存到临时缓冲区
             buffer = io.BytesIO()
-            self.nbt_data.save_to(buffer)
+            self.nbt_data.save_to(buffer, little_endian=True)
             buffer.seek(0)
             nbt_bytes = buffer.read()
             
@@ -189,7 +498,7 @@ class BedrockNBT:
         root["LimitedWorldOriginZ"] = Int(0)
         
         # 最低兼容客户端版本
-        min_client_version = List([Int(1), Int(20), Int(51), Int(0), Int(0)])
+        min_client_version = List(TagType.INT, [Int(1), Int(20), Int(51), Int(0), Int(0)])
         root["MinimumCompatibleClientVersion"] = min_client_version
         
         root["MultiplayerGame"] = Byte(1)
@@ -200,7 +509,6 @@ class BedrockNBT:
         root["PlatformBroadcastIntent"] = Int(3)
         
         # 随机种子
-        import random
         root["RandomSeed"] = Long(random.randint(-9223372036854775808, 9223372036854775807))
         
         root["SpawnV1Villagers"] = Byte(0)
@@ -262,7 +570,7 @@ class BedrockNBT:
         root["keepinventory"] = Byte(0)
         
         # 版本信息
-        last_version = List([Int(1), Int(20), Int(51), Int(0), Int(0)])
+        last_version = List(TagType.INT, [Int(1), Int(20), Int(51), Int(0), Int(0)])
         root["lastOpenedWithVersion"] = last_version
         
         root["lightningLevel"] = Float(0.0)

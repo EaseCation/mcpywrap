@@ -25,7 +25,6 @@ dependencies = [
     "setuptools",
     "PyQt5>=5.15.0",
     "psutil>=5.8.0",
-    "amulet-nbt>=2.1.4",
     "rich>=10.0.0"
 ]
 
