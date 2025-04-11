@@ -16,9 +16,9 @@ from ..builders.MapPack import MapPack
 from ..config import config_exists, read_config, get_project_dependencies, get_project_type, get_project_name
 from ..builders.AddonsPack import AddonsPack
 from ..mcstudio.game import open_game, open_safaia
-from ..mcstudio.mcs import *
+from ..mcstudio.mcs import get_mcs_download_path, get_mcs_game_engine_dirs, get_mcs_game_engine_data_path, is_windows
 from ..mcstudio.runtime_cppconfig import gen_runtime_config
-from ..mcstudio.symlinks import setup_global_addons_symlinks, setup_map_packs_symlinks
+from ..mcstudio.symlinks import setup_global_addons_symlinks
 from ..utils.project_setup import find_and_configure_behavior_pack
 from ..utils.utils import ensure_dir
 from rich.console import Console
