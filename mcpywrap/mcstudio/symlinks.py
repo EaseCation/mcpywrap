@@ -485,8 +485,9 @@ def setup_map_packs_symlinks(src_map_dir: str, level_id: str, runtime_map_dir: s
                                 live.update(Text(f"⚠️ 删除链接失败: {str(e)}", style="yellow"))
                                 return False
                     else:
+                        # 删除此目录
                         live.update(Text(f"⚠️ 目标已存在且不是链接: {runtime_map_resource_packs_dir}", style="yellow"))
-                        return False
+                        os.rmdir(runtime_map_resource_packs_dir)
                         
                 links_to_create.append({
                     "source": src_map_resource_packs_dir,
@@ -512,7 +513,7 @@ def setup_map_packs_symlinks(src_map_dir: str, level_id: str, runtime_map_dir: s
                                 return False
                     else:
                         live.update(Text(f"⚠️ 目标已存在且不是链接: {runtime_map_behavior_packs_dir}", style="yellow"))
-                        return False
+                        os.rmdir(runtime_map_behavior_packs_dir)
                         
                 links_to_create.append({
                     "source": src_map_behavior_packs_dir,
