@@ -127,9 +127,10 @@ class AddonProjectBuilder:
 
 class MapProjectBuilder:
     """项目构建器"""
-    def __init__(self, source_dir: str, target_dir: str):
+    def __init__(self, source_dir: str, target_dir: str, merge: bool = False):
         self.source_dir = source_dir
         self.target_dir = target_dir
+        self.merge = merge
         self.config = read_config(os.path.join(source_dir, CONFIG_FILE))
         self.project_name = self.config.get('project', {}).get('name', 'current_project')
         self.dependency_manager = DependencyManager()
@@ -189,11 +190,19 @@ class MapProjectBuilder:
         # 复制地图核心数据
         click.secho('📦 复制地图核心数据...', fg="yellow")
         source_map.copy_level_data_to(self.target_dir)
+
+        main_behavior_pack_dir = None
+        main_resource_pack_dir = None
         
         # 复制原始行为包和资源包
         click.secho('📦 复制地图行为包和资源包...', fg="yellow")
         source_map.copy_behavior_packs_to(self.target_dir)
         source_map.copy_resource_packs_to(self.target_dir)
+
+        if source_map.behavior_packs:
+            main_behavior_pack_dir = os.path.join(self.target_dir, "behavior_packs", os.path.basename(source_map.behavior_packs[0]))
+        if source_map.resource_packs:
+            main_resource_pack_dir = os.path.join(self.target_dir, "resource_packs", os.path.basename(source_map.resource_packs[0]))
         
         # 处理依赖
         dependencies = self.dependency_manager.get_all_dependencies()
@@ -219,10 +228,18 @@ class MapProjectBuilder:
                             click.secho(f" 📦 {dep_node.name}: {dep_addon.path}", fg="green")
                             # 合并到地图特定的包目录结构
                             # 避免重名
-                            rename_behavior = os.path.basename(dep_addon.behavior_pack_dir) + "_" + dep_addon.pkg_name if os.path.basename(dep_addon.behavior_pack_dir) == "behavior_pack" or os.path.basename(dep_addon.behavior_pack_dir) == "BehaviorPack" else None
-                            dep_addon.copy_behavior_to(target_map.behavior_packs_dir, rename=rename_behavior)
-                            rename_resource = os.path.basename(dep_addon.resource_pack_dir) + "_" + dep_addon.pkg_name if os.path.basename(dep_addon.resource_pack_dir) == "resource_pack" or os.path.basename(dep_addon.resource_pack_dir) == "ResourcePack" else None
-                            dep_addon.copy_resource_to(target_map.resource_packs_dir, rename=rename_resource)
+                            if self.merge and main_behavior_pack_dir:
+                                dep_addon.merge_behavior_into(main_behavior_pack_dir)
+                            else:
+                                rename_behavior = os.path.basename(dep_addon.behavior_pack_dir) + "_" + dep_addon.pkg_name if os.path.basename(dep_addon.behavior_pack_dir) == "behavior_pack" or os.path.basename(dep_addon.behavior_pack_dir) == "BehaviorPack" else None
+                                dep_addon.copy_behavior_to(target_map.behavior_packs_dir, rename=rename_behavior)
+                                main_behavior_pack_dir = os.path.join(target_map.behavior_packs_dir, rename_behavior if rename_behavior else os.path.basename(dep_addon.behavior_pack_dir))
+                            if self.merge and main_resource_pack_dir:
+                                dep_addon.merge_resource_into(main_resource_pack_dir)
+                            else:
+                                rename_resource = os.path.basename(dep_addon.resource_pack_dir) + "_" + dep_addon.pkg_name if os.path.basename(dep_addon.resource_pack_dir) == "resource_pack" or os.path.basename(dep_addon.resource_pack_dir) == "ResourcePack" else None
+                                dep_addon.copy_resource_to(target_map.resource_packs_dir, rename=rename_resource)
+                                main_resource_pack_dir = os.path.join(target_map.resource_packs_dir, rename_resource if rename_resource else os.path.basename(dep_addon.resource_pack_dir))
             else:
                 # 如果没有依赖树（异常情况），则按照扁平方式处理
                 click.secho(f"⚠️ 警告: 无法构建依赖树，将按扁平方式处理依赖", fg="yellow")

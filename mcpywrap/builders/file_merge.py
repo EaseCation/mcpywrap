@@ -121,6 +121,12 @@ def try_merge_file(source_file, target_file, source_dependency_name=None) -> Tup
             _write_lang_file(target_file, merged_lang)
             return True, f"成功合并 {base_name} 到 {os.path.basename(target_file)}"
         
+        if base_name.endswith('.png') or base_name.endswith('.jpg') or base_name.endswith('.jpeg') or base_name.endswith('.tga'):
+            # 直接覆盖，并给出警告
+            shutil.copy2(source_file, target_file)
+            click.secho(f"⚠️ 警告: {base_name} 图片文件重复，正在覆盖", fg="yellow")
+            return True, f"强制覆盖 {base_name} 到 {os.path.basename(target_file)}"
+        
         # 读取源文件和目标文件的JSON内容
         source_json = _read_json_file(source_file)
         target_json = _read_json_file(target_file)

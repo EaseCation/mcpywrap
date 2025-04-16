@@ -11,7 +11,8 @@ from ..builders.project_builder import AddonProjectBuilder, MapProjectBuilder
 base_dir = os.getcwd()
 
 @click.command()
-def build_cmd():
+@click.option('--merge', '-m', is_flag=True, help='强制合并所有资源文件')
+def build_cmd(merge):
     """构建为 MCStudio 工程"""
     if not config_exists():
         click.secho('❌ 错误: 未找到配置文件。请先运行 `mcpywrap init` 初始化项目。', fg="red")
@@ -30,16 +31,17 @@ def build_cmd():
     target_dir = os.path.normpath(os.path.join(base_dir, target_dir))
 
     # 实际构建
-    build(base_dir, target_dir)
+    build(base_dir, target_dir, force_merge=merge)
 
     
-def build(source_dir, target_dir):
+def build(source_dir, target_dir, force_merge: bool = False):
     """
     执行项目构建
     
     Args:
         source_dir: 源代码目录
         target_dir: 目标目录
+        force_merge: 是否强制合并资源文件
         
     Returns:
         bool: 是否构建成功
@@ -55,7 +57,7 @@ def build(source_dir, target_dir):
         builder = AddonProjectBuilder(source_dir, target_dir)
         success, error = builder.build()
     elif project_type == "map":
-        builder = MapProjectBuilder(source_dir, target_dir)
+        builder = MapProjectBuilder(source_dir, target_dir, force_merge)
         success, error = builder.build()
     else:
         click.secho('❌ 暂未支持: 当前仅支持Addons和Map项目的构建', fg="red")
