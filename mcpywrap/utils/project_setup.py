@@ -21,7 +21,8 @@ def get_git_config_value(key):
             ["git", "config", "--get", key],
             capture_output=True,
             text=True,
-            check=False
+            check=False,
+            encoding="utf-8"
         )
         value = result.stdout.strip()
         return value if value else None
