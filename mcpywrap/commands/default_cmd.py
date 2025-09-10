@@ -2,7 +2,7 @@
 
 import click
 import os
-from ..config import update_config, config_exists, read_config, get_project_type
+from ..config import update_config, config_exists, read_config, get_project_type, ensure_map_setuptools_sync
 from .init_cmd import init as init_project
 from ..minecraft.netease_modsdk import check_installed_modsdk, get_available_versions, download_and_install_package
 from ..utils.project_setup import find_and_configure_behavior_pack, install_project_dev_mode
@@ -25,6 +25,9 @@ def default_cmd():
         init_project()
     else:
         click.echo(click.style('🔄 正在刷新项目...', fg='blue'))
+
+        # 确保 map 项目的 setuptools 配置同步
+        ensure_map_setuptools_sync(interactive=True)
 
         # 加载现有配置
         config = read_config()

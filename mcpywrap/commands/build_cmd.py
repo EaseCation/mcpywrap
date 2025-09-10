@@ -4,7 +4,7 @@
 """
 import os
 import click
-from ..config import config_exists, get_mcpywrap_config, get_project_type
+from ..config import config_exists, get_mcpywrap_config, get_project_type, ensure_map_setuptools_sync
 from ..builders.project_builder import AddonProjectBuilder, MapProjectBuilder
 
 
@@ -17,6 +17,9 @@ def build_cmd(merge):
     if not config_exists():
         click.secho('❌ 错误: 未找到配置文件。请先运行 `mcpywrap init` 初始化项目。', fg="red")
         return False
+    
+    # 确保 map 项目的 setuptools 配置同步
+    ensure_map_setuptools_sync(interactive=True)
     
     # 获取mcpywrap特定配置
     mcpywrap_config = get_mcpywrap_config()

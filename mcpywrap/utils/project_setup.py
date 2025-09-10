@@ -10,6 +10,7 @@ import subprocess
 import getpass
 from ..utils.utils import ensure_dir
 from ..minecraft.addons import find_behavior_pack_dir, is_minecraft_addon_project
+from .pip_error_parser import display_pip_error, suggest_common_fixes
 
 base_dir = os.getcwd()
 
@@ -108,9 +109,39 @@ def install_project_dev_mode():
     """使用pip在开发模式下安装项目"""
     click.echo(click.style('⚙️ 正在安装项目（pip install -e .）...', fg='blue'))
     try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-e", "."])
+        # 捕获pip输出以便进行错误分析
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e", "."],
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            check=True
+        )
         click.echo(click.style('✅ 项目已成功安装！', fg='green'))
         return True
-    except subprocess.CalledProcessError:
-        click.echo(click.style('🚫 项目安装失败，请手动运行 pip install -e .', fg='red'))
+    except subprocess.CalledProcessError as e:
+        # 显示友好的错误信息
+        error_output = e.stderr if e.stderr else e.stdout
+        display_pip_error(error_output, show_raw_output=False)
+        
+        # 询问是否显示详细错误信息
+        if click.confirm(click.style("❓ 是否查看详细错误信息以便调试？", fg="magenta"), default=False):
+            click.echo()
+            click.echo(click.style("📋 完整错误输出:", fg='cyan', bold=True))
+            click.echo(click.style("-" * 40, fg='cyan'))
+            if e.stderr:
+                click.echo("STDERR:")
+                click.echo(e.stderr)
+            if e.stdout:
+                click.echo("STDOUT:")
+                click.echo(e.stdout)
+            click.echo(click.style("-" * 40, fg='cyan'))
+        
+        # 显示通用解决建议
+        suggest_common_fixes()
+        
+        click.echo(click.style('💡 您可以尝试手动运行: pip install -e .', fg='yellow'))
+        return False
+    except Exception as e:
+        click.echo(click.style(f'❌ 发生未预期的错误: {str(e)}', fg='red'))
         return False

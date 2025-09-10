@@ -99,7 +99,6 @@ def create_symlinks(user_data_path, packs):
                         os.unlink(item_path)
                         link_count += 1
                     except Exception as e:
-                        # 错误记录到日志但不显示在进度中
                         console.print(f"⚠️ 删除链接失败 {item}: {str(e)}", style="yellow")
             
             total_deleted += link_count
@@ -116,7 +115,6 @@ def create_symlinks(user_data_path, packs):
                         os.unlink(item_path)
                         link_count += 1
                     except Exception as e:
-                        # 错误记录到日志但不显示在进度中
                         console.print(f"⚠️ 删除链接失败 {item}: {str(e)}", style="yellow")
             
             total_deleted += link_count
@@ -163,8 +161,12 @@ def create_symlinks(user_data_path, packs):
                     os.symlink(pack_data["behavior_pack_dir"], link_path)
                     behavior_links.append(link_name)
                     success_count += 1
+                    # 简洁输出链接路径信息 - 源路径指向链接完整路径
+                    source_path = pack_data['behavior_pack_dir'].replace('\\', '/')
+                    link_full_path = link_path.replace('\\', '/')
+                    console.print(f"  ✓ {source_path} → {link_full_path}", style="green")
                 except Exception as e:
-                    console.print(f"⚠️ 行为包链接创建失败 ({pack_data['pkg_name']}): {str(e)}", style="yellow")
+                    console.print(f"⚠️ 创建失败: {link_name} ({str(e)})", style="yellow")
                     fail_count += 1
                 
                 progress.advance(link_task)
@@ -180,8 +182,12 @@ def create_symlinks(user_data_path, packs):
                     os.symlink(pack_data["resource_pack_dir"], link_path)
                     resource_links.append(link_name)
                     success_count += 1
+                    # 简洁输出链接路径信息 - 源路径指向链接完整路径
+                    source_path = pack_data['resource_pack_dir'].replace('\\', '/')
+                    link_full_path = link_path.replace('\\', '/')
+                    console.print(f"  ✓ {source_path} → {link_full_path}", style="green")
                 except Exception as e:
-                    console.print(f"⚠️ 资源包链接创建失败 ({pack_data['pkg_name']}): {str(e)}", style="yellow")
+                    console.print(f"⚠️ 创建失败: {link_name} ({str(e)})", style="yellow")
                     fail_count += 1
                 
                 progress.advance(link_task)
@@ -480,9 +486,8 @@ def setup_map_packs_symlinks(src_map_dir: str, level_id: str, runtime_map_dir: s
                         if not need_admin or is_admin():
                             try:
                                 os.unlink(runtime_map_resource_packs_dir)
-                                live.update(Text("🗑️ 删除现有链接: " + runtime_map_resource_packs_dir, style="cyan"))
                             except Exception as e:
-                                live.update(Text(f"⚠️ 删除链接失败: {str(e)}", style="yellow"))
+                                console.print(f"⚠️ 删除失败: resource_packs ({str(e)})", style="yellow")
                                 return False
                     else:
                         # 删除此目录
@@ -507,9 +512,8 @@ def setup_map_packs_symlinks(src_map_dir: str, level_id: str, runtime_map_dir: s
                         if not need_admin or is_admin():
                             try:
                                 os.unlink(runtime_map_behavior_packs_dir)
-                                live.update(Text(f"🗑️ 删除现有链接: {runtime_map_behavior_packs_dir}", style="cyan"))
                             except Exception as e:
-                                live.update(Text(f"⚠️ 删除链接失败: {str(e)}", style="yellow"))
+                                console.print(f"⚠️ 删除失败: behavior_packs ({str(e)})", style="yellow")
                                 return False
                     else:
                         live.update(Text(f"⚠️ 目标已存在且不是链接: {runtime_map_behavior_packs_dir}", style="yellow"))
@@ -547,8 +551,12 @@ def setup_map_packs_symlinks(src_map_dir: str, level_id: str, runtime_map_dir: s
                     try:
                         os.symlink(link["source"], link["target"])
                         progress.advance(create_task)
+                        # 简洁输出链接路径信息 - 源路径指向链接完整路径
+                        source_path = link['source'].replace('\\', '/')
+                        target_path = link['target'].replace('\\', '/')
+                        console.print(f"  ✓ {source_path} → {target_path}", style="green")
                     except Exception as e:
-                        console.print(f"❌ 链接创建失败: {str(e)}", style="red")
+                        console.print(f"❌ 创建失败: {os.path.basename(link['target'])} ({str(e)})", style="red")
                         success = False
                         
                 progress.update(create_task, description="链接创建完成", completed=True)

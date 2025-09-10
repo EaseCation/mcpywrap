@@ -7,6 +7,7 @@ import click
 import subprocess
 import sys
 from ..config import config_exists, remove_dependency, get_project_dependencies
+from ..utils.pip_error_parser import display_pip_error, suggest_common_fixes
 
 @click.command()
 @click.argument('package', required=True)
@@ -36,7 +37,33 @@ def remove_cmd(package, uninstall):
     if uninstall:
         click.echo(click.style(f'🗑️  正在卸载 {package}...', fg='cyan'))
         try:
-            subprocess.check_call([sys.executable, '-m', 'pip', 'uninstall', '-y', package])
+            # 捕获pip输出以便进行错误分析
+            result = subprocess.run(
+                [sys.executable, '-m', 'pip', 'uninstall', '-y', package],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                check=True
+            )
             click.echo(click.style(f'✅ {package} 卸载成功！', fg='green', bold=True))
-        except subprocess.CalledProcessError:
-            click.echo(click.style(f'❌ {package} 卸载失败', fg='red', bold=True))
+        except subprocess.CalledProcessError as e:
+            click.echo(click.style(f'❌ 依赖包 {package} 卸载失败', fg='red', bold=True))
+            
+            # 显示友好的错误信息
+            error_output = e.stderr if e.stderr else e.stdout
+            display_pip_error(error_output, show_raw_output=False)
+            
+            # 询问是否显示详细错误信息
+            if click.confirm(click.style("❓ 是否查看详细错误信息以便调试？", fg="magenta"), default=False):
+                click.echo()
+                click.echo(click.style("📋 完整错误输出:", fg='cyan', bold=True))
+                click.echo(click.style("-" * 40, fg='cyan'))
+                if e.stderr:
+                    click.echo("STDERR:")
+                    click.echo(e.stderr)
+                if e.stdout:
+                    click.echo("STDOUT:")
+                    click.echo(e.stdout)
+                click.echo(click.style("-" * 40, fg='cyan'))
+            
+            click.echo(click.style(f'💡 您可以尝试手动运行: pip uninstall {package}', fg='yellow'))

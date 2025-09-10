@@ -8,11 +8,10 @@ import shutil
 import click
 from typing import Dict, List, Tuple, Optional
 
-from ..config import read_config, CONFIG_FILE, get_use_3to2
+from ..config import read_config, CONFIG_FILE
 from .AddonsPack import AddonsPack
 from .MapPack import MapPack
 from .dependency_manager import DependencyManager, DependencyNode
-from ..utils.py3to2_util import py3_to_2
 from ..utils.utils import run_command
 
 
@@ -115,12 +114,6 @@ class AddonProjectBuilder:
                     dep_addon.merge_behavior_into(self.target_addon.behavior_pack_dir)
                     dep_addon.merge_resource_into(self.target_addon.resource_pack_dir)
         
-        # 转换Python文件(如果需要)
-        if get_use_3to2():
-            click.secho("🔄 将Python 3代码转换为Python 2...", fg="yellow")
-            success, output = _convert_project_py3_to_py2(self.target_dir)
-            if not success:
-                return False, output
         
         return True, None
     
@@ -260,15 +253,6 @@ class MapProjectBuilder:
         if resource_packs_config:
             click.secho(f"✅ 配置了 {len(resource_packs_config)} 个资源包", fg="green")
         
-        # 转换Python文件(如果需要)
-        if get_use_3to2():
-            click.secho("🔄 将Python 3代码转换为Python 2...", fg="yellow")
-            # 注意：这里我们需要转换地图中的行为包目录
-            behavior_packs_dir = os.path.join(self.target_dir, "behavior_packs")
-            if os.path.exists(behavior_packs_dir):
-                success, output = _convert_project_py3_to_py2(behavior_packs_dir)
-                if not success:
-                    return False, output
         
         return True, None
 
@@ -321,26 +305,3 @@ def _get_ordered_dependencies(root_node: DependencyNode) -> List[List[Dependency
     levels.reverse()
     return levels
 
-def _convert_project_py3_to_py2(directory):
-    """将整个项目中的Python文件转换为Python 2"""
-    try:
-        # 首先尝试使用直接的Python API调用
-        from lib3to2.main import main
-        # main函数接受包名和参数列表
-        # 第一个参数是包名 'lib3to2' (这是3to2所有修复器的位置)
-        # 第二个参数是命令行参数列表
-        exit_code = main('lib3to2.fixes', ['-w', '-n', '-j', '4', '--no-diffs', directory, '--nofix=metaclass'])
-        
-        return exit_code == 0, "转换完成" if exit_code == 0 else f"转换失败，错误代码: {exit_code}"
-    except Exception as e:
-        # 如果直接调用失败，则尝试命令行方式（作为备选）
-        try:
-            # 方法1：直接命令行调用
-            success, output = run_command(["3to2", "-w", "-n", directory])
-            if not success:
-                # 方法2：使用shell=True参数
-                success, output = run_command(["3to2", "-w", "-n", directory], shell=True)
-
-            return success, output
-        except Exception as cmd_e:
-            return False, f"Python API调用失败: {str(e)}\n命令行调用也失败: {str(cmd_e)}"

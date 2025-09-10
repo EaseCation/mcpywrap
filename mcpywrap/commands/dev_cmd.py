@@ -6,7 +6,7 @@
 import os
 import time
 import click
-from ..config import get_mcpywrap_config, config_exists, read_config, get_project_type, CONFIG_FILE
+from ..config import get_mcpywrap_config, config_exists, read_config, get_project_type, CONFIG_FILE, ensure_map_setuptools_sync
 from ..builders.watcher import ProjectWatcher
 from .build_cmd import build
 
@@ -30,6 +30,9 @@ def dev_cmd():
     if not config_exists():
         click.secho('❌ 错误: 未找到配置文件。请先运行 `mcpywrap init` 初始化项目。', fg="red")
         return False
+    
+    # 确保 map 项目的 setuptools 配置同步
+    ensure_map_setuptools_sync(interactive=True)
     
     # 获取mcpywrap特定配置
     mcpywrap_config = get_mcpywrap_config()

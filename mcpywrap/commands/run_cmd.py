@@ -13,7 +13,7 @@ from datetime import datetime
 
 from ..builders import DependencyManager
 from ..builders.MapPack import MapPack
-from ..config import config_exists, read_config, get_project_dependencies, get_project_type, get_project_name
+from ..config import config_exists, read_config, get_project_dependencies, get_project_type, get_project_name, ensure_map_setuptools_sync
 from ..builders.AddonsPack import AddonsPack
 from ..mcstudio.game import open_game, open_safaia
 from ..mcstudio.mcs import get_mcs_download_path, get_mcs_game_engine_dirs, get_mcs_game_engine_data_path, is_windows
@@ -368,6 +368,9 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix):
     if not config_exists():
         console.print("❌ 项目尚未初始化，请先运行 mcpy init", style="red bold")
         return
+
+    # 确保 map 项目的 setuptools 配置同步
+    ensure_map_setuptools_sync(interactive=True)
 
     project_name = get_project_name()
     

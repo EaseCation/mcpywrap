@@ -28,6 +28,7 @@ from ..utils.project_setup import (
     get_default_author, get_default_email, get_default_project_name, find_behavior_pack_dir,
     update_behavior_pack_config, install_project_dev_mode
 )
+from ..config import update_map_setuptools_config
 from ..minecraft.template.mod_template import open_ui_crate_mod
 
 # 创建控制台对象
@@ -228,20 +229,7 @@ def init():
     else:
         console.print("[dim]未添加任何依赖项[/]")
     
-    # 询问是否使用3to2转换
-    use_3to2 = Confirm.ask(
-        "[magenta]❓ 是否使用3to2自动将Python 3代码转换为Python 2？[/]", 
-        default=False, 
-        console=console
-    )
-    
-    if use_3to2:
-        console.print("[green]✅ 已启用3to2转换[/]")
-    else:
-        console.print("[yellow]ℹ️ 已禁用3to2转换[/]")
-    
     project_info['dependencies'] = dependencies
-    project_info['use_3to2'] = use_3to2
 
     # 第4阶段：项目类型检测
     current_stage += 1
@@ -450,16 +438,14 @@ def init():
             'readme': "README.md",
             'requires-python': python_requires,
             'dependencies': dependencies,
-            'license': {'text': license_name},
+            'license': license_name,
             'classifiers': [
-                f"License :: OSI Approved :: {license_name} License",
                 "Programming Language :: Python",
                 "Programming Language :: Python :: 3",
             ]
         },
         'tool': {
             'mcpywrap': {
-                'use_3to2': use_3to2,
                 'project_type': project_type
             }
         }
@@ -476,10 +462,19 @@ def init():
     if project_url:
         config['project']['urls'] = {'Homepage': project_url}
     
-    # 如果是addon类型，更新行为包配置
+    # 根据项目类型配置 setuptools
     if project_type == "addon" and behavior_pack_dir:
         rel_path = update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir)
         console.print(f"[green]📦 已配置自动包发现于: [bold white]{rel_path}[/][/]")
+    elif project_type == "map":
+        # 为 map 项目添加基本的 setuptools 配置，排除地图目录
+        config.setdefault('tool', {})['setuptools'] = {
+            'packages': {
+                'find': {
+                    'exclude': ["behavior_packs*", "resource_packs*", "db*"]
+                }
+            }
+        }
     
     # 创建.gitignore文件
     if Confirm.ask(
@@ -565,6 +560,11 @@ work.mcscfg
         install_task = install_progress.add_task("安装中", total=1)
         install_project_dev_mode()
         install_progress.update(install_task, completed=1)
+    
+    # 为 map 项目自动扫描和配置 behavior_packs
+    if project_type == "map":
+        console.print("\n[cyan]🔍 扫描 behavior_packs 目录...[/]")
+        update_map_setuptools_config(interactive=False)
     
     # 总结
     console.print(Panel.fit(
