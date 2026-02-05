@@ -61,6 +61,7 @@ mcpy add --path "../shared-addon"
 | 命令 | 用途 |
 |---|---|
 | `mcpy build` | 将项目和依赖构建到配置的输出目录 |
+| `mcpy package` | 构建项目和依赖，在 `dist` 中生成可分发 ZIP |
 | `mcpy dev` | 监控 Addon 源码与依赖变化，持续更新构建结果 |
 | `mcpy mod` | 通过向导创建 Python Mod 框架 |
 | `mcpy modsdk` | 管理网易 ModSDK |
@@ -71,6 +72,7 @@ mcpy add --path "../shared-addon"
 `mcpy run` 默认复用最近创建的实例。构建时主项目内容优先于依赖；修改依赖声明后，请重新启动 `mcpy dev`。
 
 ## 游戏启动与排查
+
 
 通常不需要手动指定游戏路径。mcpywrap 会优先查找 MC Studio 登记的安装，必要时搜索固定磁盘中的标准下载目录，并跳过不完整的引擎版本。
 

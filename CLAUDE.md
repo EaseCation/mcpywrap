@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 项目概述
 
 mcpywrap 是一个用于《我的世界》中国版 ModSDK/资源包的全周期管理工具，基于 Python 生态系统构建。项目支持：
+
 - Minecraft Addon（插件）开发和构建
 - Minecraft Map（地图）项目管理
 - 依赖包管理和模块化开发
@@ -18,6 +19,7 @@ mcpywrap 是一个用于《我的世界》中国版 ModSDK/资源包的全周期
 ## 常用命令
 
 ### 开发命令
+
 ```bash
 # 安装项目到开发环境（可编辑模式）
 pip install -e .
@@ -43,9 +45,14 @@ mcpy edit
 
 # 创建 Python Mod 模板
 mcpy mod
+
+# 构建并打包可直接用于《我的世界》中国版市场发布的ZIP包
+mcpy package
+mcpy package --merge  # 强制合并所有资源文件（针对地图项目）
 ```
 
 ### 依赖管理
+
 ```bash
 # 添加依赖包
 mcpy add <package> [version]
@@ -55,6 +62,7 @@ mcpy remove <package>
 ```
 
 ### 发布
+
 ```bash
 # 发布到 PyPI
 mcpy publish
@@ -63,6 +71,7 @@ mcpy publish
 ## 核心架构深度解析
 
 ### 项目结构
+
 - `mcpywrap/` - 主包目录
   - `cli.py` - Click CLI 入口点
   - `commands/` - 所有CLI命令实现
@@ -75,6 +84,7 @@ mcpy publish
 ### 关键组件详解
 
 #### 1. 依赖管理系统 (builders/dependency_manager.py)
+
 - **DependencyManager**: 核心依赖管理器
   - 支持 `pip install -e` 安装的开发包发现
   - 通过 `direct_url.json` 解析本地包路径
@@ -84,6 +94,7 @@ mcpy publish
 - **find_all_mcpywrap_packages()**: 自动发现系统中所有 mcpywrap 兼容包
 
 #### 2. 包构建系统 (builders/)
+
 - **AddonsPack**: 
   - 处理行为包和资源包的复制、合并操作
   - 智能文件过滤（排除 Python 包管理文件）
@@ -94,6 +105,7 @@ mcpy publish
   - 自动生成 world_behavior_packs.json 和 world_resource_packs.json
 
 #### 3. 文件监控系统 (builders/watcher.py)
+
 - **ProjectWatcher**: 项目级文件监控
   - 同时监控主项目和所有依赖项目
   - 智能文件变化处理（创建、修改、删除、移动）
@@ -104,6 +116,7 @@ mcpy publish
   - 支持软链接和临时文件过滤
 
 #### 4. 文件合并系统 (builders/file_merge.py)
+
 - 智能 JSON 文件合并：
   - `terrain_texture.json`, `item_texture.json` (texture_data 字段合并)
   - `sounds.json`, `sound_definitions.json` (sound_definitions 合并)
@@ -115,6 +128,7 @@ mcpy publish
 #### 5. MC Studio 集成系统 (mcstudio/)
 
 ##### 软链接管理 (symlinks.py)
+
 - **setup_global_addons_symlinks()**: 全局插件软链接
   - Windows 管理员权限自动提权
   - 清理旧链接 → 创建新链接的原子操作
@@ -124,6 +138,7 @@ mcpy publish
   - 支持行为包和资源包目录级别的链接
 
 ##### 游戏实例管理 (game.py)
+
 - **open_game()**: 
   - 自动检测和选择 MC Studio 引擎版本
   - 从注册表读取 MC Studio 安装信息
@@ -134,12 +149,14 @@ mcpy publish
 - **open_safaia()**: 启动 Safaia Server 日志工具
 
 ##### 运行时配置 (runtime_cppconfig.py)
+
 - **gen_runtime_config()**: 
   - 生成 MC Studio 兼容的 .cppconfig 文件
   - 包含世界信息、游戏设置、作弊选项
   - 行为包和资源包链接配置
 
 ##### 日志服务器 (studio_server.py)
+
 - **StudioLogServer**: 多线程日志接收服务器
   - 支持命令行和 PyQt5 UI 模式
   - 智能日志着色（ANSI 终端色彩 + Qt 富文本）
@@ -147,6 +164,7 @@ mcpy publish
   - JSON 命令消息解析和处理
 
 #### 6. MC Studio 系统集成 (mcstudio/mcs.py)
+
 - 从 Windows 注册表读取 MC Studio 配置：
   - `get_mcs_download_path()`: 下载路径
   - `get_mcs_install_location()`: 安装路径
@@ -156,11 +174,13 @@ mcpy publish
 ### 项目类型支持
 
 #### Addon 项目架构
+
 - **behavior_pack/**: 行为包（脚本逻辑、实体定义、物品定义等）
 - **resource_pack/**: 资源包（纹理、模型、声音、UI 等）
 - 支持依赖层次化合并：深层依赖先合并，浅层依赖后合并
 
 #### Map 项目架构
+
 - **地图核心文件**: level.dat, levelname.txt, db/
 - **behavior_packs/**: 地图专用行为包
 - **resource_packs/**: 地图专用资源包
@@ -170,6 +190,7 @@ mcpy publish
 ### 配置系统
 
 #### pyproject.toml 结构
+
 ```toml
 [project]
 name = "project-name"
@@ -219,6 +240,7 @@ target_dir = "./build"     # 构建输出目录
 ### 测试和调试
 
 项目无自动化测试，依赖实际运行验证：
+
 - `mcpy run` - 启动游戏实例验证功能
 - `mcpy dev` - 热重载测试开发工作流
 - **Safaia Server** - 游戏内日志和调试命令
