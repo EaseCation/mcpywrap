@@ -279,12 +279,14 @@ class AddonsPack(object):
                 包类型: "behavior" 或 "resource"
                 相对路径: 在包中的相对路径，如果不在包中则为None
         """
-        absolute = os.path.abspath(file_path)
+        # Watchdog 可能返回短路径或目录链接路径；保留相对文件名大小写。
+        absolute = os.path.realpath(file_path)
         for kind, folder in (("behavior", self.behavior_pack_dir), ("resource", self.resource_pack_dir)):
             if not folder:
                 continue
+            folder = os.path.realpath(folder)
             try:
-                if os.path.commonpath([absolute, folder]) == folder:
+                if os.path.commonpath([os.path.normcase(absolute), os.path.normcase(folder)]) == os.path.normcase(folder):
                     return True, kind, os.path.relpath(absolute, folder)
             except ValueError:
                 continue

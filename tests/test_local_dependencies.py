@@ -13,7 +13,7 @@ from unittest.mock import patch, Mock
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from click.testing import CliRunner
-from watchdog.events import FileModifiedEvent, FileDeletedEvent
+from watchdog.events import FileModifiedEvent, FileDeletedEvent, FileCreatedEvent
 from mcpywrap.cli import cli
 from mcpywrap.dependencies import (DependencyService, DependencyDeclaration, DependencyError,
                                   read_project, write_project, path_for_storage)
@@ -62,7 +62,7 @@ class FakeDist:
 class ProjectFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='mcpy-test-')
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.main = addon(self.root, 'main', configured=True)
         self.dep = addon(self.root, '中文 shared')
         self.service = DependencyService(self.main)
@@ -278,6 +278,23 @@ class Projects(ProjectFixture):
         self.assertTrue(AddonProjectBuilder(self.main, fresh).build()[0])
         self.assertEqual({p.relative_to(out): p.read_bytes() for p in out.rglob('*') if p.is_file()},
                          {p.relative_to(fresh): p.read_bytes() for p in fresh.rglob('*') if p.is_file()})
+
+    def test_incremental_events_through_directory_alias(self):
+        from mcpywrap.mcstudio.symlinks import _create_directory_link
+        self.add()
+        out = self.main / 'build'
+        self.assertTrue(AddonProjectBuilder(self.main, out).build()[0])
+        alias = self.root / 'main-alias'
+        _create_directory_link(str(self.main), str(alias))
+        watcher = ProjectWatcher(str(alias), str(out))
+        watcher.setup_from_config('main')
+        handler = watcher.multi_watcher.watchers[-1].handler
+        (self.main / 'behavior_pack/marker.py').unlink()
+        handler.on_deleted(FileDeletedEvent(str(alias / 'behavior_pack/marker.py')))
+        self.assertIn('中文 shared', (out / 'behavior_pack/marker.py').read_text(encoding='utf-8'))
+        (self.main / 'behavior_pack/CamelCase.py').write_text('VALUE = 1')
+        handler.on_created(FileCreatedEvent(str(alias / 'behavior_pack/CamelCase.py')))
+        self.assertIn('CamelCase.py', [p.name for p in (out / 'behavior_pack').iterdir()])
 
     def test_invalid_dependencies_preserve_output(self):
         out = self.main / 'build'
