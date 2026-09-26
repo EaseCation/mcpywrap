@@ -88,6 +88,11 @@ def get_project_name() -> str:
     config = read_config()
     return config.get('project', {}).get('name', 'project')
 
+def get_project_version() -> str:
+    """获取项目版本"""
+    config = read_config()
+    return config.get('project', {}).get('version', '0.1.0')
+
 def get_mcpywrap_config():
     """获取mcpywrap特定的配置"""
     config = read_config()

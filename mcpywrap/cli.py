@@ -8,6 +8,7 @@ from .commands.add_cmd import add_cmd
 from .commands.remove_cmd import remove_cmd
 from .commands.build_cmd import build_cmd
 from .commands.dev_cmd import dev_cmd
+from .commands.package_cmd import package_cmd
 from .commands.publish_cmd import publish_cmd
 from .commands.default_cmd import default_cmd
 from .commands.modsdk_cmd import modsdk_cmd
@@ -33,6 +34,7 @@ cli.add_command(add_cmd, name='add')
 cli.add_command(remove_cmd, name='remove')
 cli.add_command(build_cmd, name='build')
 cli.add_command(dev_cmd, name='dev')
+cli.add_command(package_cmd, name='package')
 cli.add_command(publish_cmd, name='publish')
 cli.add_command(mod_cmd, name='mod')
 cli.add_command(run_cmd, name='run')

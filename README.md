@@ -61,6 +61,7 @@ mcpy add --path "../shared-addon"
 | 命令 | 用途 |
 |---|---|
 | `mcpy build` | 将项目和依赖构建到配置的输出目录 |
+| `mcpy package` | 构建项目和依赖，在 `dist` 中生成可分发 ZIP |
 | `mcpy dev` | 监控 Addon 源码与依赖变化，持续更新构建结果 |
 | `mcpy mod` | 通过向导创建 Python Mod 框架 |
 | `mcpy modsdk` | 管理网易 ModSDK |
@@ -69,6 +70,14 @@ mcpy add --path "../shared-addon"
 | `mcpy run -d <ID前缀>` | 删除指定实例 |
 
 `mcpy run` 默认复用最近创建的实例。构建时主项目内容优先于依赖；修改依赖声明后，请重新启动 `mcpy dev`。
+
+### 打包分发
+
+在项目根目录执行 `mcpy package`，会先构建项目及 Python 包／本地 Addon 依赖，再生成 `dist/<项目名>-<版本>.zip`。名称和版本读取 `pyproject.toml` 的 `[project]`；不需要配置 `target_dir`。
+
+Addon ZIP 内为 `<项目名>_bp/`、`<项目名>_rp/`（仅包含实际构建出的包）；地图 ZIP 根目录直接包含存档数据、行为包、资源包及世界包配置。地图默认保留独立包，使用 `mcpy package --merge`（或 `-m`）按构建规则合并依赖资源。构建产物中的空目录会保留。
+
+重复打包成功后会替换同名 ZIP；失败时保留已有 ZIP，临时文件自动清理。
 
 ## 游戏启动与排查
 
