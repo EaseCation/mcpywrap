@@ -1,209 +1,158 @@
-# -*- coding: utf-8 -*-
-"""
-依赖管理模块 - 负责处理项目依赖关系和依赖树构建
-"""
-
-import os
-import sys
+"""将 Python 包与本地目录解析为统一的 Addon 依赖图。"""
+import hashlib
 import json
-import logging
+import re
+from importlib import metadata
 from pathlib import Path
-from typing import Dict, List, Optional, Set
-import click
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 
-from ..config import CONFIG_FILE, check_has_mcpywrap_config
+from packaging.requirements import Requirement, InvalidRequirement
+from packaging.utils import canonicalize_name
+from ..dependencies import DependencyError, addon_directories, canonical_path, declarations, read_project, resolve_path
 from .AddonsPack import AddonsPack
 
+
+def _decode_direct_url(direct_url_path):
+    return _local_url(json.loads(Path(direct_url_path).read_text(encoding='utf-8')).get('url', ''))
+
+
+def _local_url(url):
+    parsed = urlsplit(url)
+    if parsed.scheme != 'file':
+        return None
+    path = url2pathname(parsed.path)
+    if parsed.netloc and parsed.netloc != 'localhost':
+        path = '//' + parsed.netloc + path
+    return str(Path(path).resolve())
+
+
 class DependencyNode:
-    """依赖树节点"""
-    def __init__(self, name: str, addon_pack: AddonsPack, parent=None):
-        self.name = name
-        self.addon_pack: AddonsPack = addon_pack
-        self.parent = parent
-        self.children: List[DependencyNode] = []
-        
-    def add_child(self, child_node):
-        """添加子节点"""
-        self.children.append(child_node)
-        
-    def __str__(self):
-        return f"{self.name} -> {[child.name for child in self.children]}"
-        
-    def __repr__(self):
-        return self.__str__()
-    
+    def __init__(self, name, addon_pack, parent=None):
+        self.name, self.addon_pack, self.parent = name, addon_pack, parent
+        self.children = []
 
-def _decode_direct_url(direct_url_path: str) -> Optional[str]:
-    with open(direct_url_path, 'r', encoding='utf-8') as f:
-        try:
-            direct_url = json.load(f)
-            # 读取其中的url
-            if "url" in direct_url:
-                url = direct_url["url"]
-                # 处理file://开头的路径
-                if url.startswith("file:///"):
-                    # 移除file:/// 前缀
-                    if sys.platform == "win32":
-                        # Windows 路径处理 (例如 file:///D:/path)
-                        url = url[8:]  # 去除 file:///
-                    else:
-                        url = "/" + url[8:]  # 保留根目录斜杠
-                    url = os.path.abspath(url)
-                # 兼容处理旧格式 file://
-                elif url.startswith("file://"):
-                    url = url[7:]
-                # 对URL进行解码，处理%编码的特殊字符
-                from urllib.parse import unquote
-                url = unquote(url)
-                url = os.path.abspath(url)
+    def add_child(self, node):
+        if node not in self.children:
+            self.children.append(node)
 
-                # 确保路径格式一致
-                if sys.platform == "win32":
-                    url = url.replace("\\", "/")
-
-                return url
-        except json.JSONDecodeError:
-            logging.warning(f"无法解析 {direct_url_path} 的JSON内容")
 
 class DependencyManager:
-    """依赖管理器"""
     def __init__(self):
-        self.dependency_map: Dict[str, AddonsPack] = {}
-        self.root_node: Optional[DependencyNode] = None
-        self.processed_deps: Set[str] = set()
+        self.dependency_map = {}
+        self.root_node = None
+        self.warnings = []
+        self._nodes, self._active, self._ordered = {}, [], []
 
-    def find_dependency_path(self, package_name: str) -> Optional[str]:
-        """
-        查找依赖包的真实路径，支持常规安装和pip install -e (编辑安装)
-        """
-        # 得到site-packages路径
-        for site_package_dir in __import__('site').getsitepackages():
-            site_packages = Path(site_package_dir)
-            for dist_info in site_packages.glob("*.dist-info"):
-                # 读取METADATA文件获取真实包名
-                metadata_path = dist_info / "METADATA"
-                if metadata_path.exists():
-                    pkg_name = None
-                    with open(metadata_path, 'r', encoding='utf-8') as f:
-                        for line in f:
-                            if line.startswith("Name:"):
-                                pkg_name = line.split(":", 1)[1].strip()
-                                break
+    def find_dependency_path(self, package_name):
+        try:
+            dist = metadata.distribution(Requirement(package_name).name)
+        except (metadata.PackageNotFoundError, InvalidRequirement):
+            return None
+        direct = dist.read_text('direct_url.json')
+        return _local_url(json.loads(direct).get('url', '')) if direct else None
 
-                    if not pkg_name or pkg_name != package_name:
-                        continue
+    def build_dependency_tree(self, project_name, project_path, dependencies=None, *, config=None, allow_missing=False):
+        self.__init__()
+        project_path = str(Path(project_path).resolve())
+        config = read_project(project_path) if config is None else config
+        if dependencies is not None:
+            config.setdefault('project', {})['dependencies'] = dependencies
+        root_id = re.sub(r'[^\w.-]', '_', project_name)[:60] + '_' + hashlib.sha256(canonical_path(project_path).encode('utf-8')).hexdigest()[:12]
+        root = DependencyNode(project_name, AddonsPack(root_id, project_path, is_origin=True))
+        self.root_node = root
+        key = canonical_path(project_path)
+        self._nodes[key] = root
+        self._active.append(key)
+        self._process(root, config)
+        self._active.pop()
+        self.dependency_map = {canonical_path(n.addon_pack.path): n.addon_pack for n in self._ordered}
+        if self.warnings and not allow_missing:
+            raise DependencyError('\n'.join(self.warnings))
+        return root
 
-                    # 处理direct_url.json获取包路径
-                    direct_url_path = dist_info / "direct_url.json"
-                    if direct_url_path.exists():
-                        origin_path = _decode_direct_url(str(direct_url_path))
-                        if origin_path:
-                            # 返回绝对路径
-                            return origin_path
-                        continue
-        return None
-    
-    def build_dependency_tree(self, project_name: str, project_path: str, dependencies: List[str]) -> DependencyNode:
-        """
-        构建依赖树
-        
-        Args:
-            project_name: 主项目名称
-            project_path: 主项目路径
-            dependencies: 依赖列表
-            
-        Returns:
-            DependencyNode: 依赖树根节点
-        """
-        # 创建根节点(主项目)
-        root_addon = AddonsPack(project_name, project_path, is_origin=True)
-        self.root_node = DependencyNode(project_name, root_addon)
-        self.processed_deps = {project_name}  # 防止循环依赖
-        
-        # 递归构建依赖树
-        self._process_dependencies(self.root_node, dependencies)
-        
-        return self.root_node
-    
-    def _process_dependencies(self, parent_node: DependencyNode, dependencies: List[str]):
-        """
-        递归处理依赖
-        
-        Args:
-            parent_node: 父节点
-            dependencies: 依赖列表
-        """
-        for dep_name in dependencies:
-            # 防止循环依赖
-            if dep_name in self.processed_deps:
-                continue
-                
-            # 查找依赖路径
-            dep_path = self.find_dependency_path(dep_name)
-            if not dep_path:
-                click.secho(f"⚠️ 警告: 未找到依赖包: {dep_name}", fg="yellow")
-                continue
-                
-            # 创建依赖的AddonsPack
-            dep_addon = AddonsPack(dep_name, dep_path)
-            self.dependency_map[dep_name] = dep_addon
-            
-            # 创建依赖节点并添加到父节点
-            dep_node = DependencyNode(dep_name, dep_addon, parent_node)
-            parent_node.add_child(dep_node)
-            
-            # 标记为已处理
-            self.processed_deps.add(dep_name)
-            
-            # 读取子依赖的配置文件，并递归处理子依赖
+    def _process(self, parent, config):
+        for entry in declarations(config):
+            source = parent.addon_pack.path
             try:
-                from ..config import read_config, CONFIG_FILE
-                config_file_path = os.path.join(dep_path, CONFIG_FILE)
-                if os.path.exists(config_file_path):
-                    config = read_config(config_file_path)
-                    sub_dependencies = config.get('project', {}).get('dependencies', [])
-                    if sub_dependencies:
-                        click.secho(f"🔍 找到 {dep_name} 的子依赖: {', '.join(sub_dependencies)}", fg="cyan")
-                        # 递归处理子依赖
-                        self._process_dependencies(dep_node, sub_dependencies)
-                    else:
-                        click.secho(f"📦 {dep_name} 没有子依赖", fg="cyan")
-                else:
-                    click.secho(f"⚠️ 警告: 依赖包 {dep_name} 中未找到配置文件", fg="yellow")
-            except Exception as e:
-                click.secho(f"⚠️ 警告: 处理 {dep_name} 的子依赖时出错: {str(e)}", fg="yellow")
-            
-    def get_all_dependencies(self) -> Dict[str, AddonsPack]:
-        """获取所有依赖"""
+                if entry.kind == 'local':
+                    path = str(resolve_path(source, entry.value))
+                    self._visit(parent, path, Path(path).name)
+                    continue
+                try:
+                    requirement = Requirement(entry.value)
+                except InvalidRequirement as exc:
+                    raise DependencyError(f'无效的 Python 包声明: {entry.value}') from exc
+                if requirement.marker and not requirement.marker.evaluate():
+                    continue
+                try:
+                    dist = metadata.distribution(requirement.name)
+                except metadata.PackageNotFoundError:
+                    self._missing(source, entry.value, '尚未安装')
+                    continue
+                if requirement.specifier and not requirement.specifier.contains(dist.version, prereleases=True):
+                    self._missing(source, entry.value, f'已安装 {dist.version}，不满足版本约束')
+                    continue
+                path = self.find_dependency_path(entry.value)
+                if not path:
+                    continue
+                direct = dist.read_text('direct_url.json')
+                if not Path(path).is_dir() and direct and 'dir_info' in json.loads(direct):
+                    self._missing(source, entry.value, f'安装来源目录不存在: {path}')
+                    continue
+                child_config = read_project(path)
+                has_mcpy = 'mcpywrap' in child_config.get('tool', {})
+                looks_like_addon = Path(path).is_dir() and any(
+                    p.is_dir() and p.name.startswith(('behavior_pack', 'BehaviorPack', 'resource_pack', 'ResourcePack'))
+                    for p in Path(path).iterdir())
+                if has_mcpy or looks_like_addon:
+                    self._visit(parent, path, canonicalize_name(requirement.name))
+            except (DependencyError, OSError, ValueError) as exc:
+                raise DependencyError(f'来源 {source}\n依赖 {entry.value!r}: {exc}') from exc
+
+    def _missing(self, source, value, reason):
+        self.warnings.append(f'{source}: {value} {reason}；请显式执行 mcpy add "{value}"')
+
+    def _visit(self, parent, path, name):
+        key = canonical_path(path)
+        if key in self._active:
+            raise DependencyError('循环依赖: ' + ' -> '.join(self._active + [key]))
+        if key in self._nodes:
+            parent.add_child(self._nodes[key])
+            return
+        config = read_project(path)
+        if config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
+            raise DependencyError(f'仅支持 Addon 目录依赖: {path}')
+        folders = addon_directories(path)
+        suffix = hashlib.sha256(key.encode('utf-8')).hexdigest()[:12]
+        safe_name = re.sub(r'[^\w.-]', '_', name)[:60] or 'addon'
+        addon = AddonsPack(f'{safe_name}_{suffix}', path)
+        addon.behavior_pack_dir, addon.resource_pack_dir = folders.get('behavior'), folders.get('resource')
+        node = DependencyNode(name, addon, parent)
+        self._nodes[key] = node
+        parent.add_child(node)
+        self._active.append(key)
+        config = read_project(path)
+        if 'mcpywrap' in config.get('tool', {}):
+            self._process(node, config)
+        self._active.pop()
+        self._ordered.append(node)
+
+    def get_all_dependencies(self):
         return self.dependency_map
-        
-    def get_dependency_tree(self) -> Optional[DependencyNode]:
-        """获取依赖树"""
+
+    def get_dependency_tree(self):
         return self.root_node
 
 
-def find_all_mcpywrap_packages() -> List[str]:
-        packages = []
-        # 得到site-packages路径
-        for site_package_dir in __import__('site').getsitepackages():
-            site_packages = Path(site_package_dir)
-            for dist_info in site_packages.glob("*.dist-info"):
-                # 读取METADATA文件获取真实包名
-                metadata_path = dist_info / "METADATA"
-                if metadata_path.exists():
-                    pkg_name = None
-                    with open(metadata_path, 'r', encoding='utf-8') as f:
-                        for line in f:
-                            if line.startswith("Name:"):
-                                pkg_name = line.split(":", 1)[1].strip()
-                                break
-                    if pkg_name is None:
-                        continue
-                    # 处理direct_url.json获取包路径
-                    direct_url_path = dist_info / "direct_url.json"
-                    if direct_url_path.exists():
-                        origin_path = _decode_direct_url(str(direct_url_path))
-                        if origin_path:
-                            if check_has_mcpywrap_config(os.path.join(origin_path, CONFIG_FILE)):
-                                packages.append(pkg_name)
-        return packages
+def find_all_mcpywrap_packages():
+    packages = []
+    for dist in metadata.distributions():
+        try:
+            direct = dist.read_text('direct_url.json')
+            path = _local_url(json.loads(direct).get('url', '')) if direct else None
+            if path and 'mcpywrap' in read_project(path).get('tool', {}):
+                packages.append(dist.metadata['Name'])
+        except (ValueError, OSError):
+            continue
+    return sorted(set(packages))

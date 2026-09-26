@@ -7,11 +7,12 @@
 import os
 import sys
 import time
+import html
 from datetime import datetime
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QHeaderView, 
-    QMessageBox, QSplitter, QTextEdit, QProgressBar, QFrame,
+    QMessageBox, QSplitter, QTextEdit, QPlainTextEdit, QProgressBar, QFrame,
     QStyleFactory, QStatusBar, QCheckBox, QFileDialog, QGroupBox,
     QLineEdit, QListWidget, QListWidgetItem, QComboBox, QCompleter
 )
@@ -22,13 +23,12 @@ from PyQt5.QtGui import QIcon, QFont, QTextCursor, QColor, QPalette
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from mcpywrap.commands.run_cmd import (
     _get_all_instances, _generate_new_instance_config, _setup_dependencies, _run_game_with_instance,
-    _delete_instance, _clean_all_instances, get_project_name, config_exists,
-    base_dir as default_base_dir
+    _delete_instance, _clean_all_instances, get_project_name, config_exists
 )
 from ..commands.edit_cmd import open_edit
 from ..config import get_project_dependencies
-from ..commands.add_cmd import add_dependency
-from ..commands.remove_cmd import remove_dependency
+from ..dependencies import (DependencyService, DependencyDeclaration, DependencyError,
+                            read_project, resolve_path, path_for_storage, addon_directories)
 from ..builders.dependency_manager import find_all_mcpywrap_packages
 
 
@@ -37,13 +37,23 @@ class GameInstanceManager(QMainWindow):
     
     def __init__(self, base_dir):
         super().__init__()
-        self.base_dir = base_dir
-        self.current_project = get_project_name() if config_exists() else "未初始化项目"
+        self.base_dir = os.path.abspath(base_dir)
+        self.dependency_service = DependencyService(self.base_dir)
+        self.current_project = read_project(self.base_dir).get('project', {}).get('name', '未初始化项目')
+        self.dependency_busy = False
         self.instances = []
         self.all_packs = None
         self.dependencies = []
         self.setup_ui()
         self.init_data()
+
+    def closeEvent(self, event):
+        if any(getattr(self, name, None) and getattr(self, name).isRunning()
+               for name in ('install_thread', 'game_thread')):
+            self.log('请等待当前安装或启动操作完成后关闭窗口。', 'warning')
+            event.ignore()
+            return
+        super().closeEvent(event)
 
     def setup_global_font(self):
         """设置全局字体为现代化中文字体"""
@@ -122,21 +132,36 @@ class GameInstanceManager(QMainWindow):
         add_dep_group = QGroupBox("添加新依赖")
         add_dep_layout = QVBoxLayout(add_dep_group)
         
-        # 依赖输入框 - 使用QComboBox替代QLineEdit
+        self.dependency_kind = QComboBox()
+        self.dependency_kind.addItem("Python 包", "package")
+        self.dependency_kind.addItem("本地 Addon 目录", "local")
+        add_dep_layout.addWidget(self.dependency_kind)
         self.new_dep_input = QComboBox()
-        self.new_dep_input.setEditable(True)  # 允许用户输入自定义值
-        self.new_dep_input.setInsertPolicy(QComboBox.NoInsert)  # 不自动插入用户输入
+        self.new_dep_input.setEditable(True)
+        self.new_dep_input.setInsertPolicy(QComboBox.NoInsert)
+        self.new_dep_input.lineEdit().setPlaceholderText("包名或版本约束")
         self.new_dep_input.lineEdit().returnPressed.connect(self.add_dependency)
-        self.new_dep_input.setPlaceholderText = lambda text: self.new_dep_input.lineEdit().setPlaceholderText(text)
-        self.new_dep_input.setPlaceholderText("输入依赖包名称")
-        self.new_dep_input.currentIndexChanged.connect(self.on_dependency_selected_from_dropdown)
         add_dep_layout.addWidget(self.new_dep_input)
-        
-        # 添加依赖按钮
-        add_dep_btn = QPushButton("添加依赖")
-        add_dep_btn.clicked.connect(self.add_dependency)
-        add_dep_layout.addWidget(add_dep_btn)
-        
+        self.local_path_input = QLineEdit()
+        self.local_path_input.setPlaceholderText("相对或绝对 Addon 根目录")
+        self.local_path_input.returnPressed.connect(self.add_dependency)
+        self.browse_dependency_btn = QPushButton("浏览目录")
+        self.browse_dependency_btn.clicked.connect(self.browse_dependency)
+        self.absolute_path_check = QCheckBox("保存为绝对路径")
+        self.path_preview = QPlainTextEdit()
+        self.path_preview.setReadOnly(True)
+        self.path_preview.setMinimumHeight(105)
+        self.path_preview.setMaximumHeight(150)
+        for widget in (self.local_path_input, self.browse_dependency_btn, self.absolute_path_check, self.path_preview):
+            add_dep_layout.addWidget(widget)
+        self.local_path_input.textChanged.connect(self.update_path_preview)
+        self.absolute_path_check.toggled.connect(self.update_path_preview)
+        self.dependency_kind.currentIndexChanged.connect(self.on_dependency_kind_changed)
+        self.add_dep_btn = QPushButton("添加依赖")
+        self.add_dep_btn.clicked.connect(self.add_dependency)
+        add_dep_layout.addWidget(self.add_dep_btn)
+        self.on_dependency_kind_changed()
+
         dependency_layout.addWidget(add_dep_group)
         
         # 将依赖管理界面添加到分割器
@@ -228,7 +253,7 @@ class GameInstanceManager(QMainWindow):
     
     def init_data(self):
         """初始化数据"""
-        if not config_exists():
+        if not os.path.isfile(os.path.join(self.base_dir, 'pyproject.toml')):
             self.log("❌ 项目尚未初始化，请先运行 mcpy init", "error")
             self.new_btn.setEnabled(False)
             self.clean_btn.setEnabled(False)
@@ -237,7 +262,7 @@ class GameInstanceManager(QMainWindow):
         
         # 设置项目依赖
         self.log("📦 正在加载项目依赖...")
-        self.all_packs = _setup_dependencies(self.current_project, self.base_dir)
+        self.reload_runtime_dependencies()
         
         # 加载实例列表
         self.refresh_instances()
@@ -281,7 +306,7 @@ class GameInstanceManager(QMainWindow):
     
     def refresh_instances(self):
         """刷新实例列表"""
-        self.instances = _get_all_instances()
+        self.instances = _get_all_instances(self.base_dir)
         self.instance_table.setRowCount(0)
         
         if not self.instances:
@@ -322,29 +347,79 @@ class GameInstanceManager(QMainWindow):
         self.log(f"✅ 已加载 {len(self.instances)} 个游戏实例", "success")
     
     def refresh_dependencies(self):
-        """刷新依赖列表"""
         self.dependency_list.clear()
-        if not config_exists():
-            return
-            
-        self.dependencies = get_project_dependencies()
-        for dep in self.dependencies:
-            item = QListWidgetItem(dep)
-            self.dependency_list.addItem(item)
-        
-        if self.dependencies:
-            self.log(f"📦 已加载 {len(self.dependencies)} 个项目依赖", "info")
-        else:
-            self.log("📦 项目没有任何依赖", "info")
-        
-        # 禁用移除按钮，等待用户选择
+        try:
+            self.dependencies = self.dependency_service.list()
+            for dependency in self.dependencies:
+                status = self.dependency_service.status(dependency)
+                label = "本地目录" if dependency.kind == "local" else "Python 包"
+                text = f"[{label}] {dependency.value}"
+                if status:
+                    text += " — 不可用"
+                item = QListWidgetItem(text)
+                item.setData(Qt.UserRole, dependency)
+                tooltip = status or "可用"
+                if dependency.kind == 'local':
+                    tooltip = str(resolve_path(self.base_dir, dependency.value)) + "\n" + tooltip
+                item.setToolTip(tooltip)
+                self.dependency_list.addItem(item)
+        except (DependencyError, OSError) as exc:
+            self.log(str(exc), 'error')
         self.remove_dep_btn.setEnabled(False)
-    
+
+    def reload_runtime_dependencies(self):
+        try:
+            self.all_packs = _setup_dependencies(self.current_project, self.base_dir, raise_errors=True)
+        except (DependencyError, OSError) as exc:
+            self.all_packs = None
+            self.log(str(exc), 'error')
+        ready = self.all_packs is not None and not self.dependency_busy
+        self.new_btn.setEnabled(ready)
+        self.edit_btn.setEnabled(ready)
+        self.run_btn.setEnabled(ready and bool(self.instance_table.selectedItems()))
+        return self.all_packs is not None
+
+    def on_dependency_kind_changed(self, *args):
+        local = self.dependency_kind.currentData() == 'local'
+        self.new_dep_input.setVisible(not local)
+        for widget in (self.local_path_input, self.browse_dependency_btn, self.absolute_path_check, self.path_preview):
+            widget.setVisible(local)
+        if local:
+            self.update_path_preview()
+
+    def browse_dependency(self):
+        selected = QFileDialog.getExistingDirectory(self, '选择 Addon 根目录', self.base_dir)
+        if selected:
+            self.local_path_input.setText(selected)
+
+    def update_path_preview(self, *args):
+        value = self.local_path_input.text().strip()
+        if not value:
+            self.path_preview.setPlainText('请选择包含行为包或资源包的项目目录')
+            return
+        try:
+            resolved = resolve_path(self.base_dir, value)
+            folders = addon_directories(resolved)
+            saved = path_for_storage(self.base_dir, value, self.absolute_path_check.isChecked())
+            self.path_preview.setPlainText(f"目录：{resolved}\n保存为：{saved}\n有效包：{', '.join(folders)}")
+        except (DependencyError, OSError, ValueError) as exc:
+            self.path_preview.setPlainText(str(exc))
+
+    def set_dependency_busy(self, busy):
+        self.dependency_busy = busy
+        for widget in (self.dependency_kind, self.new_dep_input, self.local_path_input,
+                       self.browse_dependency_btn, self.absolute_path_check, self.add_dep_btn):
+            widget.setEnabled(not busy)
+        self.remove_dep_btn.setEnabled(not busy and bool(self.dependency_list.selectedItems()))
+        self.new_btn.setEnabled(not busy and self.all_packs is not None)
+        self.edit_btn.setEnabled(not busy and self.all_packs is not None)
+        self.run_btn.setEnabled(not busy and self.all_packs is not None and bool(self.instance_table.selectedItems()))
+
     def on_selection_changed(self):
         """选择变更事件处理"""
         selected_rows = self.instance_table.selectionModel().selectedRows()
         has_selection = len(selected_rows) > 0
-        self.run_btn.setEnabled(has_selection)
+        self.run_btn.setEnabled(has_selection and self.all_packs is not None and not self.dependency_busy)
         self.delete_btn.setEnabled(has_selection)
     
     def on_instance_double_clicked(self, item):
@@ -353,11 +428,11 @@ class GameInstanceManager(QMainWindow):
     
     def on_dependency_selected(self, item):
         """依赖项目被选中"""
-        self.remove_dep_btn.setEnabled(True)
+        self.remove_dep_btn.setEnabled(not self.dependency_busy)
     
     def create_new_instance(self):
         """创建新的游戏实例"""
-        if not self.all_packs:
+        if self.dependency_busy or not self.reload_runtime_dependencies():
             self.log("❌ 无法创建实例，项目依赖加载失败", "error")
             return
         
@@ -378,7 +453,7 @@ class GameInstanceManager(QMainWindow):
     
     def run_selected_instance(self):
         """运行选中的游戏实例"""
-        if not self.all_packs:
+        if self.dependency_busy or not self.reload_runtime_dependencies():
             self.log("❌ 无法运行实例，项目依赖加载失败", "error")
             return
             
@@ -421,7 +496,7 @@ class GameInstanceManager(QMainWindow):
         if reply == QMessageBox.Yes:
             self.log(f"🗑️ 正在删除实例: {level_id[:8]}...")
             force = True  # 使用强制模式避免在函数内部显示确认对话框
-            _delete_instance(level_id[:8], force)
+            _delete_instance(level_id[:8], force, self.base_dir)
             self.log(f"✅ 成功删除实例: {level_id[:8]}", "success")
             self.refresh_instances()
     
@@ -452,7 +527,7 @@ class GameInstanceManager(QMainWindow):
             
             if reply == QMessageBox.Yes:
                 self.log("🗑️ 正在清空所有游戏实例...")
-                _clean_all_instances(True)  # 使用强制模式
+                _clean_all_instances(True, self.base_dir)  # 使用强制模式
                 self.log("✅ 已成功清空所有游戏实例", "success")
                 self.refresh_instances()
     
@@ -472,7 +547,7 @@ class GameInstanceManager(QMainWindow):
         else:
             color = "#000000"
         
-        formatted_message = f'<span style="color:#888888">[{timestamp}]</span> <span style="color:{color}">{message}</span>'
+        formatted_message = f'<span style="color:#888888">[{timestamp}]</span> <span style="color:{color}">{html.escape(str(message))}</span>'
         self.log_output.append(formatted_message)
         
         # 滚动到底部
@@ -482,70 +557,70 @@ class GameInstanceManager(QMainWindow):
     
     def open_mc_editor(self):
         """打开MC Studio Editor编辑器"""
-        if not config_exists():
+        if not os.path.isfile(os.path.join(self.base_dir, 'pyproject.toml')):
             self.log("❌ 项目尚未初始化，无法打开编辑器", "error")
             return
             
-        open_edit()
+        if self.reload_runtime_dependencies():
+            open_edit(self.base_dir)
     
     def remove_selected_dependency(self):
-        """删除选中的依赖"""
-        selected_items = self.dependency_list.selectedItems()
-        if not selected_items:
+        if self.dependency_busy:
             return
-            
-        package = selected_items[0].text()
-        
-        # 二次确认
-        reply = QMessageBox.question(
-            self,
-            "确认删除依赖",
-            f"确定要从项目中移除依赖 {package} 吗？\n注意：这不会卸载依赖，仅从项目配置中移除。",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
-        if reply == QMessageBox.Yes:
-            self.log(f"🗑️ 正在移除依赖: {package}...")
-            if remove_dependency(package):
-                self.log(f"✅ 依赖 {package} 已从项目配置中移除", "success")
-                self.refresh_dependencies()
-            else:
-                self.log(f"❌ 移除依赖 {package} 失败", "error")
-    
+        selected = self.dependency_list.selectedItems()
+        if not selected:
+            return
+        entry = selected[0].data(Qt.UserRole)
+        note = '仅移除引用，源目录保留。' if entry.kind == 'local' else '仅移除配置，不卸载 Python 包。'
+        if QMessageBox.question(self, '确认移除依赖', f'{entry.value}\n{note}',
+                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        try:
+            self.dependency_service.remove(entry)
+            self.log(f'已移除依赖: {entry.value}', 'success')
+            self.refresh_dependencies()
+            self.reload_runtime_dependencies()
+        except (DependencyError, OSError) as exc:
+            self.log(str(exc), 'error')
+
     def add_dependency(self):
-        """添加新依赖"""
+        if self.dependency_busy:
+            return
+        if self.dependency_kind.currentData() == 'local':
+            value = self.local_path_input.text().strip()
+            try:
+                if not value:
+                    raise DependencyError('请输入或选择本地 Addon 目录')
+                saved = path_for_storage(self.base_dir, value, self.absolute_path_check.isChecked())
+                changed, warnings = self.dependency_service.add_local(saved)
+                self.log('依赖已添加' if changed else '依赖已存在', 'success')
+                for warning in warnings:
+                    self.log(warning, 'warning')
+                self.local_path_input.clear()
+                self.refresh_dependencies()
+                self.reload_runtime_dependencies()
+            except (DependencyError, OSError) as exc:
+                self.path_preview.setPlainText(str(exc))
+                self.log(str(exc), 'error')
+            return
         package = self.new_dep_input.currentText().strip()
         if not package:
-            QMessageBox.warning(self, "输入错误", "请输入或选择依赖包名称")
+            QMessageBox.warning(self, '输入错误', '请输入或选择 Python 包声明')
             return
-            
-        # 检查是否已存在
-        if package in self.dependencies:
-            self.log(f"ℹ️ 依赖 {package} 已存在于项目配置中", "info")
-        else:
-            self.log(f"📦 正在添加依赖: {package}...")
-            if add_dependency(package):
-                self.log(f"✅ 依赖 {package} 已添加到项目配置", "success")
-            else:
-                self.log(f"❌ 添加依赖 {package} 失败", "error")
-                return
-        
-        # 安装依赖
-        self.log(f"📦 正在安装 {package}...")
-        
-        # 使用QThread安装依赖，避免UI卡死
-        self.install_thread = DependencyInstallThread(package)
+        self.set_dependency_busy(True)
+        self.install_thread = DependencyInstallThread(package, self.base_dir)
         self.install_thread.log_message.connect(self.log)
-        self.install_thread.finished.connect(self.on_dependency_installed)
+        self.install_thread.result.connect(self.on_dependency_installed)
+        self.install_thread.finished.connect(lambda: self.set_dependency_busy(False))
         self.install_thread.start()
-        
-        # 清空输入框
-        self.new_dep_input.setCurrentText("")
-    
-    def on_dependency_installed(self):
-        """依赖安装完成后刷新列表"""
+
+    def on_dependency_installed(self, success, message):
+        self.log(message, 'success' if success else 'error')
+        if success:
+            self.load_available_packages()
+            self.new_dep_input.setCurrentText('')
         self.refresh_dependencies()
+        self.reload_runtime_dependencies()
 
 
 class GameRunThread(QThread):
@@ -585,34 +660,24 @@ class GameRunThread(QThread):
 
 
 class DependencyInstallThread(QThread):
-    """依赖安装线程"""
+    """后台安装成功后才保存声明，并显式报告结果。"""
     log_message = pyqtSignal(str, str)
-    
-    def __init__(self, package):
+    result = pyqtSignal(bool, str)
+
+    def __init__(self, package, project_dir):
         super().__init__()
-        self.package = package
-    
+        self.package, self.project_dir = package, project_dir
+
     def run(self):
         try:
-            import subprocess
-            self.log_message.emit(f"📦 正在安装 {self.package}...", "info")
-            
-            result = subprocess.run(
-                [sys.executable, '-m', 'pip', 'install', self.package],
-                capture_output=True,
-                text=True
-            )
-            
-            if result.returncode == 0:
-                self.log_message.emit(f"✅ {self.package} 安装成功！", "success")
-            else:
-                error_msg = result.stderr.strip() if result.stderr else "未知错误"
-                self.log_message.emit(f"❌ {self.package} 安装失败: {error_msg}", "error")
-        except Exception as e:
-            self.log_message.emit(f"❌ 安装依赖过程中出错: {str(e)}", "error")
+            self.log_message.emit(f'正在安装 {self.package}...', 'info')
+            changed = DependencyService(self.project_dir).add_package(self.package)
+            self.result.emit(True, '依赖安装成功并已保存' if changed else '依赖已安装，声明已存在')
+        except Exception as exc:
+            self.result.emit(False, f'依赖安装失败: {exc}')
 
 
-def show_run_ui(base_dir=default_base_dir):
+def show_run_ui(base_dir=None):
     """显示游戏实例管理UI"""
     app = QApplication.instance() or QApplication(sys.argv)
     app.setStyle(QStyleFactory.create("Fusion"))
@@ -630,7 +695,7 @@ def show_run_ui(base_dir=default_base_dir):
     palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
     app.setPalette(palette)
     
-    window = GameInstanceManager(base_dir)
+    window = GameInstanceManager(base_dir or os.getcwd())
     window.show()
     return app.exec_()
 

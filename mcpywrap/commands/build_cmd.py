@@ -31,10 +31,11 @@ def build_cmd(merge):
             return False
     
     # 转换为绝对路径
-    target_dir = os.path.normpath(os.path.join(base_dir, target_dir))
+    target_dir = os.path.normpath(os.path.join(os.getcwd(), target_dir))
 
     # 实际构建
-    build(base_dir, target_dir, force_merge=merge)
+    if not build(os.getcwd(), target_dir, force_merge=merge):
+        raise click.ClickException('构建失败')
 
     
 def build(source_dir, target_dir, force_merge: bool = False):
@@ -53,7 +54,8 @@ def build(source_dir, target_dir, force_merge: bool = False):
         click.secho('❌ 错误: 未指定目标目录。', fg="red")
         return False
     
-    project_type = get_project_type()
+    from ..dependencies import read_project
+    project_type = read_project(source_dir).get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
 
 
     if project_type == "addon":

@@ -29,6 +29,8 @@ from ..utils.project_setup import (
     update_behavior_pack_config, install_project_dev_mode
 )
 from ..config import update_map_setuptools_config
+from ..dependencies import DependencyService, DependencyError, write_project
+from .dependency_prompt import prompt_dependency
 from ..minecraft.template.mod_template import open_ui_crate_mod
 
 # 创建控制台对象
@@ -205,30 +207,26 @@ def init():
         time.sleep(0.5)  # 视觉暂停
         progress.update(task, completed=1)
     
-    # 获取依赖列表
-    dependencies = []
-    console.print(Panel(
-        "[cyan]📚 请输入项目依赖包（每行一个，输入空行结束）\n"
-        "支持其他mcpywrap项目作为依赖[/]",
-        border_style="blue", 
-        title="依赖配置"
-    ))
-    
-    while True:
-        dep = Prompt.ask("[bright_blue]➕ 依赖[/]", default="", console=console, show_default=False)
-        if not dep:
-            break
-        dependencies.append(dep)
-    
-    if dependencies:
-        # 显示已添加的依赖列表
-        deps_tree = Tree("📦 [bold]项目依赖[/]")
-        for dep in dependencies:
-            deps_tree.add("[cyan]" + dep + "[/]")
-        console.print(deps_tree)
-    else:
-        console.print("[dim]未添加任何依赖项[/]")
-    
+    # 在候选配置上复用依赖服务；不修改被引用的项目。
+    dependency_config = {'project': {'name': project_name, 'dependencies': []},
+                         'tool': {'mcpywrap': {'local_dependencies': []}}}
+    dependency_service = DependencyService(os.getcwd())
+    console.print('可添加 Python 包或本地 Addon 目录；目标目录无需初始化。')
+    while Confirm.ask('是否添加依赖？', default=False, console=console):
+        try:
+            entry = prompt_dependency()
+            if entry.kind == 'package':
+                if entry.value not in dependency_config['project']['dependencies']:
+                    dependency_service.install_package(entry.value)
+                    dependency_config['project']['dependencies'].append(entry.value)
+            else:
+                dependency_config, _, warnings = dependency_service.prepare_local(entry.value, dependency_config)
+                for warning in warnings:
+                    console.print(warning, style='yellow', markup=False)
+        except (DependencyError, OSError) as exc:
+            console.print(str(exc), style='red', markup=False)
+    dependencies = dependency_config['project']['dependencies']
+    local_dependencies = dependency_config['tool']['mcpywrap']['local_dependencies']
     project_info['dependencies'] = dependencies
 
     # 第4阶段：项目类型检测
@@ -446,7 +444,9 @@ def init():
         },
         'tool': {
             'mcpywrap': {
-                'project_type': project_type
+                'project_type': project_type,
+                'local_dependencies': local_dependencies,
+                'target_dir': target_dir
             }
         }
     }
@@ -538,7 +538,13 @@ work.mcscfg
             gitignore_path.write_text(gitignore_content, encoding='utf-8')
             console.print("[green]✅ .gitignore文件已创建！[/]")
     
-    update_config(config)
+    try:
+        manager = dependency_service.resolve(config, allow_missing=True)
+        for warning in manager.warnings:
+            console.print(warning, style='yellow', markup=False)
+    except (DependencyError, OSError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    write_project(base_dir, config)
     
     # 显示项目结构树
     console.print("\n[bold cyan]📂 项目结构预览:[/]")

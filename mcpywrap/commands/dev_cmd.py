@@ -29,7 +29,7 @@ def dev_cmd():
     """使用watch模式，实时构建为 MCStudio 工程，代码更新时，自动构建"""
     if not config_exists():
         click.secho('❌ 错误: 未找到配置文件。请先运行 `mcpywrap init` 初始化项目。', fg="red")
-        return False
+        raise click.ClickException('无法启动开发监控')
     
     # 确保 map 项目的 setuptools 配置同步
     ensure_map_setuptools_sync(interactive=True)
@@ -45,7 +45,7 @@ def dev_cmd():
         
         if not target_dir:
             click.secho('❌ 错误: 配置文件中未找到target_dir。请手动添加。', fg="red")
-            return False
+            raise click.ClickException('无法启动开发监控')
         
         # 转换为绝对路径
         target_dir = os.path.normpath(os.path.join(source_dir, target_dir))
@@ -59,7 +59,7 @@ def dev_cmd():
         suc = build(source_dir, target_dir)
         if not suc:
             click.secho("❌ 初始构建失败", fg="red")
-            return False
+            raise click.ClickException('无法启动开发监控')
 
         click.secho(f"🔍 开始监控代码变化，路径: ", fg="bright_blue", nl=False)
         click.secho(f"{source_dir}", fg="bright_cyan")
@@ -85,4 +85,4 @@ def dev_cmd():
             click.secho("🛑 监控已停止", fg="bright_yellow")
     else:
         click.secho('❌ 暂未支持: 当前仅支持Addons项目的构建', fg="red")
-        return False
+        raise click.ClickException('无法启动开发监控')

@@ -49,12 +49,11 @@ class AddonsPack(object):
 
     def __init__(self, pkg_name, path, is_origin=False):
         self.pkg_name = pkg_name
-        self.path = path
+        self.path = os.path.abspath(path)
         self.is_origin = is_origin
         self.behavior_pack_dir = None
         self.resource_pack_dir = None
         # 进入此目录，查找内部的行为包和资源包的路径
-        os.chdir(self.path)
         for item in os.listdir(self.path):
             item_path = os.path.join(self.path, item)
             if os.path.isdir(item_path):
@@ -280,25 +279,13 @@ class AddonsPack(object):
                 包类型: "behavior" 或 "resource"
                 相对路径: 在包中的相对路径，如果不在包中则为None
         """
-        # 检查是行为包还是资源包文件
-        is_behavior = self.is_behavior_file(file_path)
-        is_resource = self.is_resource_file(file_path)
-        
-        if not (is_behavior or is_resource):
-            return False, None, None
-            
-        # 确定包类型
-        pack_type = "behavior" if is_behavior else "resource"
-        
-        # 计算在包中的相对路径
-        parts = file_path.split(os.sep)
-        for i, part in enumerate(parts):
-            if (is_behavior and ("behavior_pack" in part.lower() or "behaviorpack" in part.lower())) or \
-               (is_resource and ("resource_pack" in part.lower() or "resourcepack" in part.lower())):
-                if i + 1 < len(parts):
-                    rel_path = os.path.join(*parts[i+1:])
-                    return True, pack_type, rel_path
-                else:
-                    return True, pack_type, ""
-                
+        absolute = os.path.abspath(file_path)
+        for kind, folder in (("behavior", self.behavior_pack_dir), ("resource", self.resource_pack_dir)):
+            if not folder:
+                continue
+            try:
+                if os.path.commonpath([absolute, folder]) == folder:
+                    return True, kind, os.path.relpath(absolute, folder)
+            except ValueError:
+                continue
         return False, None, None

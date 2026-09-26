@@ -36,9 +36,9 @@ base_dir = os.getcwd()
 
 
 # 实例管理助手函数
-def _get_all_instances():
+def _get_all_instances(project_dir=None):
     """获取所有运行实例信息"""
-    runtime_dir = os.path.join(base_dir, ".runtime")
+    runtime_dir = os.path.join(project_dir or os.getcwd(), ".runtime")
     if not os.path.exists(runtime_dir):
         return []
     
@@ -72,12 +72,12 @@ def _get_latest_instance():
         return instances[0]
     return None
 
-def _match_instance_by_prefix(prefix):
+def _match_instance_by_prefix(prefix, project_dir=None):
     """通过前缀匹配实例"""
     if not prefix:
         return None
     
-    instances = _get_all_instances()
+    instances = _get_all_instances(project_dir)
     for instance in instances:
         if instance['level_id'].startswith(prefix):
             return instance
@@ -96,64 +96,24 @@ def _generate_new_instance_config(base_dir, project_name):
     
     return level_id, config_path
 
-def _setup_dependencies(project_name, base_dir):
+def _setup_dependencies(project_name, base_dir, raise_errors=False):
     """设置项目依赖"""
-    all_packs = []
-    project_type = get_project_type()
-    config = read_config()
-
-    if project_type == 'addon':
-        # 查找当前项目的行为包
-        behavior_pack_dir, resource_pack_dir = find_and_configure_behavior_pack(base_dir, config)
-        if not behavior_pack_dir:
-            console.print("❌ 未找到行为包目录，请检查项目结构", style="red bold")
-            return None
-        # 创建主包实例
-        main_pack = AddonsPack(project_name, base_dir, is_origin=True)
-        all_packs.append(main_pack)
-
-    # 解析依赖包
-    dependency_manager = DependencyManager()
-    dependencies = get_project_dependencies()
-
-    if dependencies:
-        with console.status("📦 正在解析依赖包...", spinner="dots"):
-            # 构建依赖树
-            dependency_manager.build_dependency_tree(
-                project_name,
-                base_dir,
-                dependencies
-            )
-
-            # 获取所有依赖 - 修复可能的类型错误
-            try:
-                dependency_map = dependency_manager.get_all_dependencies()
-                # 安全地处理返回结果，防止类型错误
-                dependency_packs = []
-                for dep in dependency_map.values():
-                    dependency_packs.append(dep)
-                
-                if dependency_packs:
-                    console.print(f"✅ 成功解析 {len(dependency_packs)} 个依赖包", style="green")
-
-                    # 打印依赖树结构
-                    console.print("📊 依赖关系:", style="cyan")
-                    root_node = dependency_manager.get_dependency_tree()
-                    if (root_node):
-                        tree = Tree(f"[cyan]{root_node.name}[/] [bright_cyan](主项目)[/]")
-                        _build_dependency_tree(root_node, tree)
-                        console.print(tree)
-                    
-                    all_packs.extend(dependency_packs)
-                else:
-                    console.print("ℹ️ 没有找到可用的依赖包", style="cyan")
-            except Exception as e:
-                console.print(f"⚠️ 解析依赖时出错: {str(e)}", style="yellow")
-                console.print("ℹ️ 将继续而不加载依赖包", style="yellow")
-    else:
-        console.print("ℹ️ 项目没有声明依赖包", style="cyan")
-
-    return all_packs
+    from ..dependencies import DependencyService, DependencyError, addon_directories, read_project
+    try:
+        config = read_project(base_dir)
+        project_type = config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
+        if project_type == 'addon':
+            addon_directories(base_dir)
+        manager = DependencyService(base_dir).resolve()
+        packs = list(manager.get_all_dependencies().values())
+        if project_type == 'addon':
+            packs.append(manager.root_node.addon_pack)
+        return packs
+    except (DependencyError, OSError) as exc:
+        if raise_errors:
+            raise
+        console.print(str(exc), style='red', markup=False)
+        return None
 
 
 def _build_dependency_tree(node, tree_node):
@@ -176,9 +136,16 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
     Returns:
         tuple: (成功状态, 游戏进程对象)
     """
-    project_type = get_project_type()
-    project_name = get_project_name()
-    
+    from pathlib import Path
+    from ..dependencies import read_project
+    project_dir = str(Path(config_path).resolve().parent.parent)
+    config = read_project(project_dir)
+    project_type = config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
+    project_name = config.get('project', {}).get('name', 'project')
+    all_packs = _setup_dependencies(project_name, project_dir)
+    if all_packs is None:
+        return False, None
+
     # 日志输出函数
     def log_message(message, level="normal"):
         if log_callback:
@@ -257,7 +224,7 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
             ensure_dir(runtime_map_dir)
 
             # MapPack
-            map_pack_origin = MapPack(project_name, base_dir)
+            map_pack_origin = MapPack(project_name, project_dir)
             map_pack_target = MapPack(project_name, runtime_map_dir)
             
             live.update(Text("🗺️ 正在准备地图存档...", "cyan"))
@@ -294,7 +261,7 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
     with console.status("启动游戏中...", spinner="dots"):
         game_process = open_game(config_path, logging_port=logging_port, wait=False)
 
-    if game_process is None:
+    if not game_process:
         log_message("❌ 游戏启动失败", "error")
         return False, None
 
@@ -364,6 +331,8 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix):
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例
     """
+    global base_dir
+    base_dir = os.getcwd()
     # 检查项目是否已初始化
     if not config_exists():
         console.print("❌ 项目尚未初始化，请先运行 mcpy init", style="red bold")
@@ -396,7 +365,7 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix):
     # 设置依赖
     all_packs = _setup_dependencies(project_name, base_dir)
     if all_packs is None:
-        return
+        raise click.ClickException('依赖校验失败')
 
     # 确定要使用的实例
     config_path = None
@@ -444,7 +413,9 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix):
             console.print("💡 下次运行将重用此实例，若需创建新实例请使用 \"--new\" 参数", style="yellow")
 
     # 运行游戏
-    _run_game_with_instance(config_path, level_id, all_packs)
+    success, _ = _run_game_with_instance(config_path, level_id, all_packs)
+    if not success:
+        raise click.ClickException('游戏启动失败')
 
 
 def _list_instances():
@@ -519,9 +490,9 @@ def _safe_remove_directory(path):
         # 删除文件
         os.remove(path)
 
-def _delete_instance(instance_prefix, force):
+def _delete_instance(instance_prefix, force, project_dir=None):
     """删除指定的游戏实例"""
-    instance = _match_instance_by_prefix(instance_prefix)
+    instance = _match_instance_by_prefix(instance_prefix, project_dir)
     
     if not instance:
         console.print(f"❌ 未找到前缀为 \"{instance_prefix}\" 的实例", style="red")
@@ -558,9 +529,9 @@ def _delete_instance(instance_prefix, force):
     console.print(f"✅ 成功删除实例: {level_id[:8]}", style="green")
 
 
-def _clean_all_instances(force):
+def _clean_all_instances(force, project_dir=None):
     """清空所有游戏实例"""
-    instances = _get_all_instances()
+    instances = _get_all_instances(project_dir)
     
     if not instances:
         console.print("📭 没有找到任何游戏实例", style="yellow")

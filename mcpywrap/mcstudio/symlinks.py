@@ -21,189 +21,53 @@ FORCE_ADMIN = False
 console = Console()
 
 # 共享函数定义 - 在 symlink_helper 和 symlinks 中都可以使用
+def _create_directory_link(source, target):
+    """优先符号链接；Windows 无符号链接权限时使用目录 junction。"""
+    try:
+        os.symlink(source, target, target_is_directory=True)
+    except OSError as exc:
+        if os.name != 'nt' or getattr(exc, 'winerror', None) != 1314:
+            raise
+        import _winapi
+        _winapi.CreateJunction(os.path.abspath(source), os.path.abspath(target))
+
+
 def create_symlinks(user_data_path, packs):
-    """
-    在指定目录下为行为包和资源包创建软链接
-    
-    Args:
-        user_data_path: MC Studio用户数据目录
-        packs: 行为包和资源包列表
-        use_click: 是否使用click库进行输出，子进程中会设置为False
-        
-    Returns:
-        tuple: (成功状态, 行为包链接列表, 资源包链接列表)
-    """
-    behavior_links = []
-    resource_links = []
-
-    # 行为包和资源包目录
-    behavior_packs_dir = os.path.join(user_data_path, "behavior_packs")
-    resource_packs_dir = os.path.join(user_data_path, "resource_packs")
-
-    # 确保目录存在
-    os.makedirs(behavior_packs_dir, exist_ok=True)
-    os.makedirs(resource_packs_dir, exist_ok=True)
-
-    # 用于跟踪统计信息
-    total_deleted = 0
-    success_count = 0
-    fail_count = 0
-    
-    # 处理包数据格式的统一转换函数
-    def get_pack_data(pack):
-        """从不同格式的pack对象中提取数据"""
-        if isinstance(pack, dict):
-            # 如果是字典格式，直接使用
-            return {
-                "behavior_pack_dir": pack.get("behavior_pack_dir"),
-                "resource_pack_dir": pack.get("resource_pack_dir"),
-                "pkg_name": pack.get("pkg_name")
-            }
-        else:
-            # 如果是对象格式，从属性中获取
-            return {
-                "behavior_pack_dir": getattr(pack, "behavior_pack_dir", None),
-                "resource_pack_dir": getattr(pack, "resource_pack_dir", None),
-                "pkg_name": getattr(pack, "pkg_name", "unknown")
-            }
-
-    # 使用单一Live组件处理整个过程
-    with Live(console=console, refresh_per_second=10) as live:
-        # 第一阶段：清理现有链接
-        live.update(Text("🧹 清理现有软链接...", style="cyan"))
-
-        # 使用Progress组件显示清理过程
-        progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[cyan]{task.description}"),
-            BarColumn(bar_width=40),
-            TimeRemainingColumn(),
-            console=None,  # 不直接输出到控制台
-            expand=True
-        )
-        
-        # 添加清理任务
-        clean_task = progress.add_task("扫描现有链接", total=None)
-        
-        # 更新Live显示当前进度
-        live.update(progress)
-
-        # 清理行为包目录
-        if os.path.exists(behavior_packs_dir):
-            link_count = 0
-            for item in os.listdir(behavior_packs_dir):
-                item_path = os.path.join(behavior_packs_dir, item)
-                if os.path.islink(item_path):
-                    progress.update(clean_task, description=f"删除行为包链接 {item}")
-                    try:
-                        os.unlink(item_path)
-                        link_count += 1
-                    except Exception as e:
-                        console.print(f"⚠️ 删除链接失败 {item}: {str(e)}", style="yellow")
-            
-            total_deleted += link_count
-            progress.update(clean_task, description=f"已删除 {link_count} 个行为包链接")
-            
-        # 清理资源包目录
-        if os.path.exists(resource_packs_dir):
-            link_count = 0
-            for item in os.listdir(resource_packs_dir):
-                item_path = os.path.join(resource_packs_dir, item)
-                if os.path.islink(item_path):
-                    progress.update(clean_task, description=f"删除资源包链接 {item}")
-                    try:
-                        os.unlink(item_path)
-                        link_count += 1
-                    except Exception as e:
-                        console.print(f"⚠️ 删除链接失败 {item}: {str(e)}", style="yellow")
-            
-            total_deleted += link_count
-            progress.update(clean_task, description=f"清理完成")
-            progress.stop()
-        
-        # 第二阶段：创建新链接
-        live.update(Text("🔗 创建新的软链接...", style="cyan"))
-        
-        # 新的Progress组件用于创建链接
-        progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[cyan]{task.description}"),
-            BarColumn(bar_width=40),
-            TimeRemainingColumn(),
-            console=None,
-            expand=True
-        )
-        
-        # 计算总任务数（行为包和资源包）
-        total_tasks = 0
-        for pack in packs:
-            pack_data = get_pack_data(pack)
-            if pack_data["behavior_pack_dir"] and os.path.exists(pack_data["behavior_pack_dir"]):
-                total_tasks += 1
-            if pack_data["resource_pack_dir"] and os.path.exists(pack_data["resource_pack_dir"]):
-                total_tasks += 1
-        
-        link_task = progress.add_task("创建软链接", total=total_tasks)
-        live.update(progress)
-        
-        # 处理所有包
-        for i, pack in enumerate(packs):
-            pack_data = get_pack_data(pack)
-            
-            # 处理行为包
-            if pack_data["behavior_pack_dir"] and os.path.exists(pack_data["behavior_pack_dir"]):
-                link_name = f"{os.path.basename(pack_data['behavior_pack_dir'])}_{pack_data['pkg_name']}"
-                link_path = os.path.join(behavior_packs_dir, link_name)
-                
-                progress.update(link_task, description=f"创建行为包链接: {pack_data['pkg_name']}")
-
-                try:
-                    os.symlink(pack_data["behavior_pack_dir"], link_path)
-                    behavior_links.append(link_name)
-                    success_count += 1
-                    # 简洁输出链接路径信息 - 源路径指向链接完整路径
-                    source_path = pack_data['behavior_pack_dir'].replace('\\', '/')
-                    link_full_path = link_path.replace('\\', '/')
-                    console.print(f"  ✓ {source_path} → {link_full_path}", style="green")
-                except Exception as e:
-                    console.print(f"⚠️ 创建失败: {link_name} ({str(e)})", style="yellow")
-                    fail_count += 1
-                
-                progress.advance(link_task)
-
-            # 处理资源包
-            if pack_data["resource_pack_dir"] and os.path.exists(pack_data["resource_pack_dir"]):
-                link_name = f"{os.path.basename(pack_data['resource_pack_dir'])}_{pack_data['pkg_name']}"
-                link_path = os.path.join(resource_packs_dir, link_name)
-                
-                progress.update(link_task, description=f"创建资源包链接: {pack_data['pkg_name']}")
-
-                try:
-                    os.symlink(pack_data["resource_pack_dir"], link_path)
-                    resource_links.append(link_name)
-                    success_count += 1
-                    # 简洁输出链接路径信息 - 源路径指向链接完整路径
-                    source_path = pack_data['resource_pack_dir'].replace('\\', '/')
-                    link_full_path = link_path.replace('\\', '/')
-                    console.print(f"  ✓ {source_path} → {link_full_path}", style="green")
-                except Exception as e:
-                    console.print(f"⚠️ 创建失败: {link_name} ({str(e)})", style="yellow")
-                    fail_count += 1
-                
-                progress.advance(link_task)
-                
-        # 停止进度条
-        progress.stop()
-        
-        # 输出最终结果（这是唯一保留在控制台上的输出）
-        if fail_count == 0:
-            result = Text(f"✅ Addons链接设置完成: 清理了 {total_deleted} 个旧链接，创建了 {success_count} 个新链接", style="green")
-        else:
-            result = Text(f"⚠️ Addons链接部分完成: 清理了 {total_deleted} 个旧链接，成功 {success_count} 个，失败 {fail_count} 个", style="yellow")
-        
-        live.update(result)
-    
-    return fail_count == 0, behavior_links, resource_links
+    """仅准备当前引用的链接，保留其他项目及运行实例使用的目录。"""
+    from ..dependencies import canonical_path
+    result = {'behavior': [], 'resource': []}
+    planned = []
+    for pack in packs:
+        data = pack if isinstance(pack, dict) else vars(pack)
+        for kind in result:
+            source = data.get(kind + '_pack_dir')
+            if not source or not os.path.isdir(source):
+                continue
+            name = f"{os.path.basename(source)}_{data['pkg_name']}"
+            target = os.path.join(user_data_path, kind + '_packs', name)
+            # 不覆盖同名的实际目录或指向其他源的链接。
+            if os.path.lexists(target) and canonical_path(target) != canonical_path(source):
+                console.print(f'链接名称冲突: {target}', style='red')
+                return False, [], []
+            planned.append((kind, source, name, target))
+    created = []
+    try:
+        for kind, source, name, target in planned:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            if not os.path.lexists(target):
+                _create_directory_link(source, target)
+                created.append(target)
+            result[kind].append(name)
+    except OSError as exc:
+        # 回滚本次新建的链接，不触碰源目录及已有链接。
+        for target in reversed(created):
+            if os.path.islink(target):
+                os.unlink(target)
+            else:
+                os.rmdir(target)
+        console.print(f'创建目录链接失败: {exc}', style='red')
+        return False, [], []
+    return True, result['behavior'], result['resource']
 
 
 def is_admin():
@@ -220,69 +84,21 @@ def is_admin():
 
 
 def has_write_permission(path):
-    """
-    检查是否有对指定路径创建软链接的权限
-
-    Args:
-        path: 要检查的路径
-
-    Returns:
-        bool: 是否有创建软链接的权限
-    """
-    if not os.path.exists(path):
-        try:
-            os.makedirs(path, exist_ok=True)
-        except:
-            return False
-    
-    # 创建一个测试目录和一个测试链接的目标
-    test_dir = os.path.join(path, '.symlink_test_dir')
-    test_link = os.path.join(path, '.symlink_test')
-    
+    """用独立临时目录检查目录链接能力，不触碰已有内容。"""
     try:
-        # 确保测试目录存在
-        os.makedirs(test_dir, exist_ok=True)
-        
-        # 如果测试链接已经存在，先删除它
-        if os.path.exists(test_link):
-            if os.path.islink(test_link):
-                os.unlink(test_link)
-            else:
-                os.remove(test_link)
-        
-        # 尝试创建一个软链接
-        os.symlink(test_dir, test_link)
-        
-        # 验证链接是否成功创建
-        has_permission = os.path.islink(test_link)
-        
-        # 清理测试资源
-        if os.path.islink(test_link):
-            os.unlink(test_link)
-        if os.path.exists(test_dir):
-            os.rmdir(test_dir)
-            
-        return has_permission
-    
-    except (IOError, PermissionError, OSError):
-        # 删除可能创建的测试资源
-        try:
-            if os.path.islink(test_link):
-                os.unlink(test_link)
-            if os.path.exists(test_dir):
-                os.rmdir(test_dir)
-        except:
-            pass
-        return False
-    except Exception:
-        # 其他异常，也尝试清理
-        try:
-            if os.path.islink(test_link):
-                os.unlink(test_link)
-            if os.path.exists(test_dir):
-                os.rmdir(test_dir)
-        except:
-            pass
+        os.makedirs(path, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='.mcpy-link-test-', dir=path) as probe:
+            source, target = os.path.join(probe, 'source'), os.path.join(probe, 'link')
+            os.mkdir(source)
+            _create_directory_link(source, target)
+            try:
+                return os.path.samefile(source, target)
+            finally:
+                if os.path.islink(target):
+                    os.unlink(target)
+                else:
+                    os.rmdir(target)
+    except OSError:
         return False
 
 

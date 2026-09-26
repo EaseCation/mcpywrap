@@ -34,9 +34,7 @@ def _merge_ui_defs_json(target_json, source_json) -> Dict[str, Any]:
     """合并 ui_defs.json 文件"""
     if 'ui_defs' in source_json and 'ui_defs' in target_json:
         # 合并 ui_defs 数组，去重
-        target_ui_defs = set(target_json['ui_defs'])
-        source_ui_defs = set(source_json['ui_defs'])
-        target_json['ui_defs'] = list(target_ui_defs.union(source_ui_defs))
+        target_json['ui_defs'] = list(dict.fromkeys(target_json['ui_defs'] + source_json['ui_defs']))
         return target_json
     else:
         # 如果没有 ui_defs 字段，进行普通的浅合并

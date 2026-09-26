@@ -1,0 +1,6 @@
+include LICENSE README.md CHANGELOG.md
+include docs/releasing.md
+recursive-include tests *.py
+prune test
+prune .git
+global-exclude __pycache__ *.py[cod] *.cppconfig *.log

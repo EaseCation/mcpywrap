@@ -21,25 +21,23 @@ class MapPack(object):
     def __init__(self, pkg_name: str, path: str):
         self.pkg_name = pkg_name
         self.path = path
+        self.behavior_packs = []
+        self.resource_packs = []
 
         # 读取配置文件
         self.behavior_packs_dir = os.path.join(self.path, "behavior_packs")
         self.resource_packs_dir = os.path.join(self.path, "resource_packs")
 
-        if not os.path.exists(self.behavior_packs_dir):
-            os.makedirs(self.behavior_packs_dir)
 
         # 遍历行为包目录
-        for pack in os.listdir(self.behavior_packs_dir):
+        for pack in sorted(os.listdir(self.behavior_packs_dir)) if os.path.isdir(self.behavior_packs_dir) else []:
             pack_path = os.path.join(self.behavior_packs_dir, pack)
             if os.path.isdir(pack_path):
                 self.behavior_packs.append(pack_path)
         
-        if not os.path.exists(self.resource_packs_dir):
-            os.makedirs(self.resource_packs_dir)
 
         # 遍历资源包目录
-        for pack in os.listdir(self.resource_packs_dir):
+        for pack in sorted(os.listdir(self.resource_packs_dir)) if os.path.isdir(self.resource_packs_dir) else []:
             pack_path = os.path.join(self.resource_packs_dir, pack)
             if os.path.isdir(pack_path):
                 self.resource_packs.append(pack_path)

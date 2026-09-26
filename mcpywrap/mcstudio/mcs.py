@@ -124,7 +124,7 @@ def get_mcs_game_engine_dirs():
         return sorted(engine_dirs, reverse=True)
     
 def get_mcs_game_engine_data_path():
-    """
+    r"""
     获取 MinecraftPE_Netease 用户数据目录
 
     返回 AppData\Roaming\MinecraftPE_Netease\ 路径
@@ -154,7 +154,7 @@ def get_mcs_game_engine_data_path():
         return None
 
 def get_mcs_game_engine_netease_data_path():
-    """
+    r"""
     获取 MinecraftPE_Netease 用户数据目录
 
     返回 AppData\Roaming\MinecraftPE_Netease\games\com.netease 路径

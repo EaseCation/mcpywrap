@@ -5,7 +5,6 @@ import click
 from rich.console import Console
 from ..config import config_exists
 
-base_dir = os.getcwd()
 console = Console()
 
 
@@ -19,5 +18,5 @@ def ui_cmd():
     
     from ..ui.project_ui import show_run_ui
     # 显示图形界面
-    show_run_ui(base_dir)
+    show_run_ui(os.getcwd())
 

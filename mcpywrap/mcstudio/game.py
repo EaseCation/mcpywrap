@@ -7,7 +7,6 @@ import click
 import threading
 
 from .mcs import *
-from .SimpleMonitor import SimpleMonitor
 
 # 添加必要的Windows API支持
 try:
@@ -30,7 +29,7 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
         use_system_color: 是否使用系统主题色标题栏
 
     Returns:
-        如果 return_process=True，返回进程对象；否则返回布尔值表示是否成功启动
+        返回本次启动的进程对象；失败返回 False。等待由调用方决定。
     """
     if not is_windows():
         click.secho("❌ 此功能仅支持Windows系统", fg="red", bold=True)
@@ -99,9 +98,11 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
         import subprocess
 
         # 启动游戏
-        cmd_str = f'cmd /c start "MC Studio Game Console" "{minecraft_exe}" config="{os.path.abspath(config_path)}" loggingIP={logging_ip} loggingPort={logging_port}'
-        proc = subprocess.Popen(cmd_str, shell=True)
-        
+        proc = subprocess.Popen(
+            [minecraft_exe, 'config=' + os.path.abspath(config_path),
+             'loggingIP=' + logging_ip, 'loggingPort=' + str(logging_port)],
+            cwd=engine_path)
+
         # 如果需要使用系统主题色且Win32API可用，使用定时器异步应用窗口样式
         if use_system_color and HAS_WIN32API and is_windows():
             # 使用定时器在5秒后触发窗口样式修改，避免阻塞主线程
@@ -112,7 +113,7 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
             style_timer2.daemon = True
             style_timer2.start()
 
-        return SimpleMonitor("Minecraft.Windows.exe")
+        return proc
 
     except json.JSONDecodeError:
         click.secho(f"❌ 配置文件格式错误: {config_path}", fg="red", bold=True)
