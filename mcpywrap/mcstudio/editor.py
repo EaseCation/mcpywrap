@@ -6,12 +6,19 @@ import subprocess
 
 from ..mcstudio.mcs import *
 from .SimpleMonitor import SimpleMonitor
+from .discovery import discover_engines, require_resources, studio_installation, DiscoveryError
 
 
-def open_editor(config_path):
+def open_editor(config_path, engine=None):
 
     # 获取MC Studio安装目录
-    mcs_download_dir = get_mcs_download_path()
+    if engine is None:
+        try:
+            engine = discover_engines().require_engine()
+        except DiscoveryError as exc:
+            click.echo(str(exc))
+            return False
+    mcs_download_dir = engine.download_dir
     if not mcs_download_dir:
         click.echo(click.style('❌ 未找到MC Studio下载目录，请确保已安装MC Studio', fg='red', bold=True))
         return
@@ -26,20 +33,20 @@ def open_editor(config_path):
     
     return SimpleMonitor("MC_Editor.exe")
 
-def create_editor_config(project_name: str, project_dir: str, is_map: bool, addon_paths: list[str]):
-    download_path = get_mcs_download_path()
-    if not download_path:
-        click.echo(click.style('❌ 未找到MC Studio下载目录，请确保已安装MC Studio', fg='red', bold=True))
-        return
-    engine_install_dir = get_mcs_install_location()
-    if not engine_install_dir:
-        click.echo(click.style('❌ 未找到MC Studio安装目录，请确保已安装MC Studio', fg='red', bold=True))
-        return
-    engine_versions = get_mcs_game_engine_dirs()
-    if not engine_versions:
-        click.echo(click.style('❌ 未找到MC Studio游戏引擎目录，请确保已安装MC Studio', fg='red', bold=True))
-        return
-    engine_version = engine_versions[0]  # 默认使用最新版本
+def create_editor_config(project_name: str, project_dir: str, is_map: bool, addon_paths: list[str],
+                         engine=None, engine_install_dir=None):
+    try:
+        engine = engine or discover_engines(project_dir).require_engine()
+        require_resources(engine, 'editor')
+        if engine_install_dir is None:
+            engine_install_dir, issues = studio_installation('editor')
+            if not engine_install_dir:
+                raise DiscoveryError('未找到编辑器安装资源: ' + '; '.join(issues))
+    except DiscoveryError as exc:
+        click.echo(str(exc))
+        return None
+    download_path = engine.download_dir
+    engine_version = engine.version
     config = {
         "AssertCacheDir": os.path.join(download_path, "EngineAssert"),
         "CanPublishResourceComponent": True,

@@ -14,6 +14,7 @@ from .commands.modsdk_cmd import modsdk_cmd
 from .commands.mod_cmd import mod_cmd
 from .commands.edit_cmd import edit_cmd
 from .commands.ui_cmd import ui_cmd
+from .commands.doctor_cmd import doctor_cmd
 
 
 @click.group(invoke_without_command=True)
@@ -37,6 +38,7 @@ cli.add_command(mod_cmd, name='mod')
 cli.add_command(run_cmd, name='run')
 cli.add_command(edit_cmd, name='edit')
 cli.add_command(ui_cmd, name='ui')
+cli.add_command(doctor_cmd, name='doctor')
 
 if __name__ == '__main__':
     cli()

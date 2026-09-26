@@ -7,6 +7,7 @@ import click
 import threading
 
 from .mcs import *
+from .discovery import discover_engines, DiscoveryError, studio_installation
 
 # 添加必要的Windows API支持
 try:
@@ -18,7 +19,8 @@ except ImportError:
     HAS_WIN32API = False
 
 
-def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system_color=True, wait=True):
+def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system_color=True, wait=True,
+              engine=None, project_dir=None):
     """
     打开MC Studio游戏引擎
 
@@ -45,49 +47,19 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
         with open(config_path, 'r', encoding='utf-8') as f:
             config_data = json.load(f)
 
-        # 从配置文件中获取目标引擎版本
-        target_version = config_data.get("version")
-        if not target_version:
-            click.secho("⚠️ 配置文件中未找到引擎版本信息", fg="yellow", bold=True)
-            # 如果没有指定版本，使用最新版本
-
-        # 获取游戏引擎目录
-        engine_dirs = get_mcs_game_engine_dirs()
-        if not engine_dirs:
-            click.secho("⚠️ 未找到MC Studio游戏引擎目录", fg="yellow", bold=True)
-            return False
-
-        # 选择合适的引擎版本
-        selected_engine = None
-        if target_version:
-            # 查找与目标版本匹配的引擎
-            for engine in engine_dirs:
-                if engine == target_version:
-                    selected_engine = engine
-                    break
-
-        # 如果没有找到匹配版本，使用最新版本
-        if not selected_engine:
-            selected_engine = engine_dirs[0]
-            if target_version:
-                click.secho(f"⚠️ 未找到指定版本 {target_version}，将使用最新版本 {selected_engine}", fg="yellow")
-            else:
-                click.secho(f"🎮 使用最新游戏引擎版本: {selected_engine}", fg="green")
-        else:
-            click.secho(f"🎮 使用指定游戏引擎版本: {selected_engine}", fg="green")
-
-        # 获取下载路径
-        download_path = get_mcs_download_path()
-        if not download_path:
-            click.secho("⚠️ 未找到MC Studio下载路径", fg="yellow", bold=True)
-            return False
-
-        # 拼接引擎完整路径
-        engine_path = os.path.join(download_path, "game", "MinecraftPE_Netease", selected_engine)
+        # 已解析的结果直接复用，禁止重新拼接另一个安装根目录。
+        if engine is None:
+            engine = discover_engines(project_dir, instance_version=config_data.get('version')).require_engine()
+        if config_data.get('version'):
+            from packaging.version import Version
+            if Version(config_data['version']) != Version(engine.version):
+                raise DiscoveryError('运行配置版本与选中的引擎不一致，请重新生成运行配置')
+        engine_path = engine.engine_dir
+        click.secho(f"🎮 使用引擎版本: {engine.version} ({engine.source})", fg="green")
         click.secho(f"📂 引擎路径: {engine_path}", fg="blue")
 
         # 检查引擎执行文件是否存在
-        minecraft_exe = os.path.join(engine_path, "Minecraft.Windows.exe")
+        minecraft_exe = engine.executable
         if not os.path.isfile(minecraft_exe):
             click.secho(f"❌ 游戏执行文件不存在: {minecraft_exe}", fg="red", bold=True)
             return False
@@ -240,9 +212,9 @@ def open_safaia():
             # 继续执行启动流程
 
     # 如果未运行或检查出错，继续启动新实例
-    install_path = get_mcs_install_location()
+    install_path, issues = studio_installation('safaia')
     if not install_path:
-        click.secho("❌ 未找到 Safaia 安装路径", fg="red", bold=True)
+        click.secho("❌ 未找到 Safaia 安装资源: " + '; '.join(issues), fg="red", bold=True)
         return False
 
     # 获取 Safaia Server 可执行文件路径

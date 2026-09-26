@@ -237,11 +237,13 @@ class Projects(ProjectFixture):
 
     def test_game_uses_argument_list_and_own_process(self):
         game = importlib.import_module('mcpywrap.mcstudio.game')
+        from mcpywrap.mcstudio.discovery import Engine
         config = self.root / 'space config.cppconfig'
         config.write_text('{"version":"3.10"}')
         proc = Mock()
-        with patch.object(game, 'is_windows', return_value=True), patch.object(game, 'get_mcs_game_engine_dirs', return_value=['3.10']), patch.object(game, 'get_mcs_download_path', return_value='D:/test engine'), patch.object(game.os.path, 'isfile', return_value=True), patch.object(game.subprocess, 'Popen', return_value=proc) as start:
-            self.assertIs(game.open_game(str(config), use_system_color=False), proc)
+        engine = Engine('D:/test engine/Minecraft.Windows.exe', '3.10', 'D:/test engine', None, 'explicit')
+        with patch.object(game, 'is_windows', return_value=True), patch.object(game.os.path, 'isfile', return_value=True), patch.object(game.subprocess, 'Popen', return_value=proc) as start:
+            self.assertIs(game.open_game(str(config), use_system_color=False, engine=engine), proc)
             self.assertEqual(start.call_args.args[0][1], 'config=' + str(config))
             self.assertIn('cwd', start.call_args.kwargs)
             self.assertNotIn('shell', start.call_args.kwargs)
@@ -329,7 +331,7 @@ class Projects(ProjectFixture):
         self.add()
         self.assertEqual([Path(p.path) for p in _setup_dependencies('main', str(self.main))], [self.dep, self.main])
         edit = importlib.import_module('mcpywrap.commands.edit_cmd')
-        with patch.object(edit, 'create_editor_config', return_value={}) as config, patch.object(edit, 'open_editor'):
+        with patch.object(edit, 'discover_engines'), patch.object(edit, 'require_resources'), patch.object(edit, 'studio_installation', return_value=('test-studio', [])), patch.object(edit, 'create_editor_config', return_value={}) as config, patch.object(edit, 'open_editor'):
             edit.open_edit(str(self.main))
             self.assertEqual(config.call_args.kwargs['addon_paths'], [str(self.dep), str(self.main)])
 

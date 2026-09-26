@@ -28,22 +28,14 @@ def get_mcs_version():
 
 def get_mcs_download_path():
     """
-    从注册表中获取 MCStudio 的下载路径
+    获取统一发现结果关联的 MCStudio 下载路径（兼容接口）
 
     Returns:
         str: MCStudio 的下载路径，如果不存在则返回 None
     """
-    if not is_windows():
-        return None
-
-    import winreg
-    try:
-        registry_path = r"Software\Netease\MCStudio"
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, registry_path) as key:
-            download_path, _ = winreg.QueryValueEx(key, "DownloadPath")
-            return download_path
-    except Exception:
-        return None
+    from .discovery import discover_engines
+    engine = discover_engines().selected
+    return engine.download_dir if engine else None
 
 def get_mcs_install_location():
     """
@@ -52,17 +44,10 @@ def get_mcs_install_location():
     Returns:
         str: MCStudio 的安装路径，如果不存在则返回 None
     """
-    if not is_windows():
-        return None
-
-    import winreg
-    try:
-        registry_path = r"Software\Netease\MCStudio"
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, registry_path) as key:
-            install_location, _ = winreg.QueryValueEx(key, "InstallLocation")
-            return install_location
-    except Exception:
-        return None
+    from .discovery import registry_values
+    import os
+    return next((path for path, _ in registry_values('InstallLocation')
+                 if os.path.isdir(path)), None)
 
 def get_mcs_registry_value(value_name):
     """
@@ -90,38 +75,18 @@ def get_mcs_game_engine_dirs():
     """
     获取 MCStudio 的游戏引擎目录，并按版本号倒序排序
 
-    基于 MCStudio 下载路径，获取 MinecraftPE_Netease 目录下的所有游戏引擎目录，
-    过滤掉以 PCLauncher 开头的目录，并按版本号倒序排序（最新版本在前）
+    仅返回选中下载根目录下包含游戏 EXE 的有效版本目录。
 
     Returns:
         list: 按版本号倒序排序的游戏引擎目录列表，如果路径不存在则返回空列表
     """
-    import os
-    from packaging import version
-
-    download_path = get_mcs_download_path()
-    if not download_path:
+    from pathlib import Path
+    from .discovery import discover_engines, _scan, _sorted
+    result = discover_engines()
+    if not result.selected or not result.selected.download_dir:
         return []
-
-    engine_path = os.path.join(download_path, "game", "MinecraftPE_Netease")
-
-    if not os.path.isdir(engine_path):
-        return []
-
-    # 获取目录列表并过滤掉PCLauncher开头的目录
-    engine_dirs = [
-        d for d in os.listdir(engine_path)
-        if os.path.isdir(os.path.join(engine_path, d)) and not d.startswith("PCLauncher")
-    ]
-
-    # 按版本号倒序排序
-    try:
-        # 使用packaging.version进行版本号比较
-        sorted_engine_dirs = sorted(engine_dirs, key=lambda x: version.parse(x), reverse=True)
-        return sorted_engine_dirs
-    except Exception:
-        # 如果解析版本号失败，尝试简单的字符串排序
-        return sorted(engine_dirs, reverse=True)
+    candidates = _scan(result.selected.download_dir, result.selected.source, [])
+    return [Path(c.engine_dir).name for c in _sorted(candidates)]
     
 def get_mcs_game_engine_data_path():
     r"""

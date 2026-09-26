@@ -16,8 +16,9 @@ from ..builders.MapPack import MapPack
 from ..config import config_exists, read_config, get_project_dependencies, get_project_type, get_project_name, ensure_map_setuptools_sync
 from ..builders.AddonsPack import AddonsPack
 from ..mcstudio.game import open_game, open_safaia
-from ..mcstudio.mcs import get_mcs_download_path, get_mcs_game_engine_dirs, get_mcs_game_engine_data_path, is_windows
+from ..mcstudio.mcs import get_mcs_game_engine_data_path, is_windows
 from ..mcstudio.runtime_cppconfig import gen_runtime_config
+from ..mcstudio.discovery import discover_engines, require_resources, DiscoveryError, engine_options
 from ..mcstudio.symlinks import setup_global_addons_symlinks
 from ..utils.project_setup import find_and_configure_behavior_pack
 from ..utils.utils import ensure_dir
@@ -123,7 +124,8 @@ def _build_dependency_tree(node, tree_node):
         _build_dependency_tree(child, child_node)
 
 
-def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_callback=None):
+def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_callback=None,
+                            engine_overrides=None):
     """使用指定的实例运行游戏
     
     Args:
@@ -157,26 +159,25 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
                 "info": "cyan",
                 "warning": "yellow"
             }.get(level, None)
-            console.print(message, style=style)
+            console.print(message, style=style, markup=False)
     
-    # 获取MC Studio安装目录
-    mcs_download_dir = get_mcs_download_path()
-    if not mcs_download_dir:
-        log_message("❌ 未找到MC Studio下载目录，请确保已安装MC Studio", "error")
+    # 在创建软链接或覆写实例前，固定引擎与资源路径。
+    try:
+        instance_version = None
+        if os.path.isfile(config_path):
+            with open(config_path, encoding='utf-8') as stream:
+                instance_version = json.load(stream).get('version')
+        discovery = discover_engines(project_dir, engine_overrides, instance_version)
+        engine = discovery.require_engine()
+        require_resources(engine)
+    except (DiscoveryError, OSError, ValueError) as exc:
+        log_message(str(exc) + '\n可运行 mcpy doctor 查看发现详情。', 'error')
         return False, None
-
-    # 获取游戏引擎版本
-    engine_dirs = get_mcs_game_engine_dirs()
-    if not engine_dirs:
-        log_message("❌ 未找到MC Studio游戏引擎，请确保已安装MC Studio", "error")
-        return False, None
-    
+    mcs_download_dir = engine.download_dir
     # 获取游戏引擎数据目录
     engine_data_path = get_mcs_game_engine_data_path()
 
-    # 使用最新版本的引擎
-    latest_engine = engine_dirs[0]
-    log_message(f"🎮 使用引擎版本: {latest_engine}", "info")
+    log_message(f"🎮 使用引擎版本: {engine.version} ({engine.source})", "info")
 
     # 生成世界名称
     world_name = project_name
@@ -201,7 +202,7 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
         live.update(Text("📝 生成运行时配置中...", "cyan"))
         log_message("📝 生成运行时配置中...", "info")
         runtime_config = gen_runtime_config(
-            latest_engine,
+            engine.version,
             world_name,
             level_id,
             mcs_download_dir,
@@ -211,6 +212,7 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
         )
 
         # 写入配置文件
+        ensure_dir(os.path.dirname(os.path.abspath(config_path)))
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(runtime_config, f, ensure_ascii=False, indent=2)
 
@@ -259,7 +261,7 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
     log_message(f"🚀 正在启动游戏实例: {level_id[:8]}...", "bright_blue")
     
     with console.status("启动游戏中...", spinner="dots"):
-        game_process = open_game(config_path, logging_port=logging_port, wait=False)
+        game_process = open_game(config_path, logging_port=logging_port, wait=False, engine=engine)
 
     if not game_process:
         log_message("❌ 游戏启动失败", "error")
@@ -320,13 +322,14 @@ def _gen_random_port():
 
 
 @click.command()
+@engine_options
 @click.option('--new', '-n', is_flag=True, help='创建新的游戏实例')
 @click.option('--list', '-l', is_flag=True, help='列出所有可用的游戏实例')
 @click.option('--delete', '-d', help='删除指定的游戏实例 (输入实例ID前缀)')
 @click.option('--force', '-f', is_flag=True, help='强制删除，不提示确认')
 @click.option('--clean-all', is_flag=True, help='清空所有游戏实例')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, clean_all, instance_prefix):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix, **engine_overrides):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例
@@ -413,7 +416,8 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix):
             console.print("💡 下次运行将重用此实例，若需创建新实例请使用 \"--new\" 参数", style="yellow")
 
     # 运行游戏
-    success, _ = _run_game_with_instance(config_path, level_id, all_packs)
+    success, _ = _run_game_with_instance(config_path, level_id, all_packs,
+                                         engine_overrides=engine_overrides)
     if not success:
         raise click.ClickException('游戏启动失败')
 
