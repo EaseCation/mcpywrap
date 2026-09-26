@@ -1,5 +1,6 @@
 include LICENSE README.md CHANGELOG.md
 include docs/releasing.md
+include docs/local-dependencies.md docs/engine-discovery.md docs/development.md
 recursive-include tests *.py
 prune test
 prune .git
