@@ -1,5 +1,6 @@
 """公开 CLI、日志与会话身份的行为测试；不启动真实游戏。"""
 import importlib
+import inspect
 import json
 import os
 import socket
@@ -29,7 +30,9 @@ class AutomationTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
         self.project = self.root / '中文 项目'
         self.project.mkdir()
-        self.runner = CliRunner()
+        # Click 8.1（Python 3.9）默认合并 stderr；8.2+ 已移除此选项。
+        options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
+        self.runner = CliRunner(**options)
 
     def call(self, *args):
         result = self.runner.invoke(cli, ['--project', str(self.project), '--non-interactive', *args, '--json'])
