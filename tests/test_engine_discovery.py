@@ -23,7 +23,7 @@ class EngineDiscoveryTests(unittest.TestCase):
         self.project.mkdir()
         self.registry = self.stack.enter_context(patch.object(d, 'registry_values', return_value=[]))
         self.drives = self.stack.enter_context(patch.object(d, 'fixed_drives', return_value=[]))
-        self.stack.enter_context(patch.dict(os.environ, {}, clear=True))
+        self.stack.enter_context(patch.dict(os.environ, {key: value for key, value in os.environ.items() if key in ('PATH', 'SystemRoot', 'SYSTEMROOT', 'TEMP', 'TMP')}, clear=True))
         os.environ['APPDATA'] = str(self.root / 'appdata')
         (self.root / 'appdata/MinecraftPE_Netease/games/com.netease').mkdir(parents=True)
 
@@ -322,14 +322,16 @@ class EngineDiscoveryTests(unittest.TestCase):
 
     def test_cli_run_forwards_overrides(self):
         run = importlib.import_module('mcpywrap.commands.run_cmd')
+        from mcpywrap.mcstudio import sessions
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=self.root):
             Path('pyproject.toml').write_text('[project]\nname="sample"\n')
-            with patch.object(run, '_setup_dependencies', return_value=[]), patch.object(run, '_run_game_with_instance', return_value=(True, Mock())) as start:
-                result = runner.invoke(cli, ['run', '--new', '--engine-version', '3.10', '--mcs-download-path', 'custom'])
+            record = {'session': 'test', 'state': 'running', 'game': {'pid': 123}, 'log_path': 'test.log'}
+            with patch.object(run, '_setup_dependencies', return_value=[]), patch.object(sessions, 'start', return_value=record) as start:
+                result = runner.invoke(cli, ['run', '--new', '--detach', '--engine-version', '3.10', '--mcs-download-path', 'custom'])
                 self.assertEqual(result.exit_code, 0, result.output)
-                self.assertEqual(start.call_args.kwargs['engine_overrides']['engine_version'], '3.10')
-                self.assertEqual(start.call_args.kwargs['engine_overrides']['mcs_download_path'], 'custom')
+                self.assertEqual(start.call_args.args[3]['engine_version'], '3.10')
+                self.assertEqual(start.call_args.args[3]['mcs_download_path'], 'custom')
 
     def test_nonstandard_exe_not_returned_as_legacy_version_directory(self):
         from mcpywrap.mcstudio import mcs
@@ -352,7 +354,7 @@ class EngineDiscoveryTests(unittest.TestCase):
         (root / 'EngineAssert').mkdir()
         install = self.root / 'studio'
         (install / 'data/inner_res').mkdir(parents=True)
-        with patch('mcpywrap.commands.run_cmd._setup_dependencies', return_value=[]), patch.object(edit, 'studio_installation', return_value=(str(install), [])), patch.object(edit, 'open_editor', return_value=Mock()) as launch, patch.object(edit, 'discover_engines', wraps=d.discover_engines) as scan:
+        with patch('mcpywrap.commands.run_cmd._setup_dependencies', return_value=[]), patch.object(edit, 'studio_installation', return_value=(str(install), [])), patch.object(edit, 'open_editor', return_value=Mock(pid=os.getpid())) as launch, patch.object(edit, 'discover_engines', wraps=d.discover_engines) as scan:
             edit.open_edit(str(self.project))
             self.assertEqual(scan.call_count, 1)
             engine = launch.call_args.kwargs['engine']

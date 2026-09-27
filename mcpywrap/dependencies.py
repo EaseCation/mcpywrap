@@ -180,7 +180,7 @@ class DependencyService:
             Requirement(value)
         except InvalidRequirement as exc:
             raise DependencyError(f'无效的 Python 包声明: {value}') from exc
-        result = subprocess.run([sys.executable, '-m', 'pip', 'install', value],
+        result = subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-input', value],
                                 capture_output=True, text=True, encoding='utf-8', errors='replace')
         if result.returncode:
             raise DependencyError(result.stderr.strip() or result.stdout.strip() or 'pip 安装失败')

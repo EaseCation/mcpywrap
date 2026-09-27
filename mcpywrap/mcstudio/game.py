@@ -6,7 +6,7 @@ import subprocess
 import click
 import threading
 
-from .mcs import *
+from .mcs import is_windows
 from .discovery import discover_engines, DiscoveryError, studio_installation
 
 # 添加必要的Windows API支持
@@ -20,7 +20,7 @@ except ImportError:
 
 
 def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system_color=True, wait=True,
-              engine=None, project_dir=None):
+              engine=None, project_dir=None, output_path=None):
     """
     打开MC Studio游戏引擎
 
@@ -70,10 +70,13 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
         import subprocess
 
         # 启动游戏
-        proc = subprocess.Popen(
-            [minecraft_exe, 'config=' + os.path.abspath(config_path),
-             'loggingIP=' + logging_ip, 'loggingPort=' + str(logging_port)],
-            cwd=engine_path)
+        import contextlib
+        with open(output_path, 'ab') if output_path else contextlib.nullcontext() as output:
+            proc = subprocess.Popen(
+                [minecraft_exe, 'config=' + os.path.abspath(config_path),
+                 'loggingIP=' + logging_ip, 'loggingPort=' + str(logging_port)],
+                cwd=engine_path, stdin=subprocess.DEVNULL,
+                stdout=output, stderr=output)
 
         # 如果需要使用系统主题色且Win32API可用，使用定时器异步应用窗口样式
         if use_system_color and HAS_WIN32API and is_windows():

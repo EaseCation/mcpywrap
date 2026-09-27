@@ -7,14 +7,14 @@ import os
 import tomli
 import tomli_w
 import click
+from .command_context import project_dir
 
-base_dir = os.getcwd()
 CONFIG_FILE = 'pyproject.toml'
 
 
 def get_config_path() -> str:
     """获取配置文件路径"""
-    return os.path.join(os.getcwd(), CONFIG_FILE)
+    return os.path.join(str(project_dir()), CONFIG_FILE)
 
 def config_exists() -> bool:
     """检查配置文件是否存在"""
@@ -153,7 +153,7 @@ def scan_behavior_packs(base_dir=None):
         list: 行为包目录名称列表
     """
     if base_dir is None:
-        base_dir = os.getcwd()
+        base_dir = str(project_dir())
     
     behavior_packs_dir = os.path.join(base_dir, "behavior_packs")
     
@@ -169,57 +169,25 @@ def scan_behavior_packs(base_dir=None):
     return sorted(packs)
 
 def update_map_setuptools_config(interactive=False):
-    """为 map 项目自动更新 setuptools 配置，维护 behavior_packs 包列表
-    
-    Args:
-        interactive: 是否启用交互式模式，询问用户确认更新
-        
-    Returns:
-        bool: 是否成功更新配置
-    """
-    project_type = get_project_type()
-    if project_type != "map":
+    """只同步自动生成的 behavior_packs 项，保留用户其他包声明。"""
+    if get_project_type() != 'map':
         return False
-    
-    # 扫描当前的 behavior_packs
-    packs = scan_behavior_packs()
-    
-    if not packs:
-        # 没有行为包，使用动态发现配置排除所有地图相关目录
-        update_config({
-            'tool': {
-                'setuptools': {
-                    'packages': {
-                        'find': {
-                            'exclude': ["behavior_packs*", "resource_packs*", "db*"]
-                        }
-                    }
-                }
-            }
-        })
+    config = read_config()
+    settings = config.setdefault('tool', {}).setdefault('setuptools', {})
+    existing = settings.get('packages', [])
+    # 用户显式使用 find 配置时，由 setuptools 自行发现，不替换其规则。
+    if isinstance(existing, dict):
         return True
-    
-    # 有行为包时，使用显式包列表配置
-    packages = []
-    package_dir = {}
-    
-    for pack in packs:
-        package_name = f"behavior_packs.{pack}"
-        packages.append(package_name)
-        package_dir[package_name] = f"behavior_packs/{pack}"
-    
-    # 更新配置 - 当使用显式包列表时，不能再使用 find 指令
-    update_config({
-        'tool': {
-            'setuptools': {
-                'packages': packages,
-                'package-dir': package_dir
-            }
-        }
-    })
-    
-    click.echo(click.style(f'✅ 已更新 setuptools 配置，包含 {len(packs)} 个行为包', fg='green'))
+    names = ['behavior_packs.' + name for name in scan_behavior_packs()]
+    settings['packages'] = [name for name in existing if not name.startswith('behavior_packs.')] + names
+    directories = settings.setdefault('package-dir', {})
+    for name in list(directories):
+        if name.startswith('behavior_packs.'):
+            del directories[name]
+    directories.update({name: name.replace('.', '/') for name in names})
+    write_config(config)
     return True
+
 
 def check_map_setuptools_sync():
     """检查 map 项目的 setuptools 配置是否与实际的 behavior_packs 同步

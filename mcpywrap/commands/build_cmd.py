@@ -4,22 +4,21 @@
 """
 import os
 import click
+from ..command_context import OperationCommand, project_dir as current_project, non_interactive, require_project
 from ..config import config_exists, get_mcpywrap_config, get_project_type, ensure_map_setuptools_sync
 from ..builders.project_builder import AddonProjectBuilder, MapProjectBuilder
 
 
-base_dir = os.getcwd()
 
-@click.command()
+@click.command(cls=OperationCommand)
 @click.option('--merge', '-m', is_flag=True, help='强制合并所有资源文件')
 def build_cmd(merge):
     """构建为 MCStudio 工程"""
     if not config_exists():
-        click.secho('❌ 错误: 未找到配置文件。请先运行 `mcpywrap init` 初始化项目。', fg="red")
-        return False
+        require_project()
     
     # 确保 map 项目的 setuptools 配置同步
-    ensure_map_setuptools_sync(interactive=True)
+    ensure_map_setuptools_sync(interactive=False)
     
     # 获取mcpywrap特定配置
     mcpywrap_config = get_mcpywrap_config()
@@ -28,14 +27,15 @@ def build_cmd(merge):
 
     if not target_dir:
             click.secho('❌ 错误: 配置文件中未找到target_dir。请手动添加。', fg="red")
-            return False
+            raise click.ClickException("缺少 target_dir，请设置 tool.mcpywrap.target_dir")
     
     # 转换为绝对路径
-    target_dir = os.path.normpath(os.path.join(os.getcwd(), target_dir))
+    target_dir = os.path.normpath(os.path.join(str(current_project()), target_dir))
 
     # 实际构建
-    if not build(os.getcwd(), target_dir, force_merge=merge):
+    if not build(str(current_project()), target_dir, force_merge=merge):
         raise click.ClickException('构建失败')
+    return {'output': target_dir}
 
     
 def build(source_dir, target_dir, force_merge: bool = False):

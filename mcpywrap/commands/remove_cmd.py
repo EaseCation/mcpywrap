@@ -4,13 +4,14 @@ import subprocess
 import sys
 from pathlib import Path
 import click
+from ..command_context import OperationCommand, project_dir as current_project, non_interactive, require_project
 from packaging.requirements import Requirement, InvalidRequirement
 from packaging.utils import canonicalize_name
 from ..dependencies import DependencyDeclaration, DependencyError, DependencyService
 from .dependency_prompt import require_interactive
 
 
-@click.command()
+@click.command(cls=OperationCommand)
 @click.argument('package', required=False)
 @click.option('--path', 'local_path', help='移除本地目录引用，保留源目录')
 @click.option('--uninstall', '-u', is_flag=True, help='同时卸载 Python 包')
@@ -18,9 +19,9 @@ def remove_cmd(package, local_path, uninstall):
     """移除直接依赖；不带参数时从列表选择。"""
     if package is not None and local_path is not None:
         raise click.UsageError('包名与 --path 不能同时使用')
-    if not (Path.cwd() / 'pyproject.toml').exists():
+    if not (current_project() / 'pyproject.toml').exists():
         raise click.ClickException('项目尚未初始化，请先运行 mcpy init')
-    service = DependencyService(os.getcwd())
+    service = DependencyService(str(current_project()))
     try:
         if package is None and local_path is None:
             require_interactive()
@@ -38,9 +39,15 @@ def remove_cmd(package, local_path, uninstall):
             matches = [item for item in service.list() if item.kind == 'package' and canonicalize_name(Requirement(item.value).name) == canonicalize_name(package)]
             if len(matches) == 1:
                 entry = matches[0]
-        service.remove(entry)
+        if entry not in service.list():
+            raise DependencyError('项目未声明此依赖')
         if uninstall:
-            subprocess.run([sys.executable, '-m', 'pip', 'uninstall', '-y', Requirement(entry.value).name], check=True)
+            result = subprocess.run([sys.executable, '-m', 'pip', 'uninstall', '-y', Requirement(entry.value).name],
+                                    capture_output=True, text=True)
+            if result.returncode:
+                raise click.ClickException(result.stderr or result.stdout or '卸载失败')
+        service.remove(entry)
         click.secho('依赖引用已移除，源目录保留' if entry.kind == 'local' else '依赖已移除', fg='green')
+        return {'dependency': entry.value, 'source': entry.kind}
     except (DependencyError, InvalidRequirement, OSError, subprocess.CalledProcessError) as exc:
         raise click.ClickException(str(exc)) from exc

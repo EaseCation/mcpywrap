@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import click
+from . import __version__
+from .command_context import OperationGroup, configure_context
 
 from .commands.run_cmd import run_cmd
 from .commands.init_cmd import init_cmd
@@ -16,16 +18,26 @@ from .commands.mod_cmd import mod_cmd
 from .commands.edit_cmd import edit_cmd
 from .commands.ui_cmd import ui_cmd
 from .commands.doctor_cmd import doctor_cmd
+from .commands.sync_cmd import sync_cmd
+from .commands.session_cmd import status_cmd, logs_cmd, stop_cmd
 
 
-@click.group(invoke_without_command=True)
+@click.group(cls=OperationGroup, invoke_without_command=True)
+@click.option("--project", type=click.Path(file_okay=False), help="项目目录，默认当前目录")
+@click.option("--non-interactive", is_flag=True, help="不读取终端输入")
+@click.option("--json", "json_output", is_flag=True, help="输出 JSON 结果")
+@click.version_option(__version__)
 @click.pass_context
-def cli(ctx):
+def cli(ctx, project, non_interactive, json_output):
     """mcpywrap - 《我的世界》中国版 依赖管理与项目构建工具"""
+    configure_context(project, non_interactive)
     # 如果没有提供子命令，则运行 default_cmd
     if ctx.invoked_subcommand is None:
         # 导入并运行默认命令
-        default_cmd()
+        from .command_context import non_interactive as unattended
+        if unattended():
+            raise click.UsageError("请指定子命令，例如 doctor、init 或 sync")
+        return default_cmd.callback()
 
 # 注册其他子命令
 cli.add_command(modsdk_cmd, name='modsdk')
@@ -41,6 +53,10 @@ cli.add_command(run_cmd, name='run')
 cli.add_command(edit_cmd, name='edit')
 cli.add_command(ui_cmd, name='ui')
 cli.add_command(doctor_cmd, name='doctor')
+cli.add_command(sync_cmd, name='sync')
+cli.add_command(status_cmd)
+cli.add_command(logs_cmd)
+cli.add_command(stop_cmd)
 
 if __name__ == '__main__':
     cli()

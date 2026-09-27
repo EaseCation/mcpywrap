@@ -97,6 +97,29 @@ mcpy run --engine-version 3.10.0.420447
 
 已有实例默认保留原引擎版本；显式指定版本可以切换。自定义路径、项目级设置和环境变量的用法见[引擎配置参考](https://github.com/EaseCation/mcpywrap/blob/main/docs/engine-discovery.md)。
 
+## AI Agent 使用
+
+仓库提供标准 [mcpywrap Skill](https://github.com/EaseCation/mcpywrap/tree/main/skills/mcpywrap)，帮助 Agent 安装工具、管理依赖、
+构建打包、启动游戏和检查日志，并通过自带脚本截图、发送组合键与模拟移动。
+
+**安装 Skill**：可对支持 Skill 安装的 Agent 说：
+
+> 请安装 GitHub 仓库 EaseCation/mcpywrap 中 skills/mcpywrap 目录下的 Skill。
+
+也可以下载仓库 ZIP，将完整的 `skills/mcpywrap` 文件夹复制到对应 Agent 的技能目录。
+无需从源码安装 Python 项目；CLI 和 Skill 分别安装，`pip/uv install` 不会自动注册 Skill。
+Skill 中的 `scripts/bootstrap.ps1` 可使用已有 uv 安装 CLI，并检查是否具备所需命令能力。
+请使用 mcpywrap 0.3.2 或更高版本；需要固定组合时，可从 `v0.3.2` 标签安装对应 Skill。
+
+安装后可直接描述任务：
+
+- “使用 mcpywrap 为这个 Addon 添加本地依赖，并生成分发 ZIP。”
+- “启动这个项目，不弹日志界面，检查客户端和服务端的加载日志。”
+- “启动游戏并截图，模拟组合按键移动，检查 F11 输入模式和 F3 调试信息层。”
+
+Agent 通过 CLI 管理项目，Skill 自带游戏截图与键盘输入脚本；复杂游戏交互交给 Computer Use。Qt 管理与模板界面用于人工操作。
+常用入口：`mcpy --project <目录> --non-interactive <命令> --json`。
+
 ## 更多信息
 
 - 运行 `mcpy <命令> --help` 查看该命令的选项。

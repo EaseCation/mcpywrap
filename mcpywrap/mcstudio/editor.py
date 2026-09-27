@@ -4,8 +4,6 @@ import click
 import os
 import subprocess
 
-from ..mcstudio.mcs import *
-from .SimpleMonitor import SimpleMonitor
 from .discovery import discover_engines, require_resources, studio_installation, DiscoveryError
 
 
@@ -28,10 +26,9 @@ def open_editor(config_path, engine=None):
         click.echo(click.style('❌ 未找到MC Studio编辑器，请确保已安装MC Studio', fg='red', bold=True))
         return
     
-    cmd_str = f'cmd /c start "MC Studio Editor" "{editor_exe}" "{os.path.abspath(config_path)}"'
-    proc = subprocess.Popen(cmd_str, shell=True)
-    
-    return SimpleMonitor("MC_Editor.exe")
+    return subprocess.Popen([editor_exe, os.path.abspath(config_path)],
+                            cwd=os.path.dirname(editor_exe), stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def create_editor_config(project_name: str, project_dir: str, is_map: bool, addon_paths: list[str],
                          engine=None, engine_install_dir=None):

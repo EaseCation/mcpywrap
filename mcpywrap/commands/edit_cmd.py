@@ -5,6 +5,7 @@
 """
 
 import click
+from ..command_context import OperationCommand, project_dir as current_project, non_interactive, require_project
 import os
 
 from ..builders.AddonsPack import AddonsPack
@@ -17,24 +18,25 @@ from ..mcstudio.discovery import (
 )
 from ..utils.project_setup import find_and_configure_behavior_pack
 
-base_dir = os.getcwd()
 
 
-@click.command()
+@click.command(cls=OperationCommand)
 @engine_options
-def edit_cmd(**engine_overrides):
+@click.option("--detach", is_flag=True, help="启动编辑器后返回进程信息")
+def edit_cmd(detach, **engine_overrides):
     """使用 MC Studio Editor 编辑器进行编辑"""
     # 检查项目是否已初始化
     if not config_exists():
-        click.echo(click.style('❌ 项目尚未初始化，请先运行 mcpy init', fg='red', bold=True))
-        return
-    if open_edit(engine_overrides=engine_overrides) is False:
+        require_project()
+    result = open_edit(str(current_project()), engine_overrides=engine_overrides, raise_errors=True)
+    if result is False:
         raise click.ClickException('编辑器准备失败')
+    return result
 
-def open_edit(project_dir=None, engine_overrides=None):
+def open_edit(project_dir=None, engine_overrides=None, raise_errors=False):
     from ..dependencies import read_project
     from .run_cmd import _setup_dependencies
-    base_dir = os.path.abspath(project_dir or os.getcwd())
+    base_dir = os.path.abspath(project_dir or str(current_project()))
     config = read_project(base_dir)
     project_name = config.get('project', {}).get('name', 'project')
     project_type = config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
@@ -45,6 +47,8 @@ def open_edit(project_dir=None, engine_overrides=None):
         if not install_dir:
             raise DiscoveryError('未找到编辑器安装资源: ' + '; '.join(issues))
     except DiscoveryError as exc:
+        if raise_errors:
+            raise
         click.echo(str(exc))
         return False
     all_packs = _setup_dependencies(project_name, base_dir)
@@ -76,6 +80,8 @@ def open_edit(project_dir=None, engine_overrides=None):
 
     # 等待游戏进程结束
     click.echo(click.style('✨ 编辑器已启动...', fg='bright_green', bold=True))
+    from ..mcstudio.processes import identity
+    return {'application': 'editor', 'project': base_dir, **identity(editor_process.pid)}
 
     # 先不阻塞，因为用户可能还需要直接run
     # click.echo(click.style('⏱️ 按 Ctrl+C 可以中止等待', fg='yellow'))

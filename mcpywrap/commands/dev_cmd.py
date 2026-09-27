@@ -6,6 +6,7 @@
 import os
 import time
 import click
+from ..command_context import OperationCommand, project_dir as current_project, non_interactive, require_project
 from ..config import get_mcpywrap_config, config_exists, read_config, get_project_type, CONFIG_FILE, ensure_map_setuptools_sync
 from ..builders.watcher import ProjectWatcher
 from .build_cmd import build
@@ -24,22 +25,25 @@ def file_change_callback(src_path, dest_path, success, output, is_python, is_dep
     else:
         click.secho(f'❌ 处理失败 {output}', fg="red")
 
-@click.command()
+@click.command(cls=OperationCommand)
 def dev_cmd():
     """使用watch模式，实时构建为 MCStudio 工程，代码更新时，自动构建"""
+    from ..command_context import json_output
+    if json_output():
+        raise click.UsageError("dev 持续输出文本日志，不支持 --json")
     if not config_exists():
         click.secho('❌ 错误: 未找到配置文件。请先运行 `mcpywrap init` 初始化项目。', fg="red")
         raise click.ClickException('无法启动开发监控')
     
     # 确保 map 项目的 setuptools 配置同步
-    ensure_map_setuptools_sync(interactive=True)
+    ensure_map_setuptools_sync(interactive=False)
     
     # 获取mcpywrap特定配置
     mcpywrap_config = get_mcpywrap_config()
 
     if get_project_type() == "addon":
         # 源代码目录固定为当前目录
-        source_dir = os.getcwd()
+        source_dir = str(current_project())
         # 目标目录从配置中读取
         target_dir = mcpywrap_config.get('target_dir')
         
@@ -83,6 +87,7 @@ def dev_cmd():
         except KeyboardInterrupt:
             project_watcher.stop()
             click.secho("🛑 监控已停止", fg="bright_yellow")
+            raise
     else:
         click.secho('❌ 暂未支持: 当前仅支持Addons项目的构建', fg="red")
         raise click.ClickException('无法启动开发监控')

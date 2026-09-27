@@ -1,0 +1,106 @@
+"""一次运行对应一个会话；记录与日志保留在项目中，无常驻服务。"""
+import json
+import os
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+
+from .processes import checked_process, background_options
+
+
+def session_path(project, session):
+    if not isinstance(session, str) or len(session) != 32 or any(c not in '0123456789abcdef' for c in session):
+        raise ValueError('无效的会话 ID')
+    return Path(project).resolve() / '.runtime' / 'sessions' / session
+
+
+def save(path, record):
+    temporary = path.with_suffix('.tmp')
+    temporary.write_text(json.dumps(record, ensure_ascii=False), encoding='utf-8')
+    # Windows 上查询进程短暂打开记录时可能阻止替换；有界重试共享冲突。
+    for attempt in range(10):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            if os.name != 'nt' or attempt == 9:
+                raise
+            time.sleep(0.02)
+
+
+def read(project, session):
+    path = session_path(project, session) / 'session.json'
+    if not path.is_file():
+        raise ValueError(f'会话不存在: {session}')
+    data = json.loads(path.read_text(encoding='utf-8'))
+    if data['state'] in ('starting', 'running'):
+        game = checked_process(data['game']) if data.get('game') else None
+        worker = checked_process(data['worker']) if data.get('worker') else None
+        if not worker:
+            data['state'] = 'failed'
+            data['error'] = '会话 worker 已退出' + ('；游戏仍运行，可执行 stop' if game else '')
+        elif data.get('game') and not game:
+            data['state'] = 'exited'
+    return data
+
+
+def start(project, config_path, level_id, overrides=None, timeout=30):
+    root = Path(project).resolve()
+    session = uuid.uuid4().hex
+    directory = session_path(root, session)
+    directory.mkdir(parents=True)
+    record = {'session': session, 'project': str(root), 'state': 'starting', 'game': None,
+              'worker': None, 'error': None, 'log_path': str(directory / 'game.log'),
+              'engine_log_path': str(directory / 'engine.log'),
+              'config_path': str(Path(config_path).resolve()), 'level_id': level_id,
+              'engine_overrides': overrides or {}}
+    save(directory / 'session.json', record)
+    with (directory / 'worker.log').open('wb') as log:
+        process = subprocess.Popen([sys.executable, '-m', 'mcpywrap.mcstudio.session_worker', str(root), session],
+                                   cwd=root, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                                   **background_options())
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        # worker 是记录的唯一写入者，父进程不与其竞争覆盖。
+        data = json.loads((directory / 'session.json').read_text(encoding='utf-8'))
+        if data['state'] == 'running':
+            return data
+        if data['state'] in ('failed', 'exited') or process.poll() is not None:
+            raise ValueError(f'游戏启动失败: {data.get("error") or data["state"]}；日志: {directory / "worker.log"}')
+        time.sleep(0.1)
+    (directory / 'stop').touch()
+    raise ValueError(f'启动等待超时，已请求取消会话 {session}；日志: {directory / "worker.log"}')
+
+
+def stop(project, session):
+    data = read(project, session)
+    # 先核对身份，再发停止请求。worker 失效时也能准确清理自己创建的游戏。
+    game = checked_process(data['game']) if data.get('game') else None
+    worker = checked_process(data['worker']) if data.get('worker') else None
+    if worker:
+        (session_path(project, session) / 'stop').touch()
+    if game:
+        game.terminate()
+        try:
+            game.wait(timeout=10)
+        except Exception as exc:
+            raise ValueError('游戏未在 10 秒内退出，请查询会话状态') from exc
+    if worker:
+        try:
+            worker.wait(timeout=10)
+        except Exception as exc:
+            raise ValueError('worker 尚未退出，请查询会话状态') from exc
+    return {'session': session, 'state': 'exited'}
+
+
+def logs(project, session, tail=100):
+    from collections import deque
+    path = session_path(project, session) / 'game.log'
+    if not (path.parent / 'session.json').is_file():
+        raise ValueError('会话不存在')
+    if not path.is_file():
+        return ''
+    with path.open(encoding='utf-8', errors='replace') as stream:
+        return ''.join(deque(stream, maxlen=tail))

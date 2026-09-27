@@ -1,15 +1,24 @@
-# 开发与验证
+# 维护者：开发与验证
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-自动化测试使用临时目录、Click、Qt 离屏及安装／启动替身。本机多项目验收脚本另行执行真实 CLI、pip、watchdog，可加 `--game` 启动已安装的 MCS 引擎。请先关闭已有游戏，使用独立环境和一个尚不存在的输出目录：
+自动化测试使用临时目录、模拟安装/发布、Qt 离屏界面和模拟游戏进程，不启动真实游戏。
+CLI 使用调用上下文传递项目目录；底层服务接受明确路径。不要为 GUI 切换全局工作目录。
+
+有限命令返回数据或抛出错误，公共 CLI 层负责 JSON、stderr 和退出码。
+新增命令使用相同入口，避免打印错误后返回成功。
+
+Skill 的 bootstrap、smoke 脚本只使用公开 CLI；Skill 的 game_window 脚本负责绑定会话的截图和键盘输入；复杂交互使用环境的 Computer Use。
+真实游戏验证请使用独立测试项目：
 
 ```powershell
-uv venv test/acceptance-venv
-uv pip install --python test/acceptance-venv/Scripts/python.exe -e . pip
-test/acceptance-venv/Scripts/python.exe tests/manual_integration.py --workspace test/my-acceptance --game
+python skills/mcpywrap/scripts/smoke.py --project D:\mods\test --game --expect-log "服务端已加载" --expect-log "客户端已加载"
 ```
 
-脚本保留测试项目、构建结果、CLI/pip 日志和 `report.json`；实际游戏验证检查各 Mod 的服务端／客户端加载标记及游戏生成的包 UUID 列表，并清理本次创建的全局链接。测试存档和 `.runtime` 配置保留供复查。游戏验收仅替换日志窗口为 TCP 文件收集器，真实引擎、目录链接和运行配置均使用产品实现。
+脚本结束后停止自己创建的会话；日志和产物留在项目中。
+需要手动截图验证时直接运行 `run --no-gui --detach --json`，保存会话 ID，操作完后显式 stop。
+历史验收记录仅用于追溯，不能代替当前版本测试。
+
+发布见 [发布流程](releasing.md)。

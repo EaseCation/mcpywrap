@@ -371,8 +371,8 @@ class Projects(ProjectFixture):
     def test_init_wizard_accepts_local_dependency(self):
         (self.main / 'pyproject.toml').unlink()
         init = importlib.import_module('mcpywrap.commands.init_cmd')
-        with cwd(self.main), patch.object(init.time, 'sleep'), patch.object(init, 'install_project_dev_mode', return_value=True):
-            result = CliRunner().invoke(cli, ['init'], input='main\n0.1.0\n\nauthor\nn\ny\n2\n../中文 shared\nn\n./build\nn\n')
+        with cwd(self.main), patch.object(init, 'non_interactive', return_value=False):
+            result = CliRunner().invoke(cli, ['init'], input='main\n0.1.0\naddon\n./build\ny\n2\n../中文 shared\nn\n')
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(read_project(self.main)['tool']['mcpywrap']['local_dependencies'], ['../中文 shared'])
 

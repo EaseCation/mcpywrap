@@ -1,12 +1,13 @@
 """命令行依赖类型选择；显式参数路径不会进入向导。"""
 import sys
 import click
+from ..command_context import non_interactive
 from packaging.requirements import Requirement, InvalidRequirement
 from ..dependencies import DependencyDeclaration, DependencyError
 
 
 def require_interactive():
-    if not sys.stdin.isatty():
+    if non_interactive():
         raise click.UsageError('请提供包名或 --path 目录；交互向导需要终端。')
 
 

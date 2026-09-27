@@ -1,45 +1,51 @@
-# -*- coding: utf-8 -*-
-
-"""
-发布命令模块
-"""
+"""通过标准 Python 构建协议发布本次生成的分发文件。"""
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
 import click
-from ..config import read_config, config_exists
-from ..utils.utils import run_command
+from ..command_context import OperationCommand, project_dir, non_interactive, require_project
+from ..dependencies import read_project
 
-@click.command()
-def publish_cmd():
-    """发布项目到 PyPI"""
-    if not config_exists():
-        click.echo('错误: 未找到配置文件。请先运行 `mcpywrap init` 初始化项目。')
-        return
-    
-    config = read_config()
-    project_name = config.get('project_name')
-    
-    if not project_name:
-        click.echo('错误: 配置文件中缺少项目名称。请重新运行 `mcpywrap init`。')
-        return
-    
-    click.echo('准备发布项目到 PyPI...')
-    
-    # 构建分发包
-    click.echo('正在构建分发包...')
-    success, output = run_command(['python', 'setup.py', 'sdist', 'bdist_wheel'])
-    
-    if not success:
-        click.echo(f'构建分发包失败: {output}')
-        return
-    
-    # 使用 twine 上传到 PyPI
-    if click.confirm('是否上传到 PyPI？', default=True):
-        click.echo('正在上传到 PyPI...')
-        success, output = run_command(['twine', 'upload', 'dist/*'])
-        
-        if success:
-            click.echo(f'发布成功！项目 {project_name} 已上传到 PyPI。')
-        else:
-            click.echo(f'上传失败: {output}')
-            click.echo('提示: 确保你已经注册了 PyPI 账户，并正确配置了 ~/.pypirc 文件。')
-    else:
-        click.echo('已取消上传。')
+
+def check_credentials():
+    """复用 Twine 的环境变量、配置文件与非交互认证规则。"""
+    import argparse
+    from twine.settings import Settings
+    parser = argparse.ArgumentParser(add_help=False)
+    Settings.register_argparse_arguments(parser)
+    settings = Settings.from_argparse(parser.parse_args(['--non-interactive']))
+    try:
+        if not settings.client_cert and not (settings.username and settings.password):
+            raise ValueError('未配置认证信息')
+    except Exception as exc:
+        raise click.ClickException('发布凭据不可用；请配置 Twine 环境变量、.pypirc 或受支持的凭据提供者') from exc
+
+
+@click.command(cls=OperationCommand)
+@click.option('--yes', is_flag=True, help='明确确认上传本次构建的文件到 PyPI')
+def publish_cmd(yes):
+    """构建并发布 Python 包到 PyPI。凭据使用 Twine 标准配置。"""
+    require_project()
+    if not yes:
+        if non_interactive():
+            raise click.UsageError('发布需要显式指定 --yes；请先配置 Twine 凭据')
+        if not click.confirm('确认构建并上传到 PyPI？', default=False):
+            raise click.Abort()
+    config = read_project(project_dir())
+    if not config.get('project', {}).get('name'):
+        raise click.ClickException('缺少 project.name')
+    check_credentials()
+    with tempfile.TemporaryDirectory(prefix='mcpy-publish-') as directory:
+        proc = subprocess.run([sys.executable, '-m', 'build', '--outdir', directory, str(project_dir())],
+                              capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        if proc.returncode:
+            raise click.ClickException(proc.stderr or proc.stdout or '构建失败')
+        files = sorted(str(p) for p in Path(directory).iterdir() if p.suffix == '.whl' or p.name.endswith('.tar.gz'))
+        if not files:
+            raise click.ClickException('构建未生成 wheel 或 sdist')
+        proc = subprocess.run([sys.executable, '-m', 'twine', 'upload', '--non-interactive', *files],
+                              capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        if proc.returncode:
+            raise click.ClickException(proc.stderr or proc.stdout or '上传失败，请检查 Twine 凭据')
+    return {'name': config['project']['name'], 'version': config['project'].get('version'), 'published': True}

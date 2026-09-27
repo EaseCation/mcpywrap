@@ -439,64 +439,20 @@ class StudioLogServer(QObject if PYQT_AVAILABLE else object):
         client_socket = client_info['socket']
         client_id = client_info['id']
         
+        from .log_protocol import LogDecoder
+        decoder = LogDecoder()
         try:
             while self.running:
                 data = client_socket.recv(4096)
                 if not data:
                     break
                 
-                # 检测命令消息格式 (chr(255) + json + chr(255))
-                if data[0] == 255 and data[-1] == 255:
-                    try:
-                        json_data = data[1:-1].decode('utf-8')
-                        cmd_data = json.loads(json_data)
-                        
-                        # 命令消息用特殊颜色标记
-                        cmd_msg = f"[命令消息] 客户端 {client_id}:"
-                        cmd_content = f"命令: {cmd_data.get('command')}"
-                        msg_content = f"内容: {json.dumps(cmd_data.get('msg'), indent=2, ensure_ascii=False)}"
-                        
-                        # 命令行模式下打印彩色文本
-                        if not self.in_ui_mode:
-                            print(self.colorizer.colorize_terminal(cmd_msg))
-                            print(self.colorizer.colorize_terminal(cmd_content))
-                            print(self.colorizer.colorize_terminal(msg_content))
-                        else:
-                            # UI模式发送信号，包含颜色段信息
-                            self.log_received_signal.emit(cmd_msg, [
-                                (cmd_msg, 'bright_yellow')
-                            ])
-                            self.log_received_signal.emit(cmd_content, [
-                                (cmd_content, 'bright_cyan')
-                            ])
-                            self.log_received_signal.emit(msg_content, [
-                                (msg_content, 'bright_white')
-                            ])
-                            
-                    except json.JSONDecodeError:
-                        error_msg = f"[!] 无法解析JSON: {data[1:-1]}"
-                        if not self.in_ui_mode:
-                            print(self.colorizer.colorize_terminal(error_msg))
-                        else:
-                            self.log_received_signal.emit(error_msg, [
-                                (error_msg, 'bright_red')
-                            ])
+                log_data = decoder.feed(data)
+                if not self.in_ui_mode:
+                    print(self.colorizer.colorize_terminal(log_data), end='', flush=True)
                 else:
-                    # 普通日志消息，应用颜色处理
-                    log_data = data.decode('utf-8', errors='replace')
-                    
-                    # 按行处理日志
-                    lines = log_data.splitlines(True)  # 保留换行符
-                    for line in lines:
-                        if not self.in_ui_mode:
-                            # 命令行模式，直接打印彩色文本
-                            colored_line = self.colorizer.colorize_terminal(line)
-                            print(colored_line, end='', flush=True)
-                        else:
-                            # UI模式，发送带颜色段信息的原始文本
-                            color_segments = self.colorizer.analyze_text(line)
-                            self.log_received_signal.emit(line, color_segments)
-                
+                    self.log_received_signal.emit(log_data, self.colorizer.analyze_text(log_data))
+
                 # 只在非UI模式下显示命令提示符
                 if not self.in_ui_mode:
                     print("\n> ", end='', flush=True)

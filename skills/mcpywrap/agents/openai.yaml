@@ -1,0 +1,4 @@
+interface:
+  display_name: "mcpywrap 中国版 Mod 开发"
+  short_description: "管理中国版 Mod 依赖、构建和日志，用脚本截图、按键验证游戏"
+  default_prompt: "使用 $mcpywrap 检查当前中国版 Mod 项目，完成构建并按需要启动游戏验证。"

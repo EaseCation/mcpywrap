@@ -12,7 +12,7 @@ from ..utils.utils import ensure_dir
 from ..minecraft.addons import find_behavior_pack_dir, is_minecraft_addon_project
 from .pip_error_parser import display_pip_error, suggest_common_fixes
 
-base_dir = os.getcwd()
+from ..command_context import project_dir, non_interactive
 
 
 def get_git_config_value(key):
@@ -46,7 +46,7 @@ def get_default_email():
 
 def get_default_project_name():
     """获取默认项目名称（当前目录名）"""
-    return os.path.basename(base_dir)
+    return project_dir().name
 
 def update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir=None):
     """更新配置中的行为包信息"""
@@ -125,7 +125,7 @@ def install_project_dev_mode():
         display_pip_error(error_output, show_raw_output=False)
         
         # 询问是否显示详细错误信息
-        if click.confirm(click.style("❓ 是否查看详细错误信息以便调试？", fg="magenta"), default=False):
+        if not non_interactive() and click.confirm(click.style("❓ 是否查看详细错误信息以便调试？", fg="magenta"), default=False):
             click.echo()
             click.echo(click.style("📋 完整错误输出:", fg='cyan', bold=True))
             click.echo(click.style("-" * 40, fg='cyan'))

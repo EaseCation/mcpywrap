@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcpywrap"
-version = "0.3.1"
+version = "0.3.2"
 description = "A wrapper for Minecraft China Edition Addons management"
 readme = "README.md"
 authors = [{name = "boybook", email = "boybook@easecation.net"}]
@@ -17,6 +17,7 @@ classifiers = [
 requires-python = ">=3.9"
 dependencies = [
     "pip>=21",
+    "build>=1.0",
     "click>=8.0.0",
     "watchdog>=2.0.0",
     "twine>=3.4.0",

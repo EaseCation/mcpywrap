@@ -5,13 +5,14 @@ import zipfile
 from pathlib import Path
 
 import click
+from ..command_context import OperationCommand, project_dir as current_project, non_interactive, require_project
 
 from ..config import config_exists
 from ..dependencies import read_project
 from ..builders.project_builder import AddonProjectBuilder, MapProjectBuilder
 
 
-@click.command()
+@click.command(cls=OperationCommand)
 @click.option('--merge', '-m', is_flag=True, help='强制合并所有资源文件（仅地图项目）')
 def package_cmd(merge):
     """构建并打包可直接用于《我的世界》中国版市场发布的压缩包。"""
@@ -19,7 +20,7 @@ def package_cmd(merge):
         raise click.ClickException('未找到配置文件。请先运行 `mcpy init` 初始化项目。')
 
     # 每次调用读取当前项目，避免 CLI 导入时的工作目录影响打包位置。
-    source = Path.cwd()
+    source = current_project()
     try:
         config = read_project(source)
         project = config.get('project', {})
@@ -59,6 +60,7 @@ def package_cmd(merge):
         raise click.ClickException(f'打包失败: {exc}') from exc
 
     click.secho(f'✅ 打包成功！分发文件路径: {destination}', fg='green')
+    return {'artifact': str(destination)}
 
 
 def _zip_dir_keep_empty(zipf, src_dir, dst_root):

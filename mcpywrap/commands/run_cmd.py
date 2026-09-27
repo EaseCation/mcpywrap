@@ -5,6 +5,7 @@
 """
 
 import click
+from ..command_context import OperationCommand, project_dir as current_project, non_interactive, require_project
 import os
 import json
 import uuid
@@ -33,13 +34,12 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeEl
 # 创建控制台对象
 console = Console()
 
-base_dir = os.getcwd()
 
 
 # 实例管理助手函数
 def _get_all_instances(project_dir=None):
     """获取所有运行实例信息"""
-    runtime_dir = os.path.join(project_dir or os.getcwd(), ".runtime")
+    runtime_dir = os.path.join(project_dir or str(current_project()), ".runtime")
     if not os.path.exists(runtime_dir):
         return []
     
@@ -125,7 +125,7 @@ def _build_dependency_tree(node, tree_node):
 
 
 def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_callback=None,
-                            engine_overrides=None):
+                            engine_overrides=None, no_gui=False, logging_port=None, output_path=None):
     """使用指定的实例运行游戏
     
     Args:
@@ -256,24 +256,26 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
             log_message(f"✓ 已创建world_resource_packs.json，包含{len(resource_packs_config)}个资源包", "success")
             
     # 启动游戏
-    logging_port = _gen_random_port()
+    logging_port = logging_port if logging_port is not None else _gen_random_port()
 
     log_message(f"🚀 正在启动游戏实例: {level_id[:8]}...", "bright_blue")
     
     with console.status("启动游戏中...", spinner="dots"):
-        game_process = open_game(config_path, logging_port=logging_port, wait=False, engine=engine)
+        game_process = open_game(config_path, logging_port=logging_port, wait=False, engine=engine,
+                                 **({'output_path': output_path} if output_path else {}))
 
     if not game_process:
         log_message("❌ 游戏启动失败", "error")
         return False, None
 
     # 启动studio_logging_server
-    if is_windows():
+    if is_windows() and not no_gui:
         from ..mcstudio.studio_server_ui import run_studio_server_ui_subprocess
         run_studio_server_ui_subprocess(port=logging_port)
 
     # 启动日志与调试工具
-    open_safaia()
+    if not no_gui:
+        open_safaia()
 
     # 输出成功启动信息
     log_message("✨ 游戏已启动，正在运行中...", "bright_green")
@@ -288,6 +290,7 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
         except KeyboardInterrupt:
             # 捕获 Ctrl+C，但不终止游戏进程
             log_message("\n🛑 收到中止信号，脚本将退出但游戏继续运行", "yellow")
+            raise
     
     return True, game_process
 
@@ -321,28 +324,30 @@ def _gen_random_port():
     return 0  # 返回0让操作系统自动分配端口
 
 
-@click.command()
+@click.command(cls=OperationCommand)
 @engine_options
+@click.option("--no-gui", is_flag=True, help="只显示游戏，不打开辅助 GUI")
+@click.option("--detach", is_flag=True, help="后台运行并返回游戏会话")
 @click.option('--new', '-n', is_flag=True, help='创建新的游戏实例')
 @click.option('--list', '-l', is_flag=True, help='列出所有可用的游戏实例')
 @click.option('--delete', '-d', help='删除指定的游戏实例 (输入实例ID前缀)')
 @click.option('--force', '-f', is_flag=True, help='强制删除，不提示确认')
 @click.option('--clean-all', is_flag=True, help='清空所有游戏实例')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, clean_all, instance_prefix, **engine_overrides):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, **engine_overrides):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例
     """
-    global base_dir
-    base_dir = os.getcwd()
+    base_dir = str(current_project())
+    if (delete or clean_all) and non_interactive() and not force:
+        raise click.UsageError("非交互删除需要 --force")
     # 检查项目是否已初始化
     if not config_exists():
-        console.print("❌ 项目尚未初始化，请先运行 mcpy init", style="red bold")
-        return
+        require_project()
 
     # 确保 map 项目的 setuptools 配置同步
-    ensure_map_setuptools_sync(interactive=True)
+    ensure_map_setuptools_sync(interactive=False)
 
     project_name = get_project_name()
     
@@ -357,8 +362,7 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, **engine_overr
 
     # 列出所有实例
     if list:
-        _list_instances()
-        return
+        return {'instances': _get_all_instances()}
     
     # 删除指定实例
     if delete:
@@ -401,7 +405,7 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, **engine_overr
                 
                 console.print(table)
                 console.print("💡 使用 \"mcpy run -l\" 查看所有实例", style="yellow")
-            return
+            raise click.ClickException("未找到指定实例")
     else:
         # 使用最新实例，如果没有则创建新实例
         latest_instance = _get_latest_instance()
@@ -415,11 +419,35 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, **engine_overr
             console.print(f"🆕 创建首个实例: {level_id[:8]}...", style="green")
             console.print("💡 下次运行将重用此实例，若需创建新实例请使用 \"--new\" 参数", style="yellow")
 
-    # 运行游戏
+    from ..command_context import json_output
+    if json_output() and not detach:
+        raise click.UsageError('run --json 需要 --detach，避免等待游戏退出')
+    if no_gui or detach or non_interactive():
+        from ..mcstudio import sessions
+        import time
+        data = sessions.start(base_dir, config_path, level_id, engine_overrides)
+        result = {'application': 'game', 'project': base_dir, 'session': data['session'],
+                  'state': data['state'], **data['game'], 'log_path': data['log_path'],
+                  'engine_log_path': data.get('engine_log_path'),
+                  'window_title_hint': 'Minecraft', 'window_verified': False}
+        if detach:
+            return result
+        click.echo('会话: ' + data['session'] + '；日志: ' + data['log_path'])
+        try:
+            while sessions.read(base_dir, data['session'])['state'] in ('starting', 'running'):
+                time.sleep(0.3)
+        except KeyboardInterrupt:
+            click.echo('游戏继续运行；使用 stop --session ' + data['session'] + ' 停止。', err=True)
+            raise
+        final = sessions.read(base_dir, data['session'])
+        if final['state'] == 'failed' or final.get('exit_code', 0) != 0:
+            raise click.ClickException(final.get('error') or '游戏异常退出，请查看会话日志')
+        return result
     success, _ = _run_game_with_instance(config_path, level_id, all_packs,
                                          engine_overrides=engine_overrides)
     if not success:
         raise click.ClickException('游戏启动失败')
+
 
 
 def _list_instances():
@@ -500,7 +528,7 @@ def _delete_instance(instance_prefix, force, project_dir=None):
     
     if not instance:
         console.print(f"❌ 未找到前缀为 \"{instance_prefix}\" 的实例", style="red")
-        return
+        raise click.ClickException("删除实例失败，请检查实例 ID 或文件访问权限")
     
     level_id = instance['level_id']
     config_path = instance['config_path']
@@ -528,7 +556,7 @@ def _delete_instance(instance_prefix, force, project_dir=None):
         
         except Exception as e:
             console.print(f"❌ 删除实例时出错: {str(e)}", style="red")
-            return
+            raise click.ClickException("删除实例失败，请检查实例 ID 或文件访问权限")
     
     console.print(f"✅ 成功删除实例: {level_id[:8]}", style="green")
 
@@ -554,13 +582,11 @@ def _clean_all_instances(force, project_dir=None):
         # 二次确认
         confirmation1 = click.confirm('确定要继续吗?', default=False)
         if not confirmation1:
-            console.print("操作已取消", style="green")
-            return
+            raise click.Abort()
             
         confirmation2 = click.confirm('⚠️ 最后确认: 真的要删除所有实例吗?', default=False)
         if not confirmation2:
-            console.print("操作已取消", style="green")
-            return
+            raise click.Abort()
     
     # 开始删除所有实例
     with Progress(
@@ -607,6 +633,8 @@ def _clean_all_instances(force, project_dir=None):
         console.print(f"✅ 已成功删除所有 {count} 个游戏实例", style="green bold")
     else:
         console.print(f"⚠️ 删除结果: 成功 {success_count} 个, 失败 {fail_count} 个", style="yellow bold")
+        if fail_count > 0:
+            raise click.ClickException(f"删除失败 {fail_count} 个实例，请检查文件访问权限")
         if fail_count > 0 and not force:
             console.print("💡 提示: 使用 \"--force\" 选项可以忽略错误继续删除", style="cyan")
 

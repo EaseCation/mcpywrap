@@ -51,7 +51,7 @@ def get_available_versions() -> List[str]:
         url = f"{PYPI_BASE_URL}/{PACKAGE_NAME}/json"
         logger.info(f"正在从 {url} 获取包信息...")
         
-        with urllib.request.urlopen(url) as response:
+        with urllib.request.urlopen(url, timeout=30) as response:
             if response.status != 200:
                 logger.error(f"API请求失败: HTTP {response.status}")
                 return []
@@ -120,7 +120,7 @@ def download_and_install_package(version: Optional[str] = None, force: bool = Tr
         url = f"{PYPI_BASE_URL}/{PACKAGE_NAME}/{version}/json"
         click.echo(click.style(f'🔍 获取版本 {version} 的下载信息...', fg='bright_blue'))
         
-        with urllib.request.urlopen(url) as response:
+        with urllib.request.urlopen(url, timeout=30) as response:
             if response.status != 200:
                 click.echo(click.style(f'❌ API请求失败: HTTP {response.status}', fg='red'))
                 return False
@@ -145,7 +145,7 @@ def download_and_install_package(version: Optional[str] = None, force: bool = Tr
                 package_path = os.path.join(temp_dir, os.path.basename(download_url))
                 click.echo(click.style('📥 下载中...', fg='bright_blue'))
                 
-                with urllib.request.urlopen(download_url) as response, open(package_path, 'wb') as out_file:
+                with urllib.request.urlopen(download_url, timeout=60) as response, open(package_path, 'wb') as out_file:
                     shutil.copyfileobj(response, out_file)
                 
                 click.echo(click.style('✅ 下载完成', fg='green'))
@@ -154,7 +154,7 @@ def download_and_install_package(version: Optional[str] = None, force: bool = Tr
                 click.echo(click.style(f'🔧 正在安装 {PACKAGE_NAME} {version}...', fg='bright_blue'))
                 
                 # 添加强制安装选项
-                cmd = [sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps"]
+                cmd = [sys.executable, "-m", "pip", "install", "--no-input", "--force-reinstall", "--no-deps"]
                 
                 # 强制忽略Python版本兼容性检查
                 cmd.append("--ignore-requires-python")
