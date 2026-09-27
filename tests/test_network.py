@@ -65,7 +65,7 @@ class NetworkTests(unittest.TestCase):
                     '[tool.mcpywrap.server]\nhost="localhost"\n')
         packs = n.prepare_project(self.project)
         self.assertEqual(len(packs), 1)
-        self.assertEqual(Path(packs[0].path), dep)
+        self.assertTrue(Path(packs[0].path).samefile(dep))
         self.addon(self.project)
         self.assertEqual(len(n.prepare_project(self.project)), 2)
         self.assertFalse((dep / 'pyproject.toml').exists())
