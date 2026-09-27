@@ -24,3 +24,6 @@ var/
 
 # mcpywrap specific
 .mcpywrap.json
+/mcpywrap/mcstudio/bridge_payload/
+*.pfx
+*.p12

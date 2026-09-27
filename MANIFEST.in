@@ -6,7 +6,7 @@ recursive-include tests *.py
 recursive-include skills *.md *.yaml *.ps1 *.py
 include scripts/build_mcs_auth_bridge.py
 include scripts/check_mcs_auth_bridge.py
-recursive-include native/mcs_auth *.cs *.c
+recursive-include native/mcs_auth *.cs *.c *.cer *.json
 recursive-include mcpywrap/mcstudio/bridge_payload *.exe *.dll *.cer *.json
 prune test
 prune .git

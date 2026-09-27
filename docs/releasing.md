@@ -2,6 +2,12 @@
 
 主分支和 PR 运行 Windows Python 3.9、3.12、3.14 的自动化测试。通过后构建 wheel/sdist、运行严格元数据检查、检查产物内容，并在独立环境安装 wheel 验证 CLI 和模块导入。
 
+Windows CI 先用 MSVC 从 `native/mcs_auth` 编译 x86 登录桥接，再签名并通过构建产物交给测试和 Python 打包任务；编译后的 EXE/DLL 不提交到 Git。仓库只保留发布者公钥证书和指纹。
+
+仓库 Actions secrets：`MCS_BRIDGE_SIGNING_PFX` 保存 Base64 编码的加密 PFX，`MCS_BRIDGE_SIGNING_PASSWORD` 保存独立的强密码。只有 main／发布标签的签名步骤可读取它们，PR 只构建未签名测试产物。CI 将证书导入临时 runner 的个人证书库，签名后清理，不安装根信任。私钥、PFX 和密码均不进入日志或 artifact。
+
+轮换签名身份时，需要同时更新这两个 secrets 和 `native/mcs_auth/publisher.cer`、`publisher.json`。脚本会拒绝与仓库固定公钥不匹配的签名证书；未签名产物不能进入 PyPI 发布任务。
+
 发布凭据使用 PyPI Trusted Publishing，不在仓库或工作流中保存长期 API token。在 PyPI 项目 `mcpywrap` 的 Publishing 设置添加 GitHub publisher：
 
 | 字段 | 值 |
