@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QHeaderView, 
     QMessageBox, QSplitter, QTextEdit, QPlainTextEdit, QProgressBar, QFrame,
     QStyleFactory, QStatusBar, QCheckBox, QFileDialog, QGroupBox,
-    QLineEdit, QListWidget, QListWidgetItem, QComboBox, QCompleter
+    QLineEdit, QListWidget, QListWidgetItem, QComboBox, QCompleter, QToolButton, QMenu, QInputDialog, QSizePolicy, QFormLayout
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QStringListModel
 from PyQt5.QtGui import QIcon, QFont, QTextCursor, QColor, QPalette
@@ -136,10 +136,11 @@ class GameInstanceManager(QMainWindow):
         self.dependency_kind = QComboBox()
         self.dependency_kind.addItem("Python 包（工具环境）", "package")
         self.dependency_kind.addItem("本地 Addon 目录", "local")
+        self.dependency_kind.addItem("Git 依赖（项目与代码库）", "git")
         add_dep_layout.addWidget(self.dependency_kind)
-        dependency_note = QLabel('包安装于 mcpy 工具环境；仅识别出的 Addon 参与组装，游戏不会读取 Python 依赖表。')
-        dependency_note.setWordWrap(True)
-        add_dep_layout.addWidget(dependency_note)
+        self.dependency_note = QLabel()
+        self.dependency_note.setWordWrap(True)
+        add_dep_layout.addWidget(self.dependency_note)
         self.new_dep_input = QComboBox()
         self.new_dep_input.setEditable(True)
         self.new_dep_input.setInsertPolicy(QComboBox.NoInsert)
@@ -161,12 +162,52 @@ class GameInstanceManager(QMainWindow):
         self.local_path_input.textChanged.connect(self.update_path_preview)
         self.absolute_path_check.toggled.connect(self.update_path_preview)
         self.dependency_kind.currentIndexChanged.connect(self.on_dependency_kind_changed)
+        from ..framework_presets import FRAMEWORK_PRESETS
+        self.git_shortcuts = {}
+        for name, preset in FRAMEWORK_PRESETS.items():
+            button = QToolButton()
+            button.setText('一键添加 ' + preset['title'])
+            button.setToolTip(preset['title'] + ' ' + preset['version'] + '：使用已验证的固定提交；新目录生成入口，已有代码不改写。')
+            button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            button.setPopupMode(QToolButton.MenuButtonPopup)
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.clicked.connect(lambda checked=False, name=name: self.add_preset_dependency(name))
+            menu = QMenu(button)
+            for source in preset['sources']:
+                action = menu.addAction('使用 ' + source + ' 来源')
+                action.triggered.connect(lambda checked=False, name=name, source=source: self.add_preset_dependency(name, source=source))
+            action = menu.addAction('指定 Mod 脚本目录…')
+            action.triggered.connect(lambda checked=False, name=name: self.add_preset_dependency(name, choose_script=True))
+            button.setMenu(menu)
+            self.git_shortcuts[name] = button
+            add_dep_layout.addWidget(button)
+        self.git_fields = {}
+        self.git_panel = QWidget()
+        git_form = QFormLayout(self.git_panel)
+        git_form.setContentsMargins(0, 0, 0, 0)
+        labels = {'git': '仓库', 'name': '名称', 'ref': '版本引用', 'subdir': '子目录', 'target': '安装位置'}
+        for key, placeholder in [('git', 'Git URL（HTTPS或file://）'), ('name', '依赖名称（可选，默认仓库名）'),
+                                 ('ref', '提交／标签／分支（默认HEAD，添加后锁SHA）'),
+                                 ('subdir', '项目／源码子目录（默认 .）'), ('target', '代码安装位置（Addon无需填写）')]:
+            field = QLineEdit()
+            field.setPlaceholderText(placeholder)
+            field.setToolTip(placeholder)
+            self.git_fields[key] = field
+            git_form.addRow(labels[key], field)
+        self.git_kind = QComboBox()
+        for name, value in [('自动识别导出描述或Addon', 'auto'), ('Addon', 'addon'), ('Python代码目录', 'code')]:
+            self.git_kind.addItem(name, value)
+        git_form.addRow('导出类型', self.git_kind)
+        add_dep_layout.addWidget(self.git_panel)
         self.add_dep_btn = QPushButton("添加依赖")
         self.add_dep_btn.clicked.connect(self.add_dependency)
         add_dep_layout.addWidget(self.add_dep_btn)
         self.on_dependency_kind_changed()
 
         dependency_layout.addWidget(add_dep_group)
+        self.sync_dependencies_btn = QPushButton('同步项目依赖')
+        self.sync_dependencies_btn.clicked.connect(self.sync_dependencies)
+        dependency_layout.addWidget(self.sync_dependencies_btn)
         
         # 将依赖管理界面添加到分割器
         h_splitter.addWidget(dependency_widget)
@@ -356,10 +397,10 @@ class GameInstanceManager(QMainWindow):
             self.dependencies = self.dependency_service.list()
             for dependency in self.dependencies:
                 status = self.dependency_service.inspect(dependency)
-                label = "本地目录" if dependency.kind == "local" else "Python 包"
+                label = {'local': '本地目录', 'package': 'Python 包', 'code': 'Git依赖', 'git': 'Git依赖'}[dependency.kind]
                 text = f"[{label}] {dependency.value}"
                 labels = {'addon': 'Addon', 'development_only': '仅开发环境',
-                          'inactive': '环境标记未启用', 'unavailable': '缺失／无效'}
+                          'inactive': '环境标记未启用', 'unavailable': '缺失／无效', 'code_library': '已同步', 'git_project': '已同步'}
                 text += ' — ' + labels[status.state]
                 item = QListWidgetItem(text)
                 item.setData(Qt.UserRole, dependency)
@@ -386,12 +427,47 @@ class GameInstanceManager(QMainWindow):
         return self.all_packs is not None
 
     def on_dependency_kind_changed(self, *args):
-        local = self.dependency_kind.currentData() == 'local'
-        self.new_dep_input.setVisible(not local)
+        kind = self.dependency_kind.currentData()
+        self.dependency_note.setText({
+            'package': 'Python 包安装到工具环境；只有识别出的 Addon 内容会参与游戏组装。',
+            'local': '引用完整的本地 Addon；保留源目录，并解析其声明的子依赖。',
+            'git': '从仓库读取项目描述和子依赖。也可使用快捷按钮添加常用 Git 依赖。',
+        }[kind])
+        self.new_dep_input.setVisible(kind == 'package')
+        for widget in (self.git_panel, *self.git_shortcuts.values()):
+            widget.setVisible(kind == 'git')
         for widget in (self.local_path_input, self.browse_dependency_btn, self.absolute_path_check, self.path_preview):
-            widget.setVisible(local)
-        if local:
+            widget.setVisible(kind == 'local')
+        if kind == 'local':
             self.update_path_preview()
+        self.add_dep_btn.setText('添加 Git 依赖' if kind == 'git' else '添加依赖')
+
+    def add_preset_dependency(self, preset, source=None, script_dir=None, choose_script=False):
+        if self.dependency_busy:
+            return
+        from ..frameworks import framework_preview, script_directories
+        try:
+            candidates = script_directories(self.base_dir)
+            if choose_script or (script_dir is None and len(candidates) > 1):
+                script_dir, accepted = QInputDialog.getItem(
+                    self, '选择所属 Mod', '脚本目录（新目录将生成入口，已有代码不改写）',
+                    candidates or ['MyScript'], 0, True)
+                if not accepted:
+                    return
+            preview = framework_preview(self.base_dir, preset, script_dir, source)
+            self.dependency_kind.setCurrentIndex(self.dependency_kind.findData('git'))
+            from ..framework_presets import FRAMEWORK_PRESETS
+            descriptor = FRAMEWORK_PRESETS[preset]
+            values = {'git': preview['source'], 'name': preview['dependency'], 'ref': preview['rev'],
+                      'subdir': descriptor['subdir'], 'target': preview['target']}
+            for key, value in values.items():
+                self.git_fields[key].setText(value)
+                self.git_fields[key].setCursorPosition(0)
+            self.git_kind.setCurrentIndex(self.git_kind.findData(descriptor['kind']))
+            self.log(f"准备 Git 依赖 {preview['title']} → {preview['target']}；已有业务代码保留", 'info')
+            self._start_dependency_operation('preset', preset=preset, script_dir=preview['script_dir'], source=source)
+        except (DependencyError, OSError, ValueError) as exc:
+            self.log(str(exc), 'error')
 
     def browse_dependency(self):
         selected = QFileDialog.getExistingDirectory(self, '选择 Addon 根目录', self.base_dir)
@@ -414,7 +490,9 @@ class GameInstanceManager(QMainWindow):
     def set_dependency_busy(self, busy):
         self.dependency_busy = busy
         for widget in (self.dependency_kind, self.new_dep_input, self.local_path_input,
-                       self.browse_dependency_btn, self.absolute_path_check, self.add_dep_btn):
+                       self.browse_dependency_btn, self.absolute_path_check, self.add_dep_btn,
+                       self.sync_dependencies_btn, *self.git_shortcuts.values(),
+                       self.git_kind, *self.git_fields.values()):
             widget.setEnabled(not busy)
         self.remove_dep_btn.setEnabled(not busy and bool(self.dependency_list.selectedItems()))
         self.new_btn.setEnabled(not busy and self.all_packs is not None)
@@ -586,7 +664,9 @@ class GameInstanceManager(QMainWindow):
         if not selected:
             return
         entry = selected[0].data(Qt.UserRole)
-        note = '仅移除引用，源目录保留。' if entry.kind == 'local' else '仅移除配置，不卸载 Python 包。'
+        note = {'local': '仅移除引用，源目录保留。', 'package': '仅移除配置，不卸载 Python 包。',
+                'code': '仅移除代码库声明，缓存与入口保留。请检查业务代码中的框架导入。',
+                'git': '仅移除Git依赖声明，缓存与入口保留。请检查业务代码中的依赖导入。'}[entry.kind]
         if QMessageBox.question(self, '确认移除依赖', f'{entry.value}\n{note}',
                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
@@ -600,6 +680,9 @@ class GameInstanceManager(QMainWindow):
 
     def add_dependency(self):
         if self.dependency_busy:
+            return
+        if self.dependency_kind.currentData() == 'git':
+            self._start_dependency_operation('git')
             return
         if self.dependency_kind.currentData() == 'local':
             value = self.local_path_input.text().strip()
@@ -624,6 +707,20 @@ class GameInstanceManager(QMainWindow):
             return
         self.set_dependency_busy(True)
         self.install_thread = DependencyInstallThread(package, self.base_dir)
+        self.install_thread.log_message.connect(self.log)
+        self.install_thread.result.connect(self.on_dependency_installed)
+        self.install_thread.finished.connect(lambda: self.set_dependency_busy(False))
+        self.install_thread.start()
+
+    def sync_dependencies(self):
+        if not self.dependency_busy:
+            self._start_dependency_operation('sync')
+
+    def _start_dependency_operation(self, operation, preset=None, script_dir=None, source=None):
+        self.set_dependency_busy(True)
+        self.install_thread = DependencyTaskThread(
+            self.base_dir, operation, script_dir, source, preset=preset,
+            git_options={**{key: field.text().strip() or None for key, field in self.git_fields.items()}, 'kind': self.git_kind.currentData()})
         self.install_thread.log_message.connect(self.log)
         self.install_thread.result.connect(self.on_dependency_installed)
         self.install_thread.finished.connect(lambda: self.set_dependency_busy(False))
@@ -685,6 +782,44 @@ class GameRunThread(QThread):
             self.log_message.emit(f"错误详情:\n{error_details}", "error")
         finally:
             self.auth_context = None
+
+
+class DependencyTaskThread(QThread):
+    """网络同步在后台；与CLI共用同一个框架/依赖服务。"""
+    log_message = pyqtSignal(str, str)
+    result = pyqtSignal(bool, str)
+
+    def __init__(self, project_dir, operation='framework', script_dir=None, source=None, preset=None, git_options=None):
+        super().__init__()
+        self.project_dir, self.operation = project_dir, operation
+        self.script_dir, self.source = script_dir, source
+        self.preset, self.git_options = preset, git_options or {}
+
+    def run(self):
+        try:
+            if self.operation == 'sync':
+                from ..commands.sync_cmd import sync_project
+                self.log_message.emit('正在恢复项目声明的固定版本代码库...', 'info')
+                result = sync_project(self.project_dir)
+                message = f"同步完成：{result['git_projects']} 个Git项目、{result['code_libraries']} 个兼容代码库"
+            elif self.operation == 'git':
+                options = dict(self.git_options)
+                url = options.pop('git', None)
+                if not url:
+                    raise DependencyError('请输入Git URL')
+                if options.get('kind') == 'auto':
+                    options['kind'] = None
+                result = DependencyService(self.project_dir).add_git(url, **options)
+                message = f"Git项目已注册：{result['dependency']}，提交 {result['rev'][:12]}"
+            else:
+                self.log_message.emit('正在准备框架外部依赖...', 'info')
+                result = DependencyService(self.project_dir).add_framework(self.preset, self.script_dir, self.source)
+                for warning in result['warnings']:
+                    self.log_message.emit(warning, 'warning')
+                message = f"框架已准备：{result['target']}；其他开发者执行 mcpy sync 即可恢复"
+            self.result.emit(True, message)
+        except Exception as exc:
+            self.result.emit(False, f'框架准备失败: {exc}')
 
 
 class DependencyInstallThread(QThread):

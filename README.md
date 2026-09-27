@@ -38,6 +38,11 @@ mcpy edit
 
 ## 复用代码和资源
 
+为 Addon 一键准备 QuMod：`mcpy add --qumod`。新脚本目录自动生成入口，已有业务代码保留；
+QuMod 作为通用 Git 项目依赖的预设管理，不进入源码仓库。团队成员克隆后执行 `mcpy sync` 即可恢复框架。
+CLI／GUI 向导、官方 GitHub／Gitee 来源和版本依据见 [QuMod 指引](docs/qumod.md)。
+其他仓库使用 `mcpy add --git <URL>`；标准导出、递归依赖与共享缓存见 [Git项目依赖](docs/git-dependencies.md)。
+
 将 Python 包安装到 mcpy 所在的工具环境并记录声明：
 
 ```powershell
@@ -60,9 +65,9 @@ mcpy add --path "../shared-addon"
 
 ## 构建与日常开发
 
-游戏内纯代码库可用 `[[tool.mcpywrap.code_libraries]]` 声明固定 Git 提交及行为包内安装位置，
-通过 `mcpy sync` 显式获取，运行与发布时组装。QuMod 无需先包装成 Addon，源码缓存不提交 Git。
-配置、锁文件和作用域说明见[代码库依赖](docs/code-libraries.md)。
+Git 项目使用 `[[tool.mcpywrap.git_dependencies]]` 声明，支持 Addon 与纯代码导出、递归子依赖及固定提交。
+`mcpy sync` 获取并注册，运行与发布时组装；共享源码缓存不提交 Git。
+现有 `code_libraries` 声明保持兼容，说明见[代码库依赖](docs/code-libraries.md)。
 
 | 命令 | 用途 |
 |---|---|

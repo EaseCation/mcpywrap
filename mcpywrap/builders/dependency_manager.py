@@ -46,6 +46,8 @@ class DependencyManager:
         self.errors = []
         self.statuses = {}
         self._nodes, self._active, self._ordered = {}, [], []
+        self._git_locks = {}
+        self.has_git_projects = False
 
     def find_dependency_path(self, package_name):
         try:
@@ -55,9 +57,11 @@ class DependencyManager:
         direct = dist.read_text('direct_url.json')
         return _local_url(json.loads(direct).get('url', '')) if direct else None
 
-    def build_dependency_tree(self, project_name, project_path, dependencies=None, *, config=None, allow_missing=False):
+    def build_dependency_tree(self, project_name, project_path, dependencies=None, *, config=None, allow_missing=False, git_lock=None):
         self.__init__()
         project_path = str(Path(project_path).resolve())
+        if git_lock is not None:
+            self._git_locks[project_path] = git_lock
         config = read_project(project_path) if config is None else config
         if dependencies is not None:
             config.setdefault('project', {})['dependencies'] = dependencies
@@ -122,6 +126,11 @@ class DependencyManager:
                     self._development_only(source, entry)
             except (DependencyError, OSError, ValueError) as exc:
                 raise DependencyError(f'来源 {source}\n依赖 {entry.value!r}: {exc}') from exc
+        from ..git_projects import resolve_projects
+        for entry, path, info in resolve_projects(parent.addon_pack.path, config,
+                                                  self._git_locks.get(str(Path(parent.addon_pack.path).resolve()))):
+            self.has_git_projects = True
+            self._visit(parent, str(path), entry['name'])
 
     def _missing(self, source, value, reason):
         from ..dependencies import DependencyDeclaration
@@ -158,6 +167,7 @@ class DependencyManager:
         safe_name = re.sub(r'[^\w.-]', '_', name)[:60] or 'addon'
         addon = AddonsPack(f'{safe_name}_{suffix}', path)
         addon.behavior_pack_dir, addon.resource_pack_dir = folders.get('behavior'), folders.get('resource')
+        addon.code_target = config.get('tool', {}).get('mcpywrap', {}).get('_registered_code_target')
         node = DependencyNode(name, addon, parent)
         self._nodes[key] = node
         parent.add_child(node)

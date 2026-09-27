@@ -119,7 +119,7 @@ def _setup_dependencies(project_name, base_dir, raise_errors=False, report=None)
         from ..code_libraries import prepare_libraries
         has_libraries = (prepare_libraries(packs) if project_type == 'addon' else
                          any([prepare_libraries([pack]) for pack in packs]))
-        if has_libraries:
+        if has_libraries or manager.has_git_projects:
             from ..builders.project_builder import AddonProjectBuilder
             if project_type == 'addon':
                 destination = Path(base_dir) / '.mcpy' / 'runtime' / 'assembled'

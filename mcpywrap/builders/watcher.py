@@ -106,6 +106,7 @@ class ProjectWatcher:
         self.main_addon_pack = self.dependency_manager.root_node.addon_pack
         self.packs = list(self.dependency_manager.get_all_dependencies().values()) + [self.main_addon_pack]
         self.has_libraries = prepare_libraries(self.packs)
+        self.has_libraries = self.has_libraries or self.dependency_manager.has_git_projects
         validate_target(self.target_dir, self.source_dir, self.packs)
         self.target_addon_pack = AddonsPack(project_name, self.target_dir)
         for kind in ('behavior', 'resource'):

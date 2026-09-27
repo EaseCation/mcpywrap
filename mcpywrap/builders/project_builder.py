@@ -39,6 +39,7 @@ class AddonProjectBuilder:
             config = copy.deepcopy(self.config)
             config.setdefault('project', {})['dependencies'] = []
             config.setdefault('tool', {}).setdefault('mcpywrap', {})['local_dependencies'] = []
+            config['tool']['mcpywrap']['git_dependencies'] = []
         self.dependency_manager = DependencyService(self.source_dir).resolve(config)
         report_dependency_warnings(self.dependency_manager)
         self.dependency_tree = self.dependency_manager.root_node

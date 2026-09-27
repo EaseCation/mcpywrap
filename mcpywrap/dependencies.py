@@ -178,14 +178,27 @@ class DependencyService:
         self.last_resolution = None
 
     def list(self):
-        return declarations(read_project(self.project_dir))
+        from .code_libraries import declarations as libraries
+        from .git_projects import declarations as projects
+        config = read_project(self.project_dir)
+        return declarations(config) + [DependencyDeclaration('code', item['name'])
+                                       for item in libraries(self.project_dir, config)] + [
+            DependencyDeclaration('git', item['name']) for item in projects(self.project_dir, config)]
 
-    def resolve(self, config=None, allow_missing=False):
+    def add_framework(self, preset, script_dir=None, source=None, require_new=False):
+        from .frameworks import add_framework
+        return add_framework(self.project_dir, preset, script_dir, source, require_new)
+
+    def add_git(self, url, **options):
+        from .project_dependencies import GitDependencyService
+        return GitDependencyService(self.project_dir).add(url, **options)
+
+    def resolve(self, config=None, allow_missing=False, git_lock=None):
         from .builders.dependency_manager import DependencyManager
         config = read_project(self.project_dir) if config is None else config
         manager = DependencyManager()
         manager.build_dependency_tree(config.get('project', {}).get('name', self.project_dir.name),
-                                      str(self.project_dir), config=config, allow_missing=allow_missing)
+                                      str(self.project_dir), config=config, allow_missing=allow_missing, git_lock=git_lock)
         self.last_resolution = manager
         return manager
 
@@ -243,6 +256,13 @@ class DependencyService:
             raise DependencyError(f'{exc}\npip 已在 mcpy 工具环境完成安装；新增声明未保存，未自动卸载。') from exc
 
     def remove(self, declaration):
+        if declaration.kind == 'git':
+            from .project_dependencies import GitDependencyService
+            return GitDependencyService(self.project_dir).remove(declaration.value)
+        if declaration.kind == 'code':
+            # 兼容既有code_libraries；移除不删除源码和缓存。
+            from .code_libraries import remove_library
+            return remove_library(self.project_dir, declaration.value)
         config = read_project(self.project_dir)
         declarations(config)
         if declaration.kind == 'local':
@@ -258,7 +278,23 @@ class DependencyService:
         write_project(self.project_dir, config)
 
     def inspect(self, declaration):
+        if declaration.kind == 'git':
+            from .project_dependencies import GitDependencyService
+            return GitDependencyService(self.project_dir).inspect(declaration.value)
         config = read_project(self.project_dir)
+        if declaration.kind == 'code':
+            from .code_libraries import declarations as libraries, resolve_libraries, LOCK_FILE
+            try:
+                selected = [item for item in libraries(self.project_dir, config) if item['name'] == declaration.value]
+                if not selected:
+                    raise DependencyError('未声明此代码库')
+                config['tool']['mcpywrap']['code_libraries'] = selected
+                lock = json.loads((self.project_dir / LOCK_FILE).read_text('utf-8'))
+                lock['libraries'] = [item for item in lock['libraries'] if item['declaration']['name'] == declaration.value]
+                resolved = resolve_libraries(self.project_dir, config, lock)[0]
+                return DependencyStatus('code_library', f"{resolved['git']}\n提交: {resolved['rev']}\n行为包内目标: {resolved['target']}")
+            except (DependencyError, OSError, ValueError, KeyError, TypeError) as exc:
+                return DependencyStatus('unavailable', f'{exc}\n请执行 mcpy sync 恢复代码库')
         config.setdefault('project', {})['dependencies'] = [declaration.value] if declaration.kind == 'package' else []
         config.setdefault('tool', {}).setdefault('mcpywrap', {})['local_dependencies'] = [declaration.value] if declaration.kind == 'local' else []
         try:

@@ -18,6 +18,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图与�
 - 本机能力看 `local_capabilities`，Windows 服务能力看 `remote.capabilities`。`remote.ok=false` 时停止远程流程；组件具备不表示已登录、窗口已就绪或已进服。
 - `bootstrap --remote` 只做检测，不保存路由。每次远程调用明确传 `--remote <endpoint>`，或确认当前进程确实继承了 `MCPY_REMOTE`；不依赖上一次终端调用的 export。
 - 先检查相关 `--help` 和能力；不要把新版 Skill 配上旧 CLI 后猜参数。建议使用 CLI 0.3.7+ 与 v0.3.7 配套 Skill，依赖分类提示及原生文件校验从该版本提供；局域网细节见[远程测试](references/remote-testing.md)。
+- Git项目依赖和框架预设需要更新的CLI能力；bootstrap分别用 `--require-capability git-dependencies`、`--require-capability framework-presets` 检查，不以版本号0.3.7推断具备。缺失时显式选择包含这些能力的版本或源码安装。
 
 ## 执行位置与参数
 
@@ -44,14 +45,18 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图与�
 | 新建／接入 | `init --name demo --type addon` 或 `--type map` |
 | 包依赖 | `add "package-name>=1.0"` / `remove package-name` |
 | 本地 Addon 引用 | `add --path ../common` / `remove --path ../common` |
+| Git 项目依赖 | `add --git <URL> --ref <提交或标签>` / `remove --git <依赖名>` |
+| 框架预设 | `add --framework qumod --script-dir MyMod`；`--qumod` 是同一预设的快捷入口 |
 | 模板／SDK | `mod --name DemoMod` / `modsdk --version <版本>` |
 | 构建／ZIP | `build` / `package`；地图要合并资源时用 `package --merge` |
 | 同步／安装项目 | `sync` / `sync --install` |
 | 为用户打开编辑器 | Windows 本机 `edit --detach`；启动不等于界面任务完成 |
 
 初始化不覆盖已有配置、不隐式安装 SDK 或依赖。本地引用选 Addon 根目录，无需先初始化，不自动成为可分发包依赖。
+Git依赖、共享缓存、标准导出描述或框架接入任务，读[远程项目依赖](references/project-dependencies.md)。QuMod只是预置数据，其他仓库使用相同获取、锁定、依赖图和组装流程。克隆已配置的项目后，一次 `sync` 恢复声明的游戏依赖；这不等于安装游戏引擎或全部工具环境依赖。
 `add`、`sync --install`、ModSDK 只安装于工具 Python；测试与正式游戏使用内置 Python，不读取依赖表或工具的 `site-packages`。
 检查 JSON 的 `warnings`：“仅开发环境”的包不进入产物；仅识别出的 Addon 参与组装。需要的纯 Python 代码须随包携带并适配游戏；原生扩展和依赖外部安装的库不能直接用于游戏，不通过反复 pip 安装解决。
+上述“仅开发环境”针对Python包安装。通过Git项目导出或代码库声明注册的源码可以进入游戏产物；框架源码留在被忽略的缓存中，运行和发布时组装，不手工复制到项目源码树或site-packages。
 构建时主项目优先；检查 package 返回的 `artifact`。`dev` 持续输出文本，不用 JSON；依赖声明变化后重启监控。
 检查 ZIP 的实际内容及游戏脚本加载日志；pip 安装、系统 Python 导入或构建成功都不能代替游戏验收。`publish` 的 PyPI 分发与游戏 ZIP 分发不同。
 `publish --yes` 仅在用户请求真实上传时调用；卸载和实例删除也需相应明确选项。

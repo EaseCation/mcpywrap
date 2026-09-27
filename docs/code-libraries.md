@@ -1,5 +1,10 @@
 # 固定版本游戏代码库
 
+本文描述兼容的叶子代码库声明；新项目推荐 [通用Git项目依赖](git-dependencies.md)，支持读取项目导出和递归子依赖。
+
+QuMod 用户可直接运行 `mcpy add --qumod`，无需手写下方配置；图形界面Git依赖中提供“一键添加 QuMod”快捷按钮。
+克隆项目后执行 `mcpy sync` 恢复。详见 [QuMod 指引与来源调研](qumod.md)。
+
 代码库由构建工具装入游戏包，独立于 `[project].dependencies`（工具 Python 环境）和 `local_dependencies`（完整 Addon）。不要求上游包含 manifest，不运行上游安装脚本，不自动初始化入口。
 
 ```toml
@@ -13,7 +18,7 @@ target = "OreDetector/QuModLibs"
 
 `target` 相对行为包；声明代码库的 Addon 须有行为包及 manifest。路径用 `/`，不得越界。每个条目必须包含上述五个字段。支持 HTTPS 或 `file:///...` 本地 Git 仓库；`rev` 必须是完整40位小写提交，不接受浮动分支。目标不能与手写目录、同名 Python 模块或其他库重叠。
 
-运行 `mcpy sync` 显式获取库，缓存于项目 `.mcpy/libraries/`，写出 `mcpy-code-libraries.lock.json`（声明与内容 SHA-256）。将 `.mcpy/`、`.runtime/`、`build/`、`dist/` 加入 Git 忽略，提交配置与锁文件，不提交上游源码。根目录 LICENSE/COPYING/NOTICE 随库保存。`sync --install` 还会进行原有的工具环境安装；安装游戏库不需要这个参数。
+运行 `mcpy sync` 显式获取库，共享用户级不可变Git源码，再复制到项目 `.mcpy/libraries/`，写出 `mcpy-code-libraries.lock.json`（声明与内容 SHA-256）。将 `.mcpy/`、`.runtime/`、`build/`、`dist/` 加入 Git 忽略，提交配置与锁文件，不提交上游源码。根目录 LICENSE/COPYING/NOTICE 随库保存。`sync --install` 还会进行原有的工具环境安装；安装游戏库不需要这个参数。
 
 `build`、`package` 和 `run` 只消费已同步且通过摘要检查的库；没有缓存时先 `sync`。更新 `rev` 后重新同步，按完整目录替换产物，旧文件不会遗留。回退改回旧提交并同步。不删除旧缓存；损坏缓存报错，不静默覆盖。锁文件与预期内容必须一致，校验和并不等于上游作者身份认证。
 

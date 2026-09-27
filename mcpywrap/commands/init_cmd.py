@@ -32,6 +32,13 @@ def init():
     service = DependencyService(project_dir())
     while click.confirm('是否添加依赖？', default=False):
         entry = prompt_dependency()
+        if entry.kind in ('framework', 'git'):
+            prepared = (service.add_framework(entry.value, **entry.options) if entry.kind == 'framework'
+                        else service.add_git(entry.value, **entry.options))
+            click.echo('依赖已准备: ' + prepared['dependency'])
+            for warning in prepared['warnings']:
+                click.echo(warning, err=True)
+            continue
         if entry.kind == 'local':
             service.add_local(entry.value)
         else:

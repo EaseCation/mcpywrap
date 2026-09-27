@@ -5,6 +5,7 @@ import click
 from ..command_context import OperationCommand, project_dir, non_interactive, require_project
 from ..minecraft.addons import find_behavior_pack_dir
 from ..minecraft.template.generate_mod_files import generate_mod_framework
+from ..framework_presets import FRAMEWORK_PRESETS
 
 
 @click.command(cls=OperationCommand)
@@ -14,13 +15,19 @@ from ..minecraft.template.generate_mod_files import generate_mod_framework
 @click.option('--server-system', default='ServerSystem', show_default=True)
 @click.option('--client-system', default='ClientSystem', show_default=True)
 @click.option('--gui', is_flag=True, help='打开人工使用的模板向导')
-def mod_cmd(name, version, script_dir, server_system, client_system, gui):
+@click.option('--framework', type=click.Choice(['native'] + list(FRAMEWORK_PRESETS)), default='native', show_default=True)
+@click.option('--source', '--qumod-source', 'qumod_source', help='框架预设的源码来源名称')
+def mod_cmd(name, version, script_dir, server_system, client_system, gui, framework, qumod_source):
     """生成 Mod 模板；Agent 应使用参数，不操作 Qt 向导。"""
     require_project()
+    if qumod_source and framework == 'native':
+        raise click.UsageError('--source 需要选择框架预设')
     behavior = find_behavior_pack_dir(str(project_dir()))
     if not behavior:
         raise click.ClickException('未找到行为包，请先初始化 Addon')
     if gui or (not name and not non_interactive()):
+        if framework != 'native':
+            raise click.UsageError('请使用 mcpy ui → 添加依赖 → Git 依赖中的快捷添加按钮')
         if os.name != 'nt':
             raise click.ClickException('Qt 模板向导仅支持 Windows，请使用 --name 等参数')
         from ..command_context import json_output
@@ -40,6 +47,11 @@ def mod_cmd(name, version, script_dir, server_system, client_system, gui):
     target = Path(behavior) / script_dir
     if target.exists():
         raise click.ClickException('脚本目录已存在，不覆盖: ' + str(target))
+    if framework != 'native':
+        from ..dependencies import DependencyService
+        result = DependencyService(project_dir()).add_framework(framework, script_dir, qumod_source, require_new=True)
+        result['name'] = name
+        return result
     success, message = generate_mod_framework(behavior, name, version, server_system,
         f'{script_dir}.server.{server_system}.{server_system}', client_system,
         f'{script_dir}.client.{client_system}.{client_system}', script_dir)

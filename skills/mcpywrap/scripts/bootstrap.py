@@ -26,6 +26,11 @@ def capabilities(command, remote=None, local=False):
     local_flag = ['--local'] if '--local' in help_text else []
     run_help = invoke([command, 'run', '--help']).stdout
     features = ['project', 'json', 'sessions', 'package']
+    add_help = invoke([command, 'add', '--help']).stdout
+    if '--git' in add_help and '--ref' in add_help:
+        features.append('git-dependencies')
+    if '--framework' in add_help:
+        features.append('framework-presets')
     if '--detach' not in run_help or '--no-gui' not in run_help:
         raise ValueError('现有 CLI 不支持后台会话，请显式升级')
     if re.search(r'^\s+connect\s', help_text, re.M):
