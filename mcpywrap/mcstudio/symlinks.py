@@ -35,6 +35,10 @@ def _create_directory_link(source, target):
 def create_symlinks(user_data_path, packs):
     """仅准备当前引用的链接，保留其他项目及运行实例使用的目录。"""
     from ..dependencies import canonical_path
+    conflict = pack_uuid_conflict(user_data_path, packs)
+    if conflict:
+        console.print(conflict, style='red', markup=False)
+        return False, [], []
     result = {'behavior': [], 'resource': []}
     planned = []
     for pack in packs:
@@ -68,6 +72,40 @@ def create_symlinks(user_data_path, packs):
         console.print(f'创建目录链接失败: {exc}', style='red')
         return False, [], []
     return True, result['behavior'], result['resource']
+
+
+def pack_uuid_conflict(user_data_path, packs):
+    """引擎按UUID选包；不同目录同UUID会悄悄加载旧代码，必须启动前拒绝。"""
+    from pathlib import Path
+    from ..dependencies import canonical_path
+    def pack_id(folder):
+        for name in ('manifest.json', 'pack_manifest.json'):
+            path = Path(folder) / name
+            if path.is_file():
+                try:
+                    return str(json.loads(path.read_text('utf-8-sig'))['header']['uuid']).lower()
+                except (OSError, ValueError, KeyError, TypeError):
+                    return None
+        return None
+    for kind in ('behavior', 'resource'):
+        wanted = {}
+        for pack in packs:
+            data = pack if isinstance(pack, dict) else vars(pack)
+            source = data.get(kind + '_pack_dir')
+            uuid = pack_id(source) if source else None
+            if uuid:
+                if uuid in wanted and canonical_path(source) != canonical_path(wanted[uuid]):
+                    return f'包 UUID 冲突 {uuid}: {wanted[uuid]} <-> {source}'
+                wanted[uuid] = source
+        folder = Path(user_data_path) / (kind + '_packs')
+        if not folder.is_dir() or not wanted:
+            continue
+        for existing in folder.iterdir():
+            uuid = pack_id(existing) if existing.is_dir() else None
+            if uuid in wanted and canonical_path(existing) != canonical_path(wanted[uuid]):
+                return (f'全局包 UUID 冲突 {uuid}: {wanted[uuid]} <-> {existing}\n'
+                        '引擎可能加载旧目录；请为独立副本分配新UUID，或显式清理确认不再使用的旧链接。')
+    return None
 
 
 def is_admin():

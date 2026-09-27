@@ -5,9 +5,16 @@ import json
 import subprocess
 import click
 import threading
+import sys
 
 from .mcs import is_windows
 from .discovery import discover_engines, DiscoveryError, studio_installation
+
+
+def _launch_message(message, **style):
+    """启动日志不能因重定向终端不支持表情而阻断游戏进程。"""
+    encoding = getattr(sys.stdout, 'encoding', None) or 'utf-8'
+    click.secho(message.encode(encoding, errors='replace').decode(encoding), **style)
 
 # 添加必要的Windows API支持
 try:
@@ -34,7 +41,7 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
         返回本次启动的进程对象；失败返回 False。等待由调用方决定。
     """
     if not is_windows():
-        click.secho("❌ 此功能仅支持Windows系统", fg="red", bold=True)
+        _launch_message("❌ 此功能仅支持Windows系统", fg="red", bold=True)
         return False
 
     try:
@@ -42,7 +49,7 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
             raise ValueError('output_path 与 capture_output 不能同时使用')
         # 检查配置文件是否存在
         if not os.path.isfile(config_path):
-            click.secho(f"❌ 配置文件不存在: {config_path}", fg="red", bold=True)
+            _launch_message(f"❌ 配置文件不存在: {config_path}", fg="red", bold=True)
             return False
 
         # 读取配置文件
@@ -57,16 +64,16 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
             if Version(config_data['version']) != Version(engine.version):
                 raise DiscoveryError('运行配置版本与选中的引擎不一致，请重新生成运行配置')
         engine_path = engine.engine_dir
-        click.secho(f"🎮 使用引擎版本: {engine.version} ({engine.source})", fg="green")
-        click.secho(f"📂 引擎路径: {engine_path}", fg="blue")
+        _launch_message(f"🎮 使用引擎版本: {engine.version} ({engine.source})", fg="green")
+        _launch_message(f"📂 引擎路径: {engine_path}", fg="blue")
 
         # 检查引擎执行文件是否存在
         minecraft_exe = engine.executable
         if not os.path.isfile(minecraft_exe):
-            click.secho(f"❌ 游戏执行文件不存在: {minecraft_exe}", fg="red", bold=True)
+            _launch_message(f"❌ 游戏执行文件不存在: {minecraft_exe}", fg="red", bold=True)
             return False
 
-        click.secho(f"🚀 正在启动游戏...", fg="cyan")
+        _launch_message("🚀 正在启动游戏...", fg="cyan")
 
         # 启动游戏程序
         import subprocess
@@ -94,10 +101,10 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
         return proc
 
     except json.JSONDecodeError:
-        click.secho(f"❌ 配置文件格式错误: {config_path}", fg="red", bold=True)
+        _launch_message(f"❌ 配置文件格式错误: {config_path}", fg="red", bold=True)
         return False
     except Exception as e:
-        click.secho(f"❌ 启动游戏失败: {str(e)}", fg="red", bold=True)
+        _launch_message(f"❌ 启动游戏失败: {str(e)}", fg="red", bold=True)
         return False
 
 def apply_system_titlebar_style(window_title_contains):
