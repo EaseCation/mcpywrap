@@ -1,27 +1,97 @@
-# Git 项目依赖与框架预设
+# Git 依赖与 QuMod 快捷添加
 
-先用 bootstrap 检查 `git-dependencies` / `framework-presets`，或核对 `mcpy add --help`。本机开发流程使用公开CLI，不通过写内部缓存绕过解析或锁校验。
+本文件用于Git仓库依赖、QuMod接入、克隆恢复及版本管理。使用公开CLI；不要手写内部缓存或修改已注册快照。
 
-## 用户意图与命令
+## 先检查能力和项目
 
-| 需求 | 命令 |
+- bootstrap 检查 `git-dependencies`；需要QuMod快捷操作时同时检查 `framework-presets`。两者是CLI能力名称，UI统一称“Git依赖”。也可核对 `mcpy add --help`，不根据版本号或本机恰好有库文件推断支持。
+- 使用bootstrap返回的 `command`。源码尚未发布时，选择包含功能的已知源码目录／提交，不假设PyPI最新版本已经具备。远程提交必须实际可获取；仅本机的改动用bootstrap的 `--upgrade --editable-path <源码目录>`，不要把本地未推送SHA当远程安装来源。
+- 确定项目目录已存在，读取其 `pyproject.toml` 中的依赖声明。新空目录先初始化；已有配置不重做init。保留用户指定的来源、提交、别名和Mod脚本目录。
+- 下文 `mcpy` 代表实际CLI路径；对Agent调用使用 `--project "<项目>" --non-interactive`，有限命令加 `--json`。
+
+## 根据意图选择操作
+
+| 用户需求 | 操作 |
 |---|---|
-| 从Git获取已有Addon/带导出描述的项目 | `mcpy add --git <URL> --ref <提交或标签>` |
-| 明确安装普通Python源码子目录 | `mcpy add --git <URL> --kind code --subdir src --target MyMod/SharedLib` |
-| 准备预置框架与新入口 | `mcpy add --framework qumod --script-dir MyMod` |
-| 使用QuMod官方Gitee来源 | 上述命令增加 `--source gitee` |
-| 新建预置框架Mod | `mcpy mod --framework qumod --name MyMod --script-dir MyMod` |
-| 克隆后恢复依赖 | `mcpy sync` |
-| 移除Git项目依赖 | `mcpy remove --git <依赖名>` |
-| 兼容旧代码库声明的移除 | `mcpy remove --library <代码库名>` |
+| “刚克隆项目，准备依赖” | `sync`；不重复add，不安装QuMod到site-packages |
+| “给项目加入QuMod” | `add --qumod --script-dir MyMod` |
+| “从这个仓库加入一个依赖” | `add --git <URL>`，保留用户提供的ref和布局参数 |
+| “引用本机已有Addon” | `add --path <Addon根目录>` |
+| “升级／回退Git依赖” | 对同一来源和别名再次add，明确传 `--ref` |
+| “移除Git依赖” | `remove --git <声明中的name>`；不用仓库URL或Python包名代替别名 |
 
-首次省略 `--ref` 会解析当时的HEAD并保存完整SHA；不是每次构建追踪HEAD。重复添加同名来源默认保留版本，升级时明确提供 `--ref`。`--dep-name` 可指定稳定名称。GUI在 `mcpy ui` 中提供同样的Git依赖表单、QuMod快捷添加和同步按钮；Agent使用CLI，图形界面留给人工。
+GUI对应 `mcpy ui` → Git依赖表单，其中“一键添加 QuMod”只是快捷按钮；下拉菜单可选来源和指定脚本目录。AI执行CLI，不为使用这些能力去操作Qt向导。
 
-## 标准项目描述
+## 三种常用流程
 
-项目持有 `[[tool.mcpywrap.git_dependencies]]`，每项声明 `name/git/rev`，可选 `subdir/kind/target`。持久化的rev必须是完整提交。
+### 新建基础 QuMod 项目
 
-工具自动读取远端pyproject.toml的 `tool.mcpywrap.export`：
+先建立用户选择的空目录，然后：
+
+```text
+mcpy --project "<项目>" --non-interactive init --name demo --type addon --json
+mcpy --project "<项目>" --non-interactive add --qumod --script-dir DemoScript --json
+mcpy --project "<项目>" --non-interactive package --json
+```
+
+快捷命令为新脚本目录生成 `modMain.py`、Server.py、Client.py及初始化文件，并声明、同步外部框架。无需先执行原生 `mod --name`；已有入口时不会自动改成QuMod。
+
+省略script-dir时：唯一已有Mod自动选择，没有入口则创建MyScript，多个Mod报错要求明确选择。根据项目目录判断，不随意把多个Mod合并到一个框架实例。
+
+需要沿用模板命令时，可用 `mod --framework qumod --name MyMod --script-dir MyMod`，但该命令要求目标目录尚不存在。`add --qumod`与`add --framework qumod`是同一预设，不要同时传两者。
+
+### 给已有项目添加普通 Git 依赖
+
+有有效Addon结构或标准导出描述：
+
+```text
+mcpy --project "<项目>" --non-interactive add --git "<URL>" --ref "<用户选择的提交或标签>" --dep-name shared --json
+```
+
+无描述的纯代码项目，先检查源码布局，再明确安装位置：
+
+```text
+mcpy --project "<项目>" --non-interactive add --git "<URL>" --kind code --subdir src --target MyMod/SharedLib --dep-name shared --json
+```
+
+`subdir`是仓库内项目／源码目录，`target`是最终行为包内的位置，不是缓存路径或本机绝对路径。Addon导出不填target。框架快捷选项script-dir/source与普通Git的kind/subdir/target属于不同入口，不混用参数。
+
+同一来源重复add默认保留既有提交和布局。首次不指定ref会解析当时HEAD并锁成完整SHA；它不表示每次sync追踪HEAD。
+
+### 克隆后恢复与验证
+
+```text
+mcpy --project "<项目>" --non-interactive sync --json
+mcpy --project "<项目>" --non-interactive package --json
+```
+
+恢复不需要重新选择框架版本，也不需要重复添加预设。`sync --install`还会在工具环境可编辑安装项目；不要仅为恢复游戏代码而添加这个选项。引擎与工具环境的Python依赖仍需分别满足。
+
+检查返回 `ok` 和退出码；Git项目add结果中 `dependency/rev/kind/target` 描述实际注册结果，快捷入口还返回 `new_script/warnings`；兼容旧代码库时按其实际返回字段处理。package的 `artifact` 是最终ZIP。`synced=true`仅证明依赖准备完成，入口接入和游戏加载仍需验证。
+
+## 来源、更新与移除
+
+支持HTTPS和file://本地Git仓库。QuMod快捷入口可增加 `--source gitee`；已有Git声明切换来源会保留其固定提交，不自动回退到第三方镜像。用户明确选择某个版本／Git链接时，不用预设推荐版本替换其选择。
+
+预设返回的版本来自已验证源码，不保证存在同名官方Release；以CLI返回和锁定的rev为准，不在Skill中另维护“最新版本”。
+
+更新或回退示例：
+
+```text
+mcpy --project "<项目>" --non-interactive add --git "<原URL>" --dep-name shared --ref "<目标提交或标签>" --json
+mcpy --project "<项目>" --non-interactive package --json
+mcpy --project "<项目>" --non-interactive remove --git shared --json
+```
+
+升级按既有别名更新，不通过改名添加第二份占用同一目标的库。更换为fork等不同来源时，明确补充需要保留的subdir/kind/target。移除只删声明，不删缓存或入口；随后检查业务导入和重新组装。
+
+旧 `code_libraries` 使用 `remove --library <name>`，不是remove --git。旧格式可继续sync，QuMod快捷添加识别已有兼容声明时不制造重复项；需要迁移格式或改变旧来源时明确处理原声明，不删除业务文件来消除冲突。
+
+## 标准项目描述与边界
+
+消费者持有 `[[tool.mcpywrap.git_dependencies]]`：必需 `name/git/rev`，可选 `subdir/kind/target`；持久化的rev是完整提交。一般让add生成它，不手工猜锁文件。
+
+发布者可以在远端pyproject.toml声明：
 
 ```toml
 [tool.mcpywrap.export]
@@ -30,22 +100,26 @@ path = "src"
 target = "MyMod/SharedLib"
 ```
 
-没有导出描述时可识别有效Addon。不能识别普通源码布局时，补充明确的子目录和目标，或让上游添加描述；不猜测安装任意目录、不执行上游安装脚本。
+export.path相对该项目描述。没有export时工具可识别符合既有目录规则的Addon；无法识别时需要明确布局，不能把任意仓库根目录或安装成功的Python包直接当作游戏依赖。
 
-远端项目可以声明同样的Git子依赖；仓库内 `local_dependencies` 相对声明项目解析，必须留在该Git快照内。外部仓库用Git声明。工具检测循环、去重共同节点、校验源码及安装位置；不提供任意构建脚本执行、Git子模块自动安装或版本范围求解。Python `[project].dependencies` 仍属于工具环境，不等于游戏Mod依赖。
+远端可声明同样的Git子依赖。仓库内local_dependencies相对声明项目解析，必须留在该Git快照内；外部仓库用Git声明。工具解析传递关系、检测循环和目标冲突，但不推断未声明的import，不自动安装Git子模块、不执行上游构建脚本、不求解版本范围。Python project.dependencies仍表示工具环境依赖。
 
-## 缓存和恢复
+## 缓存、提交与异常处理
 
-用户级缓存只保存已验证的不可变Git快照，各项目共享下载。项目 `.mcpy/` 保存独立注册节点和组装结果，游戏不直接加载共享源码。`MCPY_CACHE_DIR` 可覆盖缓存根目录；缓存路径不进入可移植锁文件。
+用户级不可变Git快照共享下载；项目 `.mcpy/` 保存独立注册节点与组装结果，游戏不直接加载共享源码。`MCPY_CACHE_DIR`用于本机／CI缓存策略，不写进可移植的项目依赖声明。
 
-提交项目配置、`mcpy-git.lock.json`、入口和业务代码；忽略 `.mcpy/`、`.runtime/`、build和dist。旧 `code_libraries` / `mcpy-code-libraries.lock.json` 保持兼容，也复用共享源码获取层。
+提交配置、`mcpy-git.lock.json`、生成的入口和业务代码、.gitignore；忽略.mcpy、.runtime、build和dist。旧格式则保留其 `mcpy-code-libraries.lock.json`。不要提交QuMod源码，不要修改共享缓存来开发依赖。
 
-只有add/sync获取远程内容。build/package/run缺少依赖时应显式sync，不临时pip安装框架。校验失败时不要删除锁来掩盖差异；保留原项目，按错误定位损坏缓存或不兼容声明。
+| 情况 | 处理 |
+|---|---|
+| CLI没有--git或--qumod | 检查bootstrap能力，使用明确来源升级CLI；Skill更新不会更新CLI |
+| 新克隆缺少缓存 | 执行sync，保留现有锁定提交 |
+| 布局无法识别 | 查上游export/目录，再传明确subdir、kind、target；不猜安装位置 |
+| 目标已有手工框架或另一依赖 | 核对归属并制定明确迁移；不直接覆盖或删业务目录 |
+| 源码摘要不符 | 定位具体缓存条目，保留锁的预期内容；不删锁或清空全部缓存来掩盖差异 |
+| 获取来源失败 | 保留失败信息及现有声明，不静默换镜像、更新版本或转为pip安装 |
+| 构建成功但游戏导入失败 | 检查产物路径、入口、端侧与游戏日志；不是工具Python缺包的充分证据 |
 
-## 框架边界
+QuMod的QMain绑定类须暴露在modMain中，入口模板已包含它；tick回调允许无参数。其系统与RPC命名依赖脚本根，因此独立Mod需要各自的框架作用域。不要把共享下载缓存误解成共享运行时实例。
 
-框架预设只是官方来源、推荐固定提交、导出布局和入口模板的数据。QuMod 1.4.3对应已验证源码提交，不代表存在同名官方Release。已有Mod入口保持原样；新Mod入口由预设生成。手工复制的框架目录会报安装位置冲突，不自行删除用户文件。
-
-同一提交的下载可以共享，不代表不同Mod的框架运行时实例能合并。QuMod的QMain、系统与RPC命名依赖脚本根；每个独立Mod安装到自己的命名空间。移除声明不删除入口，随后检查业务导入。
-
-验证依次检查CLI结果、锁与产物、真实游戏加载；构建成功不能证明游戏运行兼容，模拟测试不能代替多人或框架生命周期验收。
+最后分别报告依赖恢复、产物构建、实际游戏加载的结果；模拟测试和进程启动不能冒充玩法、多人与框架生命周期验收。

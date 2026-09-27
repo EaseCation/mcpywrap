@@ -1,6 +1,6 @@
 ---
 name: mcpywrap
-description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图与依赖，在本机或局域网 Windows 端启动游戏、读取日志、截图和输入键鼠；支持 macOS 开发与 Windows 游戏联调。
+description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、本地与 Git 依赖、QuMod 快捷接入，并在本机或局域网 Windows 端启动游戏、读取日志、截图和输入键鼠；支持 macOS 开发与 Windows 游戏联调。
 ---
 
 # mcpywrap
@@ -46,19 +46,25 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图与�
 | 包依赖 | `add "package-name>=1.0"` / `remove package-name` |
 | 本地 Addon 引用 | `add --path ../common` / `remove --path ../common` |
 | Git 项目依赖 | `add --git <URL> --ref <提交或标签>` / `remove --git <依赖名>` |
-| 框架预设 | `add --framework qumod --script-dir MyMod`；`--qumod` 是同一预设的快捷入口 |
+| QuMod 快捷添加（仍是 Git 依赖） | `add --qumod --script-dir MyMod`；等价于 `add --framework qumod --script-dir MyMod` |
 | 模板／SDK | `mod --name DemoMod` / `modsdk --version <版本>` |
 | 构建／ZIP | `build` / `package`；地图要合并资源时用 `package --merge` |
 | 同步／安装项目 | `sync` / `sync --install` |
 | 为用户打开编辑器 | Windows 本机 `edit --detach`；启动不等于界面任务完成 |
 
 初始化不覆盖已有配置、不隐式安装 SDK 或依赖。本地引用选 Addon 根目录，无需先初始化，不自动成为可分发包依赖。
-Git依赖、共享缓存、标准导出描述或框架接入任务，读[远程项目依赖](references/project-dependencies.md)。QuMod只是预置数据，其他仓库使用相同获取、锁定、依赖图和组装流程。克隆已配置的项目后，一次 `sync` 恢复声明的游戏依赖；这不等于安装游戏引擎或全部工具环境依赖。
-`add`、`sync --install`、ModSDK 只安装于工具 Python；测试与正式游戏使用内置 Python，不读取依赖表或工具的 `site-packages`。
-检查 JSON 的 `warnings`：“仅开发环境”的包不进入产物；仅识别出的 Addon 参与组装。需要的纯 Python 代码须随包携带并适配游戏；原生扩展和依赖外部安装的库不能直接用于游戏，不通过反复 pip 安装解决。
-上述“仅开发环境”针对Python包安装。通过Git项目导出或代码库声明注册的源码可以进入游戏产物；框架源码留在被忽略的缓存中，运行和发布时组装，不手工复制到项目源码树或site-packages。
+
+依赖操作前先区分来源；Git、QuMod、克隆恢复和版本管理任务读[Git 依赖与快捷添加](references/project-dependencies.md)：
+
+- `add <Python包>` 安装到工具 Python 环境；没有识别出的 Addon 内容会标为“仅开发环境”，不会进入游戏产物。`sync --install` 的额外安装步骤及 ModSDK 补全库也属于工具环境。
+- `add --path` 引用本地 Addon；`add --git` 获取并注册远程项目，依据项目描述或明确布局组装游戏代码与资源。它们不是向游戏执行 pip install。
+- QuMod 是 Git 依赖的快捷预设。新脚本目录会生成入口，已有业务代码保留；不要为了使用快捷命令先创建一套原生 Mod 模板，也不要把上游源码复制进业务仓库。
+- 克隆已配置项目后优先执行一次 `sync`，不要重新 `init` 或重复 `add`。这恢复依赖，不下载引擎，也不保证全部工具环境依赖已安装。
+
+游戏使用内置 Python，不读取工具环境的 site-packages；原生扩展或依赖外部安装步骤的库不能直接用于游戏。处理 import 错误时检查组装后的代码和加载入口，不通过反复 pip 安装框架解决。
 构建时主项目优先；检查 package 返回的 `artifact`。`dev` 持续输出文本，不用 JSON；依赖声明变化后重启监控。
 检查 ZIP 的实际内容及游戏脚本加载日志；pip 安装、系统 Python 导入或构建成功都不能代替游戏验收。`publish` 的 PyPI 分发与游戏 ZIP 分发不同。
+涉及具体玩法时，原版 API、事件、枚举和 JSON 组件须查证目标网易版本；不能套用 Java 版或通用 Bedrock 的名称。若提供了 netease-modsdk MCP，可查询精确接口、端侧、参数和备注；未查到的能力明确标为未验证。
 `publish --yes` 仅在用户请求真实上传时调用；卸载和实例删除也需相应明确选项。
 
 ## 游戏会话
