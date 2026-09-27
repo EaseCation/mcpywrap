@@ -100,6 +100,7 @@ def _generate_new_instance_config(base_dir, project_name):
 def _setup_dependencies(project_name, base_dir, raise_errors=False, report=None):
     """设置项目依赖"""
     from ..dependencies import DependencyService, DependencyError, addon_directories, read_project
+    from pathlib import Path
     try:
         config = read_project(base_dir)
         project_type = config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
@@ -115,6 +116,34 @@ def _setup_dependencies(project_name, base_dir, raise_errors=False, report=None)
         packs = list(manager.get_all_dependencies().values())
         if project_type == 'addon':
             packs.append(manager.root_node.addon_pack)
+        from ..code_libraries import prepare_libraries
+        has_libraries = (prepare_libraries(packs) if project_type == 'addon' else
+                         any([prepare_libraries([pack]) for pack in packs]))
+        if has_libraries:
+            from ..builders.project_builder import AddonProjectBuilder
+            if project_type == 'addon':
+                destination = Path(base_dir) / '.mcpy' / 'runtime' / 'assembled'
+                builder = AddonProjectBuilder(base_dir, destination)
+                success, error = builder.build()
+                if not success:
+                    raise DependencyError(error)
+                builder.target_addon.pkg_name = manager.root_node.addon_pack.pkg_name
+                return [builder.target_addon]
+            prepared = []
+            for pack in packs:
+                if not getattr(pack, 'code_libraries', []):
+                    prepared.append(pack)
+                    continue
+                # 构建保留所属项目入口/命名空间，实例仍归属于原 project_dir。
+                destination = Path(base_dir) / '.mcpy' / 'runtime' / pack.pkg_name
+                builder = AddonProjectBuilder(pack.path, destination, include_dependencies=False)
+                success, error = builder.build()
+                if not success:
+                    raise DependencyError(error)
+                result = builder.target_addon
+                result.pkg_name = pack.pkg_name
+                prepared.append(result)
+            packs = prepared
         return packs
     except (DependencyError, OSError) as exc:
         if raise_errors:

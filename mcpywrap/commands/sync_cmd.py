@@ -1,6 +1,7 @@
 """显式维护项目，无隐式初始化或 SDK 安装。"""
 import subprocess
 import sys
+from pathlib import Path
 import click
 from ..command_context import OperationCommand, project_dir, require_project, project_scope
 from ..dependencies import read_project, write_project
@@ -19,6 +20,12 @@ def sync_project(path, install=False):
     from ..utils.project_setup import find_and_configure_behavior_pack
     with project_scope(path):
         config = read_project(path)
+        from ..dependencies import DependencyService
+        from ..code_libraries import declarations, sync_libraries
+        manager = DependencyService(path).resolve()
+        packs = list(manager.get_all_dependencies().values()) + [manager.root_node.addon_pack]
+        library_count = sum(sync_libraries(pack.path) for pack in packs if declarations(pack.path) or
+                            Path(pack.path, 'mcpy-code-libraries.lock.json').exists())
         kind = config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
         if kind == 'map':
             ensure_map_setuptools_sync(interactive=False)
@@ -30,4 +37,4 @@ def sync_project(path, install=False):
                                   capture_output=True, text=True)
             if proc.returncode:
                 raise click.ClickException(proc.stderr or proc.stdout or '项目安装失败')
-    return {'project': str(path), 'installed': install}
+    return {'project': str(path), 'installed': install, 'code_libraries': library_count}

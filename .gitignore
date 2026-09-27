@@ -27,3 +27,6 @@ var/
 /mcpywrap/mcstudio/bridge_payload/
 *.pfx
 *.p12
+.venv/
+.mcpy/
+.runtime/

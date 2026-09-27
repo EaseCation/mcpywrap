@@ -7,6 +7,7 @@ from watchdog.events import FileSystemEventHandler
 from ..dependencies import DependencyService, is_native_file, validate_game_files
 from .AddonsPack import AddonsPack
 from .assembly import is_within, pack_files, rebuild_file, validate_target
+from ..code_libraries import prepare_libraries
 
 
 class FileChangeHandler(FileSystemEventHandler):
@@ -104,6 +105,7 @@ class ProjectWatcher:
         self.dependency_manager = DependencyService(self.source_dir).resolve()
         self.main_addon_pack = self.dependency_manager.root_node.addon_pack
         self.packs = list(self.dependency_manager.get_all_dependencies().values()) + [self.main_addon_pack]
+        self.has_libraries = prepare_libraries(self.packs)
         validate_target(self.target_dir, self.source_dir, self.packs)
         self.target_addon_pack = AddonsPack(project_name, self.target_dir)
         for kind in ('behavior', 'resource'):
@@ -118,6 +120,9 @@ class ProjectWatcher:
 
     def rebuild(self, kind, relative):
         with self.lock:
+            if self.has_libraries:
+                self._build_libraries()
+                return str(Path(getattr(self.target_addon_pack, kind + '_pack_dir')) / relative)
             self.validate_sources()
             return self._rebuild(kind, relative)
 
@@ -129,11 +134,21 @@ class ProjectWatcher:
 
     def rebuild_all(self):
         with self.lock:
+            if self.has_libraries:
+                self._build_libraries()
+                return
             self.validate_sources()
             current = {(kind, rel) for p in self.packs for kind in ('behavior', 'resource') for rel in pack_files(p, kind)}
             for kind, relative in sorted(self.known_files | current):
                 self._rebuild(kind, relative)
             self.known_files = current
+
+    def _build_libraries(self):
+        # 带固定代码库的项目使用原子完整组装，不能绕过摘要或目标冲突校验。
+        from .project_builder import AddonProjectBuilder
+        success, error = AddonProjectBuilder(self.source_dir, self.target_dir).build()
+        if not success:
+            raise ValueError(error)
 
     def validate_sources(self):
         for pack in self.packs:

@@ -60,6 +60,10 @@ mcpy add --path "../shared-addon"
 
 ## 构建与日常开发
 
+游戏内纯代码库可用 `[[tool.mcpywrap.code_libraries]]` 声明固定 Git 提交及行为包内安装位置，
+通过 `mcpy sync` 显式获取，运行与发布时组装。QuMod 无需先包装成 Addon，源码缓存不提交 Git。
+配置、锁文件和作用域说明见[代码库依赖](docs/code-libraries.md)。
+
 | 命令 | 用途 |
 |---|---|
 | `mcpy build` | 将项目和依赖构建到配置的输出目录 |

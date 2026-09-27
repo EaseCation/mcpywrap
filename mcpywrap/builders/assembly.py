@@ -6,6 +6,7 @@ from pathlib import Path
 from ..dependencies import DependencyError, canonical_path
 from .AddonsPack import MANIFEST_FILES
 from .file_merge import try_merge_file
+from ..code_libraries import library_source
 
 MERGED_JSON = {'blocks.json', 'terrain_texture.json', 'item_texture.json', 'sounds.json',
                'sound_definitions.json', 'animations.json', 'animation_controllers.json',
@@ -34,6 +35,11 @@ def validate_target(target, root, packs):
 
 
 def pack_files(pack, kind):
+    if kind == 'behavior':
+        for library in getattr(pack, 'code_libraries', []):
+            for file in sorted(library['source'].rglob('*')):
+                if file.is_file():
+                    yield library['target'] + '/' + file.relative_to(library['source']).as_posix()
     folder = getattr(pack, kind + '_pack_dir')
     if not folder or not os.path.isdir(folder):
         return
@@ -55,8 +61,9 @@ def rebuild_file(packs, kind, relative, destination):
         folder = getattr(pack, kind + '_pack_dir')
         if not folder:
             continue
-        source = Path(folder) / relative
-        if source.is_file() and (source.name in MANIFEST_FILES or not pack.should_exclude(str(source))):
+        mounted = library_source(pack, kind, relative)
+        source = mounted or Path(folder) / relative
+        if source.is_file() and (mounted or source.name in MANIFEST_FILES or not pack.should_exclude(str(source))):
             sources.append((pack, source))
     if relative in MANIFEST_FILES:
         # 优先保留主包 manifest；主包缺少该包类型时使用最后一个依赖的 manifest。
