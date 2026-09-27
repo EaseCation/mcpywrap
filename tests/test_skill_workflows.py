@@ -228,7 +228,8 @@ class EncodingCompatibility(unittest.TestCase):
                         self.assertFalse(data['ok'])
                         self.assertNotIn(b'UnicodeEncodeError', proc.stderr)
                         if 'project' in data:
-                            self.assertEqual(data['project'], project)
+                            # Windows runners may expose TEMP through an 8.3 path alias.
+                            self.assertEqual(data['project'], str(Path(project).resolve()))
 
     @unittest.skipUnless(shutil.which('powershell'), 'Windows PowerShell 5.1')
     def test_powershell_file_parses_using_native_encoding_rules(self):
