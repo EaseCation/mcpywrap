@@ -9,7 +9,7 @@ from ..dependencies import read_project, write_project
 @click.command(cls=OperationCommand)
 @click.option('--install', is_flag=True, help='同时在当前工具环境中可编辑安装项目')
 def sync_cmd(install):
-    """同步包配置；--install 显式安装项目。"""
+    """同步包配置；--install 安装到 mcpy 工具环境，不安装到游戏。"""
     require_project()
     return sync_project(project_dir(), install)
 

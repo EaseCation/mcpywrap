@@ -17,7 +17,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图与�
 - macOS 远程端：bootstrap 加 `--remote <地址> --require-capability remote-client --require-capability network-sessions`；截图／输入任务再要求 `screenshot/key/mouse`，可重复传入 `--require-capability`。
 - 本机能力看 `local_capabilities`，Windows 服务能力看 `remote.capabilities`。`remote.ok=false` 时停止远程流程；组件具备不表示已登录、窗口已就绪或已进服。
 - `bootstrap --remote` 只做检测，不保存路由。每次远程调用明确传 `--remote <endpoint>`，或确认当前进程确实继承了 `MCPY_REMOTE`；不依赖上一次终端调用的 export。
-- 先检查相关 `--help` 和能力；不要把新版 Skill 配上旧 CLI 后猜参数。局域网流程使用 CLI 0.3.6+，可从 v0.3.6 标签安装配套 Skill；细节见[远程测试](references/remote-testing.md)。
+- 先检查相关 `--help` 和能力；不要把新版 Skill 配上旧 CLI 后猜参数。建议使用 CLI 0.3.7+ 与 v0.3.7 配套 Skill，依赖分类提示及原生文件校验从该版本提供；局域网细节见[远程测试](references/remote-testing.md)。
 
 ## 执行位置与参数
 
@@ -50,7 +50,10 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图与�
 | 为用户打开编辑器 | Windows 本机 `edit --detach`；启动不等于界面任务完成 |
 
 初始化不覆盖已有配置、不隐式安装 SDK 或依赖。本地引用选 Addon 根目录，无需先初始化，不自动成为可分发包依赖。
+`add`、`sync --install`、ModSDK 只安装于工具 Python；测试与正式游戏使用内置 Python，不读取依赖表或工具的 `site-packages`。
+检查 JSON 的 `warnings`：“仅开发环境”的包不进入产物；仅识别出的 Addon 参与组装。需要的纯 Python 代码须随包携带并适配游戏；原生扩展和依赖外部安装的库不能直接用于游戏，不通过反复 pip 安装解决。
 构建时主项目优先；检查 package 返回的 `artifact`。`dev` 持续输出文本，不用 JSON；依赖声明变化后重启监控。
+检查 ZIP 的实际内容及游戏脚本加载日志；pip 安装、系统 Python 导入或构建成功都不能代替游戏验收。`publish` 的 PyPI 分发与游戏 ZIP 分发不同。
 `publish --yes` 仅在用户请求真实上传时调用；卸载和实例删除也需相应明确选项。
 
 ## 游戏会话

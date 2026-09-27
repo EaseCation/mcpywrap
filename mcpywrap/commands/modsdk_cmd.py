@@ -9,7 +9,7 @@ from ..minecraft.netease_modsdk import get_available_versions, download_and_inst
 @click.option('--version', help='安装指定版本')
 @click.option('--latest', is_flag=True, help='显式选择最新版本')
 def modsdk_cmd(list_versions, version, latest):
-    """管理网易 ModSDK；非交互必须指定操作。"""
+    """在工具环境管理网易 ModSDK，不安装到游戏；非交互必须指定操作。"""
     if sum((list_versions, bool(version), latest)) > 1:
         raise click.UsageError('--list、--version、--latest 不能同时使用')
     if not any((list_versions, version, latest)) and non_interactive():

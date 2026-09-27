@@ -1,6 +1,6 @@
 """初始化项目：向导与显式参数使用同一服务。"""
 import click
-from ..command_context import OperationCommand, project_dir, non_interactive
+from ..command_context import OperationCommand, project_dir, non_interactive, report_dependency_warnings
 from ..project_init import initialize_project, detect_project
 from ..dependencies import DependencyService
 from .dependency_prompt import prompt_dependency
@@ -33,10 +33,9 @@ def init():
     while click.confirm('是否添加依赖？', default=False):
         entry = prompt_dependency()
         if entry.kind == 'local':
-            _, warnings = service.add_local(entry.value)
-            for warning in warnings:
-                click.echo(warning, err=True)
+            service.add_local(entry.value)
         else:
             service.add_package(entry.value)
+        report_dependency_warnings(service.last_resolution)
     click.echo('项目已初始化；使用 mod 生成脚本、modsdk 安装 SDK、sync --install 安装项目。')
     return result

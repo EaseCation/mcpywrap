@@ -5,7 +5,7 @@
 [![PyPI Version](https://img.shields.io/pypi/v/mcpywrap)](https://pypi.org/project/mcpywrap/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-mcpywrap 使用 `pyproject.toml` 管理项目，支持安装 Python 包依赖，也支持直接引用本地 Addon 目录。它将依赖管理、资源构建、游戏运行和 MC Studio 编辑器串成一套开发流程，方便多个项目共享代码与资源。
+mcpywrap 使用 `pyproject.toml` 管理开发侧依赖，复用本地 Addon 的代码与资源，并串联构建、游戏测试和 MC Studio 编辑器。Python 包管理用于开发环境，不是游戏内的包安装器。
 
 ## 安装
 
@@ -38,7 +38,7 @@ mcpy edit
 
 ## 复用代码和资源
 
-对于已发布的 Python 包，使用包名添加依赖：
+将 Python 包安装到 mcpy 所在的工具环境并记录声明：
 
 ```powershell
 mcpy add "package-name>=1.0"
@@ -54,7 +54,9 @@ mcpy add --path "../shared-addon"
 
 移除依赖使用 `mcpy remove <包名>` 或 `mcpy remove --path <目录>`。移除本地引用不会删除源目录。不带参数运行 `mcpy add` / `mcpy remove` 可进入选择向导。
 
-本地路径适合同机开发；与他人共享项目时，需要同步这些目录，或将可复用组件发布为 Python 包。目录结构、配置及构建规则见[本地依赖参考](https://github.com/EaseCation/mcpywrap/blob/main/docs/local-dependencies.md)。
+本地路径适合同机开发；共享项目时需同步这些目录。工具目前通过包的本地安装来源识别 Addon，普通 PyPI 包或 wheel 安装成功不代表能参与组装；未识别到 Addon 的包会标记为“仅开发环境”。目录结构、配置及构建规则见[本地依赖参考](https://github.com/EaseCation/mcpywrap/blob/main/docs/local-dependencies.md)。
+
+**游戏运行边界：** 测试和正式游戏都使用内置 Python，不读取 `dependencies`，也不继承工具环境的 `site-packages`。`add`、`sync --install` 和 ModSDK 安装均不向游戏安装模块。游戏所需代码与资源必须随 Addon 携带，或由用户加载相应 Mod；纯 Python 库也不会自动复制，仍需适配游戏解释器和 ModSDK。原生扩展及依赖外部安装步骤、系统环境的库不能直接用于游戏；包内 `.pyd/.dll/.so/.so.*（版本号）/.dylib` 会阻止构建和启动。
 
 ## 构建与日常开发
 
@@ -73,11 +75,13 @@ mcpy add --path "../shared-addon"
 
 ### 打包分发
 
-在项目根目录执行 `mcpy package`，会先构建项目及 Python 包／本地 Addon 依赖，再生成 `dist/<项目名>-<版本>.zip`。名称和版本读取 `pyproject.toml` 的 `[project]`；不需要配置 `target_dir`。
+在项目根目录执行 `mcpy package`，会组装项目及已识别的 Addon 依赖，再生成 `dist/<项目名>-<版本>.zip`；仅开发环境的包不会进入 ZIP。名称和版本读取 `pyproject.toml` 的 `[project]`；不需要配置 `target_dir`。
 
 Addon ZIP 内为 `<项目名>_bp/`、`<项目名>_rp/`（仅包含实际构建出的包）；地图 ZIP 根目录直接包含存档数据、行为包、资源包及世界包配置。地图默认保留独立包，使用 `mcpy package --merge`（或 `-m`）按构建规则合并依赖资源。构建产物中的空目录会保留。
 
 重复打包成功后会替换同名 ZIP；失败时保留已有 ZIP，临时文件自动清理。
+
+`publish` 向 PyPI 发布 Python 分发包，与游戏 ZIP 分发不同。本地测试可配置多个独立 Addon，游戏不会解析 Python 依赖图；构建成功不保证兼容，发布前应检查产物并在游戏中验证加载日志。
 
 ## 游戏启动与排查
 
@@ -146,7 +150,7 @@ mcpy --project D:\tests\server stop --session <id> --json
 也可以下载仓库 ZIP，将完整的 `skills/mcpywrap` 文件夹复制到对应 Agent 的技能目录。
 无需从源码安装 Python 项目；CLI 和 Skill 分别安装，`pip/uv install` 不会自动注册 Skill。
 两端使用跨平台 `scripts/bootstrap.py` 安装或复用各自的 CLI，Windows 也可用 `bootstrap.ps1`。脚本分别报告本机与远端能力；Skill、CLI 与 Windows 服务需要分别检查，Git／可编辑安装可能缺少登录组件。
-局域网流程请使用 mcpywrap 0.3.6 或更高版本，可从 `v0.3.6` 标签安装配套 Skill。实际能力仍以脚本检测为准；更新 Skill 不会自动更新两端 CLI。
+推荐使用 mcpywrap 0.3.7 或更高版本，并从 `v0.3.7` 标签安装配套 Skill，以获得依赖边界提示与校验。实际能力仍以脚本检测为准；更新 Skill 不会自动更新两端 CLI。
 
 安装后可直接描述任务：
 

@@ -70,6 +70,8 @@ def prepare_project(project_dir, config=None):
         ('behavior_pack', 'BehaviorPack', 'resource_pack', 'ResourcePack')) for p in root.iterdir())
     folders = addon_directories(root) if has_structure else {}
     manager = DependencyService(root).resolve(config)
+    from ..command_context import report_dependency_warnings
+    report_dependency_warnings(manager)
     packs = list(manager.get_all_dependencies().values())
     if folders:
         pack = manager.root_node.addon_pack

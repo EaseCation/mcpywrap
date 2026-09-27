@@ -12,7 +12,7 @@ def require_interactive():
 
 
 def prompt_dependency():
-    kind = click.prompt('依赖类型：1 Python 包，2 本地 Addon 目录', type=click.Choice(['1', '2']), default='1')
+    kind = click.prompt('依赖类型：1 Python 包（安装于工具环境），2 本地 Addon 目录', type=click.Choice(['1', '2']), default='1')
     value = click.prompt('包名/版本约束' if kind == '1' else 'Addon 目录').strip()
     if kind == '1':
         try:

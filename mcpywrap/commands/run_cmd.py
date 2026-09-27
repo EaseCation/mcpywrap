@@ -97,7 +97,7 @@ def _generate_new_instance_config(base_dir, project_name):
     
     return level_id, config_path
 
-def _setup_dependencies(project_name, base_dir, raise_errors=False):
+def _setup_dependencies(project_name, base_dir, raise_errors=False, report=None):
     """设置项目依赖"""
     from ..dependencies import DependencyService, DependencyError, addon_directories, read_project
     try:
@@ -106,6 +106,12 @@ def _setup_dependencies(project_name, base_dir, raise_errors=False):
         if project_type == 'addon':
             addon_directories(base_dir)
         manager = DependencyService(base_dir).resolve()
+        from ..command_context import report_dependency_warnings
+        if report is None:
+            report_dependency_warnings(manager)
+        else:
+            for message in manager.warnings:
+                report(message)
         packs = list(manager.get_all_dependencies().values())
         if project_type == 'addon':
             packs.append(manager.root_node.addon_pack)
@@ -407,7 +413,7 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         return
 
     # 设置依赖
-    all_packs = _setup_dependencies(project_name, base_dir)
+    all_packs = _setup_dependencies(project_name, base_dir, raise_errors=True)
     if all_packs is None:
         raise click.ClickException('依赖校验失败')
     auth_context = None

@@ -42,6 +42,9 @@ def open_edit(project_dir=None, engine_overrides=None, raise_errors=False):
     config = read_project(base_dir)
     project_name = config.get('project', {}).get('name', 'project')
     project_type = config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
+    all_packs = _setup_dependencies(project_name, base_dir, raise_errors=raise_errors)
+    if all_packs is None:
+        return False
     try:
         engine = discover_engines(base_dir, engine_overrides).require_engine()
         require_resources(engine, 'editor')
@@ -52,9 +55,6 @@ def open_edit(project_dir=None, engine_overrides=None, raise_errors=False):
         if raise_errors:
             raise
         click.echo(str(exc))
-        return False
-    all_packs = _setup_dependencies(project_name, base_dir)
-    if all_packs is None:
         return False
     studio_config_path = os.path.join(base_dir, 'studio.json')
     addon_packs_dirs = []

@@ -2,6 +2,7 @@
 import os
 import shutil
 from pathlib import Path
+from ..command_context import report_dependency_warnings
 from ..dependencies import DependencyError, DependencyService, addon_directories, read_project
 from .AddonsPack import AddonsPack
 from .MapPack import MapPack
@@ -30,6 +31,7 @@ class AddonProjectBuilder:
     def initialize(self):
         addon_directories(self.source_dir)
         self.dependency_manager = DependencyService(self.source_dir).resolve()
+        report_dependency_warnings(self.dependency_manager)
         self.dependency_tree = self.dependency_manager.root_node
         self.origin_addon = self.dependency_tree.addon_pack
         self.packs = list(self.dependency_manager.get_all_dependencies().values()) + [self.origin_addon]
@@ -60,6 +62,7 @@ class MapProjectBuilder:
     def build(self):
         try:
             manager = DependencyService(self.source_dir).resolve()
+            report_dependency_warnings(manager)
             packs = list(manager.get_all_dependencies().values())
             root = manager.root_node.addon_pack
             validate_target(self.target_dir, self.source_dir, packs + [root])

@@ -364,7 +364,8 @@ class Projects(ProjectFixture):
             result = CliRunner().invoke(cli, ['add', 'example>=1'])
             self.assertNotEqual(result.exit_code, 0)
         self.assertEqual(before, (self.main / 'pyproject.toml').read_bytes())
-        with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=0)):
+        with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=0)), patch(
+                'mcpywrap.builders.dependency_manager.metadata.distribution', return_value=FakeDist()):
             self.service.add_package('example>=1')
         self.assertIn(DependencyDeclaration('package', 'example>=1'), self.service.list())
 
@@ -416,7 +417,8 @@ class GuiProjects(ProjectFixture):
         with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=1, stderr='failed', stdout='')):
             thread.run()
         self.assertEqual(self.service.list(), [])
-        with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=0)):
+        with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=0)), patch(
+                'mcpywrap.builders.dependency_manager.metadata.distribution', return_value=FakeDist()):
             thread.run()
         self.assertEqual(outcomes, [False, True])
 
@@ -439,7 +441,7 @@ class GuiProjects(ProjectFixture):
             shutil.rmtree(self.dep)
             window.refresh_dependencies()
             self.assertFalse(window.reload_runtime_dependencies())
-            self.assertIn('不可用', window.dependency_list.item(0).text())
+            self.assertIn('缺失／无效', window.dependency_list.item(0).text())
             self.assertIn('目录不存在', window.log_output.toPlainText())
             self.assertFalse(window.new_btn.isEnabled())
             window.dependency_list.setCurrentRow(0)

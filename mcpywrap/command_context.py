@@ -6,7 +6,7 @@ import os
 import sys
 import tempfile
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import click
@@ -19,6 +19,7 @@ class CommandContext:
     json_output: bool = False
     remote: str = None
     local: bool = False
+    warnings: list = field(default_factory=list)
 
 
 _context = contextvars.ContextVar('mcpy_context', default=None)
@@ -42,6 +43,17 @@ def json_output():
 def human_interaction():
     current = _context.get()
     return current is not None and not non_interactive() and not json_output()
+
+
+def report_dependency_warnings(manager):
+    """CLI 展示与 JSON 共用诊断；解析服务本身不进行输出。"""
+    current = _context.get()
+    for message in manager.warnings:
+        if current is not None:
+            if message in current.warnings:
+                continue
+            current.warnings.append(message)
+        click.secho(message, fg='yellow', err=True)
 
 
 @contextlib.contextmanager
@@ -117,6 +129,8 @@ class OperationGroup(click.Group):
                 data = {'ok': code == 0, 'error': None, 'hint': None}
                 if isinstance(result, dict):
                     data.update(result)
+                if state.warnings:
+                    data['warnings'] = list(dict.fromkeys([*data.get('warnings', []), *state.warnings]))
                 # ASCII JSON survives both GBK consoles and UTF-8 subprocess pipes losslessly.
                 click.echo(json.dumps(data, ensure_ascii=True), file=output)
             elif code:

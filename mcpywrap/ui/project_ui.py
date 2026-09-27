@@ -134,9 +134,12 @@ class GameInstanceManager(QMainWindow):
         add_dep_layout = QVBoxLayout(add_dep_group)
         
         self.dependency_kind = QComboBox()
-        self.dependency_kind.addItem("Python 包", "package")
+        self.dependency_kind.addItem("Python 包（工具环境）", "package")
         self.dependency_kind.addItem("本地 Addon 目录", "local")
         add_dep_layout.addWidget(self.dependency_kind)
+        dependency_note = QLabel('包安装于 mcpy 工具环境；仅识别出的 Addon 参与组装，游戏不会读取 Python 依赖表。')
+        dependency_note.setWordWrap(True)
+        add_dep_layout.addWidget(dependency_note)
         self.new_dep_input = QComboBox()
         self.new_dep_input.setEditable(True)
         self.new_dep_input.setInsertPolicy(QComboBox.NoInsert)
@@ -352,14 +355,15 @@ class GameInstanceManager(QMainWindow):
         try:
             self.dependencies = self.dependency_service.list()
             for dependency in self.dependencies:
-                status = self.dependency_service.status(dependency)
+                status = self.dependency_service.inspect(dependency)
                 label = "本地目录" if dependency.kind == "local" else "Python 包"
                 text = f"[{label}] {dependency.value}"
-                if status:
-                    text += " — 不可用"
+                labels = {'addon': 'Addon', 'development_only': '仅开发环境',
+                          'inactive': '环境标记未启用', 'unavailable': '缺失／无效'}
+                text += ' — ' + labels[status.state]
                 item = QListWidgetItem(text)
                 item.setData(Qt.UserRole, dependency)
-                tooltip = status or "可用"
+                tooltip = status.message or '可参与 Addon 组装；游戏兼容性需实际测试'
                 if dependency.kind == 'local':
                     tooltip = str(resolve_path(self.base_dir, dependency.value)) + "\n" + tooltip
                 item.setToolTip(tooltip)
@@ -370,7 +374,8 @@ class GameInstanceManager(QMainWindow):
 
     def reload_runtime_dependencies(self):
         try:
-            self.all_packs = _setup_dependencies(self.current_project, self.base_dir, raise_errors=True)
+            self.all_packs = _setup_dependencies(self.current_project, self.base_dir, raise_errors=True,
+                                                report=lambda message: self.log(message, 'warning'))
         except (DependencyError, OSError) as exc:
             self.all_packs = None
             self.log(str(exc), 'error')
@@ -693,9 +698,12 @@ class DependencyInstallThread(QThread):
 
     def run(self):
         try:
-            self.log_message.emit(f'正在安装 {self.package}...', 'info')
-            changed = DependencyService(self.project_dir).add_package(self.package)
-            self.result.emit(True, '依赖安装成功并已保存' if changed else '依赖已安装，声明已存在')
+            self.log_message.emit(f'正在向 mcpy 工具环境安装 {self.package}（非游戏环境）...', 'info')
+            service = DependencyService(self.project_dir)
+            changed = service.add_package(self.package)
+            for message in service.last_resolution.warnings:
+                self.log_message.emit(message, 'warning')
+            self.result.emit(True, '工具环境安装完成，声明已保存' if changed else '工具环境安装完成，声明已存在')
         except Exception as exc:
             self.result.emit(False, f'依赖安装失败: {exc}')
 

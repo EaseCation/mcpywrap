@@ -4,7 +4,7 @@ import threading
 from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from ..dependencies import DependencyService
+from ..dependencies import DependencyService, is_native_file, validate_game_files
 from .AddonsPack import AddonsPack
 from .assembly import is_within, pack_files, rebuild_file, validate_target
 
@@ -17,7 +17,8 @@ class FileChangeHandler(FileSystemEventHandler):
         self.is_dependency, self.dependency_name = is_dependency, dependency_name
 
     def _should_ignore_path(self, path):
-        return is_within(path, self.target_dir) or self.addon_pack.should_exclude(path) and Path(path).name not in ('manifest.json', 'pack_manifest.json')
+        return is_within(path, self.target_dir) or (self.addon_pack.should_exclude(path)
+                and Path(path).name not in ('manifest.json', 'pack_manifest.json') and not is_native_file(path))
 
     def _process_event(self, event, event_type):
         if self._should_ignore_path(event.src_path):
@@ -117,17 +118,26 @@ class ProjectWatcher:
 
     def rebuild(self, kind, relative):
         with self.lock:
-            destination = Path(getattr(self.target_addon_pack, kind + '_pack_dir')) / relative
-            rebuild_file(self.packs, kind, relative, destination)
-            self.known_files.add((kind, relative))
-            return str(destination)
+            self.validate_sources()
+            return self._rebuild(kind, relative)
+
+    def _rebuild(self, kind, relative):
+        destination = Path(getattr(self.target_addon_pack, kind + '_pack_dir')) / relative
+        rebuild_file(self.packs, kind, relative, destination)
+        self.known_files.add((kind, relative))
+        return str(destination)
 
     def rebuild_all(self):
         with self.lock:
+            self.validate_sources()
             current = {(kind, rel) for p in self.packs for kind in ('behavior', 'resource') for rel in pack_files(p, kind)}
             for kind, relative in sorted(self.known_files | current):
-                self.rebuild(kind, relative)
+                self._rebuild(kind, relative)
             self.known_files = current
+
+    def validate_sources(self):
+        for pack in self.packs:
+            validate_game_files(pack.path, [pack.behavior_pack_dir, pack.resource_pack_dir])
 
     def start(self):
         self.multi_watcher.start_all()

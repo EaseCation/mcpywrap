@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcpywrap"
-version = "0.3.6"
+version = "0.3.7"
 description = "A wrapper for Minecraft China Edition Addons management"
 readme = "README.md"
 authors = [{name = "boybook", email = "boybook@easecation.net"}]

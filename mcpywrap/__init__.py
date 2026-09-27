@@ -1,4 +1,4 @@
 # -*- coding: utf-8 -*-
-"""mcpywrap - 将 Python 3 代码转换为 Python 2 代码的工具"""
+"""mcpywrap - 我的世界中国版 Addon 开发依赖、构建与游戏测试工具。"""
 
-__version__ = '0.3.6'
+__version__ = '0.3.7'

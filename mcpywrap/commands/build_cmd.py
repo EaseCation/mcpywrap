@@ -33,12 +33,12 @@ def build_cmd(merge):
     target_dir = os.path.normpath(os.path.join(str(current_project()), target_dir))
 
     # 实际构建
-    if not build(str(current_project()), target_dir, force_merge=merge):
+    if not build(str(current_project()), target_dir, force_merge=merge, raise_errors=True):
         raise click.ClickException('构建失败')
     return {'output': target_dir}
 
     
-def build(source_dir, target_dir, force_merge: bool = False):
+def build(source_dir, target_dir, force_merge: bool = False, raise_errors=False):
     """
     执行项目构建
     
@@ -72,6 +72,8 @@ def build(source_dir, target_dir, force_merge: bool = False):
         click.secho('✅ 构建成功！项目已生成到目标目录。', fg="green")
         return True
     else:
+        if raise_errors:
+            raise click.ClickException(f'构建失败: {error}')
         click.secho(f'❌ 构建失败: ', fg="red", nl=False)
         click.secho(f'{error}', fg="bright_red")
         return False

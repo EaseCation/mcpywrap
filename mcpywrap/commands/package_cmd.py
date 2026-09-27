@@ -15,7 +15,7 @@ from ..builders.project_builder import AddonProjectBuilder, MapProjectBuilder
 @click.command(cls=OperationCommand)
 @click.option('--merge', '-m', is_flag=True, help='强制合并所有资源文件（仅地图项目）')
 def package_cmd(merge):
-    """构建并打包可直接用于《我的世界》中国版市场发布的压缩包。"""
+    """组装 Addon/地图并生成分发 ZIP；游戏兼容性需实际测试。"""
     if not config_exists():
         raise click.ClickException('未找到配置文件。请先运行 `mcpy init` 初始化项目。')
 

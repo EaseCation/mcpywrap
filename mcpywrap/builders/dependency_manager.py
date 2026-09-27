@@ -9,7 +9,8 @@ from urllib.request import url2pathname
 
 from packaging.requirements import Requirement, InvalidRequirement
 from packaging.utils import canonicalize_name
-from ..dependencies import DependencyError, addon_directories, canonical_path, declarations, read_project, resolve_path
+from ..dependencies import (DependencyError, DependencyStatus, addon_directories, canonical_path,
+                            declarations, read_project, resolve_path, validate_game_files)
 from .AddonsPack import AddonsPack
 
 
@@ -42,6 +43,8 @@ class DependencyManager:
         self.dependency_map = {}
         self.root_node = None
         self.warnings = []
+        self.errors = []
+        self.statuses = {}
         self._nodes, self._active, self._ordered = {}, [], []
 
     def find_dependency_path(self, package_name):
@@ -60,6 +63,10 @@ class DependencyManager:
             config.setdefault('project', {})['dependencies'] = dependencies
         root_id = re.sub(r'[^\w.-]', '_', project_name)[:60] + '_' + hashlib.sha256(canonical_path(project_path).encode('utf-8')).hexdigest()[:12]
         root = DependencyNode(project_name, AddonsPack(root_id, project_path, is_origin=True))
+        folders = [root.addon_pack.behavior_pack_dir, root.addon_pack.resource_pack_dir]
+        if config.get('tool', {}).get('mcpywrap', {}).get('project_type') == 'map':
+            folders = [Path(project_path) / name for name in ('behavior_packs', 'resource_packs')]
+        validate_game_files(project_path, folders)
         self.root_node = root
         key = canonical_path(project_path)
         self._nodes[key] = root
@@ -67,8 +74,8 @@ class DependencyManager:
         self._process(root, config)
         self._active.pop()
         self.dependency_map = {canonical_path(n.addon_pack.path): n.addon_pack for n in self._ordered}
-        if self.warnings and not allow_missing:
-            raise DependencyError('\n'.join(self.warnings))
+        if self.errors and not allow_missing:
+            raise DependencyError('\n'.join(self.errors))
         return root
 
     def _process(self, parent, config):
@@ -78,12 +85,14 @@ class DependencyManager:
                 if entry.kind == 'local':
                     path = str(resolve_path(source, entry.value))
                     self._visit(parent, path, Path(path).name)
+                    self._status(source, entry, 'addon')
                     continue
                 try:
                     requirement = Requirement(entry.value)
                 except InvalidRequirement as exc:
                     raise DependencyError(f'无效的 Python 包声明: {entry.value}') from exc
                 if requirement.marker and not requirement.marker.evaluate():
+                    self._status(source, entry, 'inactive', '当前工具 Python 环境不满足环境标记，未启用；不代表游戏兼容性。')
                     continue
                 try:
                     dist = metadata.distribution(requirement.name)
@@ -95,6 +104,7 @@ class DependencyManager:
                     continue
                 path = self.find_dependency_path(entry.value)
                 if not path:
+                    self._development_only(source, entry)
                     continue
                 direct = dist.read_text('direct_url.json')
                 if not Path(path).is_dir() and direct and 'dir_info' in json.loads(direct):
@@ -107,11 +117,30 @@ class DependencyManager:
                     for p in Path(path).iterdir())
                 if has_mcpy or looks_like_addon:
                     self._visit(parent, path, canonicalize_name(requirement.name))
+                    self._status(source, entry, 'addon')
+                else:
+                    self._development_only(source, entry)
             except (DependencyError, OSError, ValueError) as exc:
                 raise DependencyError(f'来源 {source}\n依赖 {entry.value!r}: {exc}') from exc
 
     def _missing(self, source, value, reason):
-        self.warnings.append(f'{source}: {value} {reason}；请显式执行 mcpy add "{value}"')
+        from ..dependencies import DependencyDeclaration
+        message = f'{source}: {value} {reason}；请显式执行 mcpy add "{value}"'
+        self.errors.append(message)
+        self.warnings.append(message)
+        self._status(source, DependencyDeclaration('package', value), 'unavailable', message)
+
+    def _status(self, source, entry, state, message=''):
+        self.statuses[(canonical_path(source), entry.kind, entry.value)] = DependencyStatus(state, message)
+
+    def status_for(self, source, entry):
+        return self.statuses[(canonical_path(source), entry.kind, entry.value)]
+
+    def _development_only(self, source, entry):
+        message = (f'来源 {source}，依赖 {entry.value!r}: 未识别到可组装内容；'
+                   '仅安装于工具环境，不会被打包或供游戏导入。')
+        self.warnings.append(message)
+        self._status(source, entry, 'development_only', message)
 
     def _visit(self, parent, path, name):
         key = canonical_path(path)
@@ -124,6 +153,7 @@ class DependencyManager:
         if config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
             raise DependencyError(f'仅支持 Addon 目录依赖: {path}')
         folders = addon_directories(path)
+        validate_game_files(path, folders.values())
         suffix = hashlib.sha256(key.encode('utf-8')).hexdigest()[:12]
         safe_name = re.sub(r'[^\w.-]', '_', name)[:60] or 'addon'
         addon = AddonsPack(f'{safe_name}_{suffix}', path)

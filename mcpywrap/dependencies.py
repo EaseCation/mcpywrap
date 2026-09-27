@@ -2,6 +2,7 @@
 import copy
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,40 @@ class DependencyError(ValueError):
 class DependencyDeclaration:
     kind: str
     value: str
+
+
+@dataclass(frozen=True)
+class DependencyStatus:
+    state: str  # addon, development_only, inactive, unavailable
+    message: str = ''
+
+
+def is_native_file(path):
+    name = Path(path).name.lower()
+    return name.endswith(('.pyd', '.dll', '.so', '.dylib')) or bool(re.search(r'\.so\.\d+(?:\.\d+)*$', name))
+
+
+def validate_game_files(project_dir, folders):
+    """检查实际游戏包，先于构建过滤；不检查工具环境或项目外的开发文件。"""
+    visited = set()
+    def fail(error):
+        raise error
+    for folder in filter(None, folders):
+        if not Path(folder).exists():
+            continue  # 资源包、行为包均可缺省；结构检查由调用方负责。
+        for current, dirs, files in os.walk(folder, followlinks=True, onerror=fail):
+            key = canonical_path(current)
+            if key in visited:
+                dirs[:] = []
+                continue
+            visited.add(key)
+            dirs.sort()
+            for name in sorted(files):
+                if is_native_file(name):
+                    raise DependencyError(
+                        f'来源 {project_dir}\n游戏包包含不支持的原生二进制: {Path(current) / name}\n'
+                        '游戏使用独立 Python 环境，不能加载工具环境的原生扩展；'
+                        '请将开发依赖移出游戏包，或改用兼容游戏环境的纯 Python 实现。')
 
 
 def canonical_path(path):
@@ -140,6 +175,7 @@ def path_for_storage(project_dir, path, absolute=False):
 class DependencyService:
     def __init__(self, project_dir):
         self.project_dir = Path(project_dir).resolve()
+        self.last_resolution = None
 
     def list(self):
         return declarations(read_project(self.project_dir))
@@ -150,6 +186,7 @@ class DependencyService:
         manager = DependencyManager()
         manager.build_dependency_tree(config.get('project', {}).get('name', self.project_dir.name),
                                       str(self.project_dir), config=config, allow_missing=allow_missing)
+        self.last_resolution = manager
         return manager
 
     def prepare_local(self, value, config=None):
@@ -188,14 +225,22 @@ class DependencyService:
     def add_package(self, value):
         declarations(read_project(self.project_dir))
         self.install_package(value)
-        config = read_project(self.project_dir)
-        declarations(config)
-        values = config.setdefault('project', {}).setdefault('dependencies', [])
-        if value in values:
-            return False
-        values.append(value)
-        write_project(self.project_dir, config)
-        return True
+        try:
+            config = read_project(self.project_dir)
+            declarations(config)
+            values = config.setdefault('project', {}).setdefault('dependencies', [])
+            changed = value not in values
+            if changed:
+                values.append(value)
+            manager = self.resolve(config, allow_missing=True)
+            status = manager.status_for(self.project_dir, DependencyDeclaration('package', value))
+            if status.state == 'unavailable':
+                raise DependencyError(status.message)
+            if changed:
+                write_project(self.project_dir, config)
+            return changed
+        except (DependencyError, OSError) as exc:
+            raise DependencyError(f'{exc}\npip 已在 mcpy 工具环境完成安装；新增声明未保存，未自动卸载。') from exc
 
     def remove(self, declaration):
         config = read_project(self.project_dir)
@@ -212,11 +257,18 @@ class DependencyService:
         values[:] = [v for v in values if v not in matches]
         write_project(self.project_dir, config)
 
-    def status(self, declaration):
+    def inspect(self, declaration):
         config = read_project(self.project_dir)
         config.setdefault('project', {})['dependencies'] = [declaration.value] if declaration.kind == 'package' else []
         config.setdefault('tool', {}).setdefault('mcpywrap', {})['local_dependencies'] = [declaration.value] if declaration.kind == 'local' else []
         try:
-            return '\n'.join(self.resolve(config, allow_missing=True).warnings)
+            manager = self.resolve(config, allow_missing=True)
+            status = manager.status_for(self.project_dir, declaration)
+            if manager.errors:
+                return DependencyStatus('unavailable', '\n'.join(manager.errors))
+            return DependencyStatus(status.state, '\n'.join(manager.warnings) or status.message)
         except (DependencyError, OSError) as exc:
-            return str(exc)
+            return DependencyStatus('unavailable', str(exc))
+
+    def status(self, declaration):
+        return self.inspect(declaration).message
