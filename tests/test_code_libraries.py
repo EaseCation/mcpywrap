@@ -173,9 +173,13 @@ class CodeLibraries(unittest.TestCase):
             'project_type': 'map', 'local_dependencies': ['../main']}}})
         packs = _setup_dependencies('world', str(world), raise_errors=True)
         self.assertEqual(len(packs), 2)
-        main_pack = next(p for p in packs if p.path != str(child))
         # main独立组装，不把child的资源也再次注入运行时。
         (child / 'behavior_pack/child-only.py').write_text('child = True')
         packs = _setup_dependencies('world', str(world), raise_errors=True)
-        main_pack = next(p for p in packs if p.path != str(child))
+        # Windows CI 的 TEMP 可使用 RUNNER~1 短路径，解析器返回长路径。
+        # 按目录身份选择，避免把 child 自己当作待验证的 main。
+        main_pack = next(p for p in packs if not Path(p.path).samefile(child))
+        child_pack = next(p for p in packs if Path(p.path).samefile(child))
+        self.assertTrue((Path(child_pack.behavior_pack_dir) / 'child-only.py').exists())
+        self.assertTrue((Path(main_pack.behavior_pack_dir) / 'MyMod/Library/old.py').exists())
         self.assertFalse((Path(main_pack.behavior_pack_dir) / 'child-only.py').exists())
