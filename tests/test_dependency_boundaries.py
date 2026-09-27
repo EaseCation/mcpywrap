@@ -1,15 +1,16 @@
 """工具环境与游戏包的边界：真实目录、产物及 CLI/Qt，安装和启动使用替身。"""
 import importlib
+import inspect
 import json
 import zipfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from click.testing import CliRunner
 from watchdog.events import FileCreatedEvent, FileDeletedEvent, FileModifiedEvent, FileMovedEvent
 
 from mcpywrap.cli import cli
-from mcpywrap.dependencies import DependencyError, read_project, write_project
+from mcpywrap.dependencies import DependencyError, DependencyService, read_project, write_project
 from mcpywrap.builders.project_builder import AddonProjectBuilder, MapProjectBuilder
 from mcpywrap.builders.watcher import ProjectWatcher
 from mcpywrap.mcstudio.network import prepare_project
@@ -21,7 +22,8 @@ DIST = 'mcpywrap.builders.dependency_manager.metadata.distribution'
 
 class Boundaries(ProjectFixture):
     def call(self, *args):
-        return CliRunner().invoke(cli, ['--local', '--project', str(self.main), '--non-interactive', *args, '--json'])
+        options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
+        return CliRunner(**options).invoke(cli, ['--local', '--project', str(self.main), '--non-interactive', *args, '--json'])
 
     def packages(self, *values):
         config = read_project(self.main)
@@ -42,7 +44,7 @@ class Boundaries(ProjectFixture):
             self.assertFalse(any('site-packages' in n or 'native-package' in n for n in archive.namelist()))
 
     def test_add_json_classification_duplicate_and_marker(self):
-        with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=0)), patch(DIST, return_value=FakeDist()):
+        with patch.object(DependencyService, 'install_package'), patch(DIST, return_value=FakeDist()):
             first = self.call('add', 'example>=1')
             again = self.call('add', 'example>=1')
             inactive = self.call('add', 'unused; python_version < "2"')
@@ -56,7 +58,7 @@ class Boundaries(ProjectFixture):
     def test_init_package_wizard_reports_development_scope(self):
         (self.main / 'pyproject.toml').unlink()
         with patch('mcpywrap.commands.init_cmd.non_interactive', return_value=False), patch(
-                'mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=0)), patch(DIST, return_value=FakeDist()):
+                'mcpywrap.dependencies.DependencyService.install_package'), patch(DIST, return_value=FakeDist()):
             result = CliRunner().invoke(cli, ['--local', '--project', str(self.main), 'init'],
                                         input='main\n0.1.0\naddon\n./build\ny\n1\nexample>=1\nn\n')
         self.assertEqual(result.exit_code, 0, result.output)
@@ -76,13 +78,13 @@ class Boundaries(ProjectFixture):
         messages, outcomes = [], []
         worker.log_message.connect(lambda message, level: messages.append((message, level)))
         worker.result.connect(lambda success, message: outcomes.append(success))
-        with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=0)), patch(DIST, return_value=FakeDist()):
+        with patch.object(DependencyService, 'install_package'), patch(DIST, return_value=FakeDist()):
             worker.run()
         self.assertEqual(outcomes, [True])
         self.assertTrue(any('仅安装于工具环境' in message and level == 'warning' for message, level in messages))
 
     def test_package_addon_recognized_and_invalid_install_not_saved(self):
-        with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=0)), patch(DIST, return_value=FakeDist(self.dep)):
+        with patch.object(DependencyService, 'install_package'), patch(DIST, return_value=FakeDist(self.dep)):
             result = self.call('add', 'shared>=1')
             self.assertEqual(json.loads(result.stdout)['classification'], 'addon')
             before = (self.main / 'pyproject.toml').read_bytes()
