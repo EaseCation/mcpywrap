@@ -130,7 +130,7 @@ class NetworkTests(unittest.TestCase):
         with patch.object(ui, 'non_interactive', return_value=False):
             result = self.runner.invoke(cli, ['--project', str(self.project), 'ui'])
             self.assertNotEqual(result.exit_code, 0)
-            self.assertIn('mcpy run', result.output)
+            self.assertIn('mcpy run', result.stderr)
         run = importlib.import_module('mcpywrap.commands.run_cmd')
         with self.assertRaisesRegex(ValueError, '服务器目标'):
             run._run_game_with_instance(str(self.project / '.runtime/old.cppconfig'), 'old', [])
