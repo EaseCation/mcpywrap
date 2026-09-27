@@ -18,8 +18,22 @@ def run(project, session):
     sessions.save(path, data)
     process = None
     receiver = None
+    engine_capture = None
+    auth_path = directory/'auth.cppconfig'
     try:
-        receiver = FileLogServer(data['log_path'])
+        auth_context = None
+        if data.get('mcs_auth'):
+            from .mcs_auth import AuthContext
+            from .private_logs import RedactedDecoder, EngineLogCapture
+            try:
+                payload = json.loads(sys.stdin.buffer.read(65536).decode('utf-8'))
+                auth_context = AuthContext.parse(payload, data['mcs_pid'])
+            except (ValueError, KeyError, UnicodeError):
+                raise ValueError('未能接收有效的 MC Studio 身份，请从命令行重新启动本次测试。') from None
+            secrets = auth_context.secrets()
+            receiver = FileLogServer(data['log_path'], decoder_factory=lambda: RedactedDecoder(secrets))
+        else:
+            receiver = FileLogServer(data['log_path'])
         receiver.start()
         if (directory / 'stop').exists():
             raise ValueError('启动已取消')
@@ -28,9 +42,12 @@ def run(project, session):
             success, process = _run_game_with_instance(
                 data['config_path'], data['level_id'], [], wait=False,
                 engine_overrides=data['engine_overrides'], no_gui=True, logging_port=receiver.port,
-                output_path=str(directory / 'engine.log'))
+                output_path=str(directory / 'engine.log'),
+                **({'auth_context': auth_context, 'auth_config_path': str(auth_path)} if auth_context else {}))
         if not success or not process or process.poll() is not None:
             raise ValueError('游戏进程未成功启动，详见 worker.log')
+        if auth_context:
+            engine_capture = EngineLogCapture(process.stdout, directory/'engine.log', secrets)
         data.update(state='running', game=identity(process.pid))
         sessions.save(path, data)
         while process.poll() is None:
@@ -46,9 +63,14 @@ def run(project, session):
             process.terminate()
             process.wait(timeout=10)
     finally:
-        if receiver:
-            receiver.close()
-        sessions.save(path, data)
+        try:
+            if engine_capture:
+                engine_capture.close()
+        finally:
+            if receiver:
+                receiver.close()
+            auth_path.unlink(missing_ok=True)
+            sessions.save(path, data)
 
 
 if __name__ == '__main__':

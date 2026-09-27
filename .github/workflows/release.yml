@@ -37,6 +37,15 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install .
       - run: python -m pip check
+      - run: python scripts/check_mcs_auth_bridge.py
+      - name: Verify bridge signatures without changing certificate trust
+        shell: pwsh
+        run: |
+          $manifest = Get-Content mcpywrap/mcstudio/bridge_payload/manifest.json -Raw | ConvertFrom-Json
+          foreach ($name in @('Injector.exe','Loader.dll','McpyMcsAuth.dll')) {
+            $signature = Get-AuthenticodeSignature -LiteralPath "mcpywrap/mcstudio/bridge_payload/$name"
+            if ($signature.SignerCertificate.Thumbprint -ne $manifest.thumbprint -or $signature.Status -in @('HashMismatch','NotSigned','NotSupportedFileFormat')) { throw "Invalid bridge signature: $name" }
+          }
       - run: python -m unittest discover -s tests -v
       - run: python -m compileall -q mcpywrap tests
 
@@ -68,6 +77,7 @@ jobs:
       - run: python -m build
       - run: python -m twine check --strict dist/*
       - run: python scripts/check_release.py
+      - run: python scripts/check_mcs_auth_bridge.py
       - name: Smoke test the built wheel outside the checkout
         shell: bash
         run: |

@@ -46,7 +46,7 @@ def read(project, session):
     return data
 
 
-def start(project, config_path, level_id, overrides=None, timeout=30):
+def start(project, config_path, level_id, overrides=None, timeout=30, auth_context=None):
     root = Path(project).resolve()
     session = uuid.uuid4().hex
     directory = session_path(root, session)
@@ -55,12 +55,21 @@ def start(project, config_path, level_id, overrides=None, timeout=30):
               'worker': None, 'error': None, 'log_path': str(directory / 'game.log'),
               'engine_log_path': str(directory / 'engine.log'),
               'config_path': str(Path(config_path).resolve()), 'level_id': level_id,
-              'engine_overrides': overrides or {}}
+              'engine_overrides': overrides or {}, 'mcs_auth': auth_context is not None,
+              'mcs_pid': auth_context.mcs_pid if auth_context else None}
     save(directory / 'session.json', record)
     with (directory / 'worker.log').open('wb') as log:
         process = subprocess.Popen([sys.executable, '-m', 'mcpywrap.mcstudio.session_worker', str(root), session],
-                                   cwd=root, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                                   cwd=root, stdin=subprocess.PIPE if auth_context else subprocess.DEVNULL,
+                                   stdout=log, stderr=log,
                                    **background_options())
+    if auth_context:
+        try:
+            process.stdin.write(json.dumps(auth_context.to_payload()).encode('utf-8'))
+            process.stdin.close()
+        except (OSError, BrokenPipeError):
+            (directory/'stop').touch()
+            raise ValueError('启动进程未能接收登录身份，请重试；凭据未写入会话记录。') from None
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         # worker 是记录的唯一写入者，父进程不与其竞争覆盖。
@@ -92,6 +101,8 @@ def stop(project, session):
             worker.wait(timeout=10)
         except Exception as exc:
             raise ValueError('worker 尚未退出，请查询会话状态') from exc
+    # Also clear credentials when the worker previously crashed before its finally block.
+    (session_path(project, session)/'auth.cppconfig').unlink(missing_ok=True)
     return {'session': session, 'state': 'exited'}
 
 

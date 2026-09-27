@@ -1,10 +1,11 @@
-"""未认证网络连接：目标、项目准备与一次前台运行，不读取 MCS 身份或模板。"""
+"""网络目标、可选 MCS 身份与前台运行；配置始终由本工具生成。"""
 import codecs
 import ipaddress
 import json
 import re
 import subprocess
 import tempfile
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from .runtime_cppconfig import gen_runtime_config
 class ServerTarget:
     host: str
     port: int = 19132
+    auth: str = 'none'
 
     def __post_init__(self):
         if not isinstance(self.host, str) or not self.host or self.host != self.host.strip():
@@ -40,6 +42,8 @@ class ServerTarget:
                 raise ValueError('server.host 必须是 IP 或主机名；端口请单独配置')
         if type(self.port) is not int or not 1 <= self.port <= 65535:
             raise ValueError('server.port 必须是 1–65535 的整数')
+        if self.auth not in ('none', 'mcs'):
+            raise ValueError('server.auth 只支持 none 或 mcs')
 
 
 def configured_target(config):
@@ -49,6 +53,8 @@ def configured_target(config):
     server = settings['server']
     if not isinstance(server, dict):
         raise ValueError('tool.mcpywrap.server 必须是 TOML 表')
+    if 'auth' in server:
+        raise ValueError('登录身份需要每次显式使用 --mcs-auth，请移除 server.auth 配置')
     unknown = server.keys() - {'host', 'port'}
     if unknown:
         raise ValueError('未知的 server 配置字段: ' + ', '.join(sorted(unknown)))
@@ -92,12 +98,26 @@ def run_network(target, *, project_dir=None, packs=(), engine_overrides=None):
                               read_project_config=project_dir is not None).require_engine()
     require_resources(engine)
     config = unauthenticated_config(engine, target)
-    click.echo('未认证网络连接：不使用账号/token，服务器可能拒绝连接。')
+    identity = None
+    secrets = []
+    if target.auth == 'mcs':
+        from .mcs_auth import acquire_identity
+        identity = acquire_identity()
+        identity.apply(config)
+        # Match MCS's generated ID relationship for third-party servers without a numeric game ID.
+        game_id = str(uuid.uuid4())
+        config['misc']['game_id'] = game_id
+        config['room_info']['item_ids'] = [game_id]
+        config.update(vip_using_mod=[], isCloud=False)
+        secrets = identity.secrets()
+        click.echo('已读取 MCS 当前身份；连接结果仍以服务器响应为准。')
+    else:
+        click.echo('未认证网络连接：不使用账号/token，服务器可能拒绝连接。')
     click.echo(f'本次仅连接服务器，工具未装配本地 Addon（已解析 {len(packs)} 个）。')
     directory = Path(tempfile.mkdtemp(prefix='mcpy-network-'))
     config_path, log_path = directory / 'runtime.cppconfig', directory / 'game.log'
     engine_log = directory / 'engine.log'
-    process, receiver = None, None
+    process, receiver, engine_capture = None, None, None
     tails = []
 
     def relay(final=False):
@@ -105,8 +125,14 @@ def run_network(target, *, project_dir=None, packs=(), engine_overrides=None):
             click.echo(decoder.decode(tail.read(), final=final), nl=False)
 
     try:
+        if identity:
+            config['path'] = str(config_path)
         config_path.write_text(json.dumps(config, ensure_ascii=False), encoding='utf-8')
-        receiver = FileLogServer(log_path)
+        if identity:
+            from .private_logs import RedactedDecoder, EngineLogCapture
+            receiver = FileLogServer(log_path, decoder_factory=lambda: RedactedDecoder(secrets))
+        else:
+            receiver = FileLogServer(log_path)
         receiver.start()
         engine_log.touch()
         for path in (log_path, engine_log):
@@ -114,9 +140,11 @@ def run_network(target, *, project_dir=None, packs=(), engine_overrides=None):
         click.echo(f'目标: {target.host}:{target.port}\n日志: {log_path}\n引擎输出: {engine_log}')
         process = open_game(str(config_path), engine=engine, logging_ip='127.0.0.1',
                             logging_port=receiver.port, wait=False, use_system_color=False,
-                            output_path=str(engine_log))
+                            **({'capture_output': True} if identity else {'output_path': str(engine_log)}))
         if not process:
             raise click.ClickException(f'游戏启动失败；日志目录: {directory}')
+        if identity:
+            engine_capture = EngineLogCapture(process.stdout, engine_log, secrets)
         click.echo(f'游戏进程已创建，PID: {process.pid}（尚未确认连接）；Ctrl+C 结束本次游戏。')
         while True:
             relay()
@@ -136,8 +164,12 @@ def run_network(target, *, project_dir=None, packs=(), engine_overrides=None):
                     process.wait(timeout=5)
         finally:
             try:
-                if receiver:
-                    receiver.close()
+                try:
+                    if engine_capture:
+                        engine_capture.close()
+                finally:
+                    if receiver:
+                        receiver.close()
                 relay(final=True)
             finally:
                 for tail, _ in tails:
@@ -149,5 +181,6 @@ def run_network(target, *, project_dir=None, packs=(), engine_overrides=None):
         raise error
     return {'application': 'game', 'pid': process.pid, 'state': 'exited', 'exit_code': code,
             'authenticated': False, 'connection_verified': False, 'addons_assembled': False,
+            'identity_source': target.auth, 'identity_provided': identity is not None,
             'host': target.host, 'port': target.port, 'log_path': str(log_path),
             'engine_log_path': str(engine_log), 'engine_version': engine.version}

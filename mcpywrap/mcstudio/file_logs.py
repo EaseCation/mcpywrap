@@ -5,7 +5,8 @@ from .log_protocol import LogDecoder
 
 
 class FileLogServer:
-    def __init__(self, path):
+    def __init__(self, path, decoder_factory=LogDecoder):
+        self.decoder_factory = decoder_factory
         self.stream = open(path, 'a', encoding='utf-8')
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -39,7 +40,7 @@ class FileLogServer:
             self.stream.flush()
 
     def _read(self, client):
-        decoder = LogDecoder()
+        decoder = self.decoder_factory()
         try:
             while not self.stop_event.is_set():
                 try:

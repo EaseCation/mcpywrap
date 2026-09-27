@@ -10,7 +10,8 @@ console = Console()
 
 
 @click.command(cls=OperationCommand)
-def ui_cmd():
+@click.option('--mcs-auth', is_flag=True, help='本次 GUI 单人测试使用已登录的 MC Studio 身份')
+def ui_cmd(mcs_auth=False):
     """启动图形界面"""
     from ..command_context import json_output
     if non_interactive() or json_output():
@@ -25,5 +26,5 @@ def ui_cmd():
     
     from ..ui.project_ui import show_run_ui
     # 显示图形界面
-    show_run_ui(str(current_project()))
+    show_run_ui(str(current_project()), mcs_auth=mcs_auth)
 

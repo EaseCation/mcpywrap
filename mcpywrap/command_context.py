@@ -37,6 +37,11 @@ def json_output():
     return bool(current and current.json_output)
 
 
+def human_interaction():
+    current = _context.get()
+    return current is not None and not non_interactive() and not json_output()
+
+
 @contextlib.contextmanager
 def project_scope(path):
     previous = _context.get()
@@ -89,7 +94,10 @@ class OperationGroup(click.Group):
                     result = {'ok': False, 'error': '操作已中断', 'hint': None}
                 except (ValueError, OSError) as exc:
                     code = 1
-                    result = {'ok': False, 'error': str(exc), 'hint': '请核对项目配置和相关文件路径。'}
+                    result = {'ok': False, 'error': str(exc),
+                              'hint': getattr(exc, 'hint', '请核对项目配置和相关文件路径。')}
+                    if getattr(exc, 'code', None):
+                        result['code'] = exc.code
                 except Exception as exc:
                     code = 1
                     with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', prefix='mcpy-error-',

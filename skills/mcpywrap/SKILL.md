@@ -48,6 +48,8 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图项�
 5. 使用项目约定的日志标记验证 Mod 加载。`running` 只表示进程存在。
 6. 若用户要求一次性验证，结束后 `stop --session <id> --json`；用户要求保持游戏运行时保留会话并报告 ID。
 
+用户明确要求使用 MCS 身份时，在 `run` 上增加 `--mcs-auth`（CLI 0.3.4+）；默认不加。保持 `--non-interactive` 和 `--json`，所有登录错误通过结果返回，不弹窗或安装证书。`code=studio_unavailable` 时告知用户先打开并登录 MC Studio；安全策略阻止时按 `error/hint` 说明原因，不反复重试或更改证书／系统保护。
+
 可使用 [smoke.py](scripts/smoke.py) 自动检查并打包；`--game` 才运行游戏，
 `--expect-log` 可重复指定加载标记。该脚本会停止自己创建的游戏；不要用于要求保留游戏窗口的任务。
 
@@ -63,7 +65,7 @@ port = 19132
 ```
 
 纯连接目录只需此表，无需 `init`；Addon 项目仍校验依赖，但本版不装配本地 Mod。
-不读取登录身份或 token，不能把进程创建成功当成进服成功。
+默认不读取登录身份；用户明确要求时可追加 `--mcs-auth`，不能把取得身份或进程创建成功当成进服成功。
 在可持续运行的终端会话中执行，读取输出的 PID 和两路日志路径；Ctrl+C 结束本次游戏。
 `--json` 在游戏退出后才返回最终结果；不支持 `--detach`、`--new`、世界实例 ID、Map 或 GUI。
 网络运行不生成本地会话 ID，不使用 `status/logs/stop --session`、`smoke.py --game` 或 `game_window.py` 管理它。

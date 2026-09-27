@@ -125,7 +125,8 @@ def _build_dependency_tree(node, tree_node):
 
 
 def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_callback=None,
-                            engine_overrides=None, no_gui=False, logging_port=None, output_path=None):
+                            engine_overrides=None, no_gui=False, logging_port=None, output_path=None,
+                            auth_context=None, auth_config_path=None):
     """使用指定的实例运行游戏
     
     Args:
@@ -141,6 +142,8 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
     from pathlib import Path
     from ..dependencies import read_project
     project_dir = str(Path(config_path).resolve().parent.parent)
+    if auth_context is not None and (not auth_config_path or not no_gui or wait):
+        raise ValueError('带身份的单人测试必须通过会话 worker 启动')
     config = read_project(project_dir)
     if 'server' in config.get('tool', {}).get('mcpywrap', {}):
         # GUI/旧会话也不能将网络目标误启动成本地世界。
@@ -259,13 +262,20 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
             log_message(f"✓ 已创建world_resource_packs.json，包含{len(resource_packs_config)}个资源包", "success")
             
     # 启动游戏
+    launch_config_path = config_path
+    if auth_context is not None:
+        auth_context.apply(runtime_config)
+        launch_config_path = auth_config_path
+        with open(launch_config_path, 'w', encoding='utf-8') as stream:
+            json.dump(runtime_config, stream, ensure_ascii=False)
     logging_port = logging_port if logging_port is not None else _gen_random_port()
 
     log_message(f"🚀 正在启动游戏实例: {level_id[:8]}...", "bright_blue")
     
     with console.status("启动游戏中...", spinner="dots"):
-        game_process = open_game(config_path, logging_port=logging_port, wait=False, engine=engine,
-                                 **({'output_path': output_path} if output_path else {}))
+        game_process = open_game(launch_config_path, logging_port=logging_port, wait=False, engine=engine,
+                                 **({'capture_output': True} if auth_context is not None else
+                                    {'output_path': output_path} if output_path else {}))
 
     if not game_process:
         log_message("❌ 游戏启动失败", "error")
@@ -331,18 +341,20 @@ def _gen_random_port():
 @engine_options
 @click.option("--no-gui", is_flag=True, help="只显示游戏，不打开辅助 GUI")
 @click.option("--detach", is_flag=True, help="后台运行并返回游戏会话")
+@click.option('--mcs-auth', is_flag=True, help='本次单人测试或网络连接使用已登录的 MC Studio 身份')
 @click.option('--new', '-n', is_flag=True, help='创建新的游戏实例')
 @click.option('--list', '-l', is_flag=True, help='列出所有可用的游戏实例')
 @click.option('--delete', '-d', help='删除指定的游戏实例 (输入实例ID前缀)')
 @click.option('--force', '-f', is_flag=True, help='强制删除，不提示确认')
 @click.option('--clean-all', is_flag=True, help='清空所有游戏实例')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, **engine_overrides):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, **engine_overrides):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例。
 
-    配置 [tool.mcpywrap.server] host/port 时改为未认证网络连接，
+    配置 [tool.mcpywrap.server] host/port 时改为网络连接；默认未认证，
+    可用 --mcs-auth 显式读取 MCS 身份，单人测试同样支持此选项。
     不装配本地 Mod，不保证服务器接受连接。网络模式前台采集日志，
     Ctrl+C 结束本次游戏，暂不支持 --detach。
     """
@@ -352,6 +364,8 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
     # 检查项目是否已初始化
     if not config_exists():
         require_project()
+    if mcs_auth and (list or delete or clean_all):
+        raise click.UsageError('--mcs-auth 仅用于网络连接，不用于存档管理')
 
     # 在存档选择、配置同步和目录创建之前分流；管理选项仍只管理本地存档。
     if not (list or delete or clean_all):
@@ -360,6 +374,9 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         config = read_project(base_dir)
         target = configured_target(config)
         if target is not None:
+            if mcs_auth:
+                from dataclasses import replace
+                target = replace(target, auth='mcs')
             if new or instance_prefix:
                 raise click.UsageError('网络模式不支持 --new 或本地世界实例 ID')
             if detach:
@@ -395,6 +412,10 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
     all_packs = _setup_dependencies(project_name, base_dir)
     if all_packs is None:
         raise click.ClickException('依赖校验失败')
+    auth_context = None
+    if mcs_auth:
+        from ..mcstudio.mcs_auth import acquire_identity
+        auth_context = acquire_identity()
 
     # 确定要使用的实例
     config_path = None
@@ -444,10 +465,11 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
     from ..command_context import json_output
     if json_output() and not detach:
         raise click.UsageError('run --json 需要 --detach，避免等待游戏退出')
-    if no_gui or detach or non_interactive():
+    if no_gui or detach or non_interactive() or mcs_auth:
         from ..mcstudio import sessions
         import time
-        data = sessions.start(base_dir, config_path, level_id, engine_overrides)
+        data = sessions.start(base_dir, config_path, level_id, engine_overrides,
+                              **({'auth_context': auth_context} if auth_context is not None else {}))
         result = {'application': 'game', 'project': base_dir, 'session': data['session'],
                   'state': data['state'], **data['game'], 'log_path': data['log_path'],
                   'engine_log_path': data.get('engine_log_path'),

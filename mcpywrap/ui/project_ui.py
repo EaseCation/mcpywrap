@@ -35,9 +35,10 @@ from ..builders.dependency_manager import find_all_mcpywrap_packages
 class GameInstanceManager(QMainWindow):
     """游戏实例管理器主窗口"""
     
-    def __init__(self, base_dir):
+    def __init__(self, base_dir, mcs_auth=False):
         super().__init__()
         self.base_dir = os.path.abspath(base_dir)
+        self.mcs_auth = mcs_auth
         self.dependency_service = DependencyService(self.base_dir)
         self.current_project = read_project(self.base_dir).get('project', {}).get('name', '未初始化项目')
         self.dependency_busy = False
@@ -446,10 +447,7 @@ class GameInstanceManager(QMainWindow):
         self.log(f"🚀 正在启动游戏实例: {level_id[:8]}...")
         
         # 使用QThread启动游戏，避免UI卡死
-        self.game_thread = GameRunThread(config_path, level_id, self.all_packs)
-        self.game_thread.log_message.connect(self.log)
-        self.game_thread.finished.connect(self.refresh_instances)
-        self.game_thread.start()
+        self.start_game_thread(config_path, level_id)
     
     def run_selected_instance(self):
         """运行选中的游戏实例"""
@@ -469,8 +467,20 @@ class GameInstanceManager(QMainWindow):
         self.log(f"🚀 正在启动游戏实例: {level_id[:8]}...")
         
         # 使用QThread启动游戏，避免UI卡死
-        self.game_thread = GameRunThread(config_path, level_id, self.all_packs)
+        self.start_game_thread(config_path, level_id)
+
+    def start_game_thread(self, config_path, level_id):
+        identity = None
+        if self.mcs_auth:
+            from ..mcstudio.mcs_auth import acquire_identity, AuthError
+            try:
+                identity = acquire_identity(interactive=True)
+            except AuthError as exc:
+                self.log(str(exc), 'error')
+                return
+        self.game_thread = GameRunThread(config_path, level_id, self.all_packs, identity)
         self.game_thread.log_message.connect(self.log)
+        self.game_thread.finished.connect(self.refresh_instances)
         self.game_thread.start()
     
     def delete_selected_instance(self):
@@ -628,17 +638,28 @@ class GameRunThread(QThread):
     log_message = pyqtSignal(str, str)
     game_started = pyqtSignal()  # 游戏成功启动信号
     
-    def __init__(self, config_path, level_id, all_packs):
+    def __init__(self, config_path, level_id, all_packs, auth_context=None):
         super().__init__()
         self.config_path = config_path
         self.level_id = level_id
         self.all_packs = all_packs
         self.game_process = None
+        self.auth_context = auth_context
         
     def run(self):
         """线程执行函数"""
         try:
             self.log_message.emit(f"🚀 正在启动游戏实例: {self.level_id[:8]}...", "info")
+            if self.auth_context is not None:
+                from pathlib import Path
+                from ..mcstudio import sessions
+                from ..mcstudio.processes import checked_process
+                data = sessions.start(str(Path(self.config_path).resolve().parent.parent),
+                                      self.config_path, self.level_id, auth_context=self.auth_context)
+                self.game_process = checked_process(data['game'])
+                self.log_message.emit('游戏已启动；日志保存在 '+data['log_path'], 'success')
+                self.game_started.emit()
+                return
             
             # 使用run_cmd.py中的函数启动游戏，传递日志回调函数
             success, self.game_process = _run_game_with_instance(
@@ -657,6 +678,8 @@ class GameRunThread(QThread):
             import traceback
             error_details = traceback.format_exc()
             self.log_message.emit(f"错误详情:\n{error_details}", "error")
+        finally:
+            self.auth_context = None
 
 
 class DependencyInstallThread(QThread):
@@ -677,7 +700,7 @@ class DependencyInstallThread(QThread):
             self.result.emit(False, f'依赖安装失败: {exc}')
 
 
-def show_run_ui(base_dir=None):
+def show_run_ui(base_dir=None, mcs_auth=False):
     """显示游戏实例管理UI"""
     app = QApplication.instance() or QApplication(sys.argv)
     app.setStyle(QStyleFactory.create("Fusion"))
@@ -695,7 +718,7 @@ def show_run_ui(base_dir=None):
     palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
     app.setPalette(palette)
     
-    window = GameInstanceManager(base_dir or os.getcwd())
+    window = GameInstanceManager(base_dir or os.getcwd(), mcs_auth=mcs_auth)
     window.show()
     return app.exec_()
 

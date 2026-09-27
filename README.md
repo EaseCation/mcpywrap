@@ -117,6 +117,14 @@ port = 19132
 
 网络模式前台输出日志并显示日志文件路径，按 Ctrl+C 结束本次游戏。暂不支持 Map 项目、GUI、`--detach`、`--new` 或本地世界实例 ID。
 
+### 使用 MC Studio 登录身份（可选）
+
+单人测试用 `mcpy run --mcs-auth`，网络服用 `mcpy connect <地址> --mcs-auth`；图形管理页可用 `mcpy ui --mcs-auth`。必须先打开并登录 MC Studio，且每次显式加参数，配置文件不会自动启用登录。
+
+发布包自带签名桥接组件，无需编译。程序先尝试启用；若确认为证书信任问题，人工交互模式会说明影响，并在你同意后安装当前用户证书、重试一次。安装证书不保证 Smart App Control 或组织策略放行。`--non-interactive`／`--json` 全程无弹窗、不安装证书，失败返回原因与处理提示。
+
+身份按次读取，日志脱敏，单人世界的长期配置不保存凭据。当前不支持 token 自动刷新和运行期认证代理。信任范围、移除方法及开发构建见[登录组件说明](docs/mcs-auth.md)。
+
 ## AI Agent 使用
 
 仓库提供标准 [mcpywrap Skill](https://github.com/EaseCation/mcpywrap/tree/main/skills/mcpywrap)，帮助 Agent 安装工具、管理依赖、
@@ -129,7 +137,7 @@ port = 19132
 也可以下载仓库 ZIP，将完整的 `skills/mcpywrap` 文件夹复制到对应 Agent 的技能目录。
 无需从源码安装 Python 项目；CLI 和 Skill 分别安装，`pip/uv install` 不会自动注册 Skill。
 Skill 中的 `scripts/bootstrap.ps1` 可使用已有 uv 安装 CLI，并检查是否具备所需命令能力。
-请使用 mcpywrap 0.3.3 或更高版本；需要固定组合时，可从 `v0.3.3` 标签安装对应 Skill。
+请使用 mcpywrap 0.3.4 或更高版本；需要固定组合时，可从 `v0.3.4` 标签安装对应 Skill。
 
 安装后可直接描述任务：
 
