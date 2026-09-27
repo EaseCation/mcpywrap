@@ -113,9 +113,18 @@ host = "192.168.31.101"
 port = 19132
 ```
 
-空目录只需上述配置，无需执行 `mcpy init`；已有 Addon 项目也可添加此表。当前使用未认证连接，不读取登录身份或 token，不保证服务器允许进服；项目依赖仍会校验，但暂不装配本地 Mod。
+空目录只需上述配置，无需执行 `mcpy init`；已有 Addon 项目也可添加此表。默认使用未认证连接，不读取登录身份或 token，不保证服务器允许进服；项目依赖仍会校验，但暂不装配本地 Mod。
 
-网络模式前台输出日志并显示日志文件路径，按 Ctrl+C 结束本次游戏。暂不支持 Map 项目、GUI、`--detach`、`--new` 或本地世界实例 ID。
+网络模式默认前台输出日志，Ctrl+C 结束本次游戏。增加 `--detach --json` 可返回会话，与本地游戏共用 `status/logs/stop` 及 Skill 截图、按键脚本：
+
+```powershell
+mcpy --project D:\tests\server --non-interactive connect example.com --detach --json
+mcpy --project D:\tests\server status --session <id> --json
+mcpy --project D:\tests\server stop --session <id> --json
+```
+
+目录须已存在；临时 `connect` 不读取项目配置，只在该目录保存会话。后续操作使用启动返回的 `project` 和 `session`。
+网络模式暂不支持 Map、Qt GUI、`--new` 或本地世界实例 ID；进程启动不等于成功进服。
 
 ### 使用 MC Studio 登录身份（可选）
 
@@ -136,8 +145,8 @@ port = 19132
 
 也可以下载仓库 ZIP，将完整的 `skills/mcpywrap` 文件夹复制到对应 Agent 的技能目录。
 无需从源码安装 Python 项目；CLI 和 Skill 分别安装，`pip/uv install` 不会自动注册 Skill。
-Skill 中的 `scripts/bootstrap.ps1` 可使用已有 uv 安装 CLI，并检查是否具备所需命令能力。
-请使用 mcpywrap 0.3.4 或更高版本；需要固定组合时，可从 `v0.3.4` 标签安装对应 Skill。
+Skill 中的 `scripts/bootstrap.ps1` 使用已有 uv 安装或复用 CLI，报告可选能力；`-RequireCapability network-sessions` 或 `mcs-auth` 仅在任务需要时检查。身份参数与桥接组件就绪分别报告，Git／可编辑安装可能缺少组件。
+推荐使用 mcpywrap 0.3.5 或更高版本，可从 `v0.3.5` 标签安装对应 Skill。网络会话需 `connect --help` 包含 `--detach`，实际能力以脚本检测为准。
 
 安装后可直接描述任务：
 

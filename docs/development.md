@@ -19,6 +19,7 @@ python skills/mcpywrap/scripts/smoke.py --project D:\mods\test --game --expect-l
 
 脚本结束后停止自己创建的会话；日志和产物留在项目中。
 需要手动截图验证时直接运行 `run --no-gui --detach --json`，保存会话 ID，操作完后显式 stop。
+网络验证使用 `smoke.py --project <已有目录> --connect <地址> --expect-log <约定标记>`，不打包项目。单人与网络测试都可显式加 `--mcs-auth`；脚本停止自己创建的会话。
 历史验收记录仅用于追溯，不能代替当前版本测试。
 
 发布见 [发布流程](releasing.md)。

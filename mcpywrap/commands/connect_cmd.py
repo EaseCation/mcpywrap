@@ -11,10 +11,12 @@ from ..mcstudio.network import ServerTarget, run_network
 @click.argument('host')
 @click.option('--port', type=click.IntRange(1, 65535), default=19132, show_default=True)
 @click.option('--mcs-auth', is_flag=True, help='本次连接使用已登录的 MC Studio 身份')
-def connect_cmd(host, port, mcs_auth=False, **engine_overrides):
+@click.option('--detach', is_flag=True, help='后台连接并返回游戏会话；JSON 必须指定')
+def connect_cmd(host, port, mcs_auth=False, detach=False, **engine_overrides):
     """尝试连接服务器；前台采集日志，Ctrl+C 结束本次游戏。
 
     默认不读取登录身份；--mcs-auth 要求 MCS 已登录及本机桥接可用。
     不读取项目配置，不装配本地 Mod，不保证服务器接受连接。
     """
-    return run_network(ServerTarget(host, port, 'mcs' if mcs_auth else 'none'), engine_overrides=engine_overrides)
+    return run_network(ServerTarget(host, port, 'mcs' if mcs_auth else 'none'),
+                       engine_overrides=engine_overrides, detach=detach)

@@ -126,7 +126,7 @@ def _build_dependency_tree(node, tree_node):
 
 def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_callback=None,
                             engine_overrides=None, no_gui=False, logging_port=None, output_path=None,
-                            auth_context=None, auth_config_path=None):
+                            auth_context=None, auth_config_path=None, capture_output=False):
     """使用指定的实例运行游戏
     
     Args:
@@ -274,7 +274,7 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
     
     with console.status("启动游戏中...", spinner="dots"):
         game_process = open_game(launch_config_path, logging_port=logging_port, wait=False, engine=engine,
-                                 **({'capture_output': True} if auth_context is not None else
+                                 **({'capture_output': True} if auth_context is not None or capture_output else
                                     {'output_path': output_path} if output_path else {}))
 
     if not game_process:
@@ -356,7 +356,7 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
     配置 [tool.mcpywrap.server] host/port 时改为网络连接；默认未认证，
     可用 --mcs-auth 显式读取 MCS 身份，单人测试同样支持此选项。
     不装配本地 Mod，不保证服务器接受连接。网络模式前台采集日志，
-    Ctrl+C 结束本次游戏，暂不支持 --detach。
+    Ctrl+C 结束本次网络游戏；--detach 返回可查询、操作和停止的会话。
     """
     base_dir = str(current_project())
     if (delete or clean_all) and non_interactive() and not force:
@@ -379,11 +379,9 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
                 target = replace(target, auth='mcs')
             if new or instance_prefix:
                 raise click.UsageError('网络模式不支持 --new 或本地世界实例 ID')
-            if detach:
-                raise click.UsageError('网络模式暂不支持 --detach；请在终端会话中前台运行')
             packs = prepare_project(base_dir, config)
             return run_network(target, project_dir=base_dir, packs=packs,
-                               engine_overrides=engine_overrides)
+                               engine_overrides=engine_overrides, detach=detach)
 
     # 确保 map 项目的 setuptools 配置同步
     ensure_map_setuptools_sync(interactive=False)
@@ -470,10 +468,7 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         import time
         data = sessions.start(base_dir, config_path, level_id, engine_overrides,
                               **({'auth_context': auth_context} if auth_context is not None else {}))
-        result = {'application': 'game', 'project': base_dir, 'session': data['session'],
-                  'state': data['state'], **data['game'], 'log_path': data['log_path'],
-                  'engine_log_path': data.get('engine_log_path'),
-                  'window_title_hint': 'Minecraft', 'window_verified': False}
+        result = sessions.handoff(data)
         if detach:
             return result
         click.echo('会话: ' + data['session'] + '；日志: ' + data['log_path'])

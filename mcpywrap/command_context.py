@@ -111,7 +111,8 @@ class OperationGroup(click.Group):
                 data = {'ok': code == 0, 'error': None, 'hint': None}
                 if isinstance(result, dict):
                     data.update(result)
-                click.echo(json.dumps(data, ensure_ascii=False), file=output)
+                # ASCII JSON survives both GBK consoles and UTF-8 subprocess pipes losslessly.
+                click.echo(json.dumps(data, ensure_ascii=True), file=output)
             elif code:
                 click.echo('错误: ' + str((result or {}).get('error') or '操作失败'), err=True)
                 if (result or {}).get('hint'):

@@ -102,7 +102,7 @@ def parse_keys(value):
 def load_session(command, project, session):
     result = subprocess.run(
         [command, '--project', str(project), '--non-interactive', 'status', '--session', session, '--json'],
-        stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8',
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding='utf-8-sig',
         errors='replace', timeout=15, env=dict(os.environ, PYTHONIOENCODING='utf-8'))
     try:
         data = json.loads(result.stdout)
@@ -424,14 +424,14 @@ def main(argv=None):
             with output.open('xb') as stream:
                 stream.write(content)
             result = {'image': str(output), 'width': width, 'height': height, 'capture': 'visible-client-area'}
-        print(json.dumps({'ok': True, 'session': args.session, **window.details(), **result}, ensure_ascii=False))
+        print(json.dumps({'ok': True, 'session': args.session, **window.details(), **result}, ensure_ascii=True))
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
-        print(json.dumps({'ok': False, 'error': str(exc), 'session': args.session}, ensure_ascii=False))
+        print(json.dumps({'ok': False, 'error': str(exc), 'session': args.session}, ensure_ascii=True))
         return 1
     except KeyboardInterrupt:
         print(json.dumps({'ok': False, 'error': '操作被中断；请检查游戏状态，勿盲目重复输入',
-                          'session': args.session}, ensure_ascii=False))
+                          'session': args.session}, ensure_ascii=True))
         return 130
     finally:
         if window:

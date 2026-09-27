@@ -1,6 +1,7 @@
 """未认证网络调度：不需要 MCS、认证服务或真实游戏。"""
 import importlib
 import inspect
+import io
 import json
 import socket
 import subprocess
@@ -15,7 +16,7 @@ from click.testing import CliRunner
 
 from mcpywrap.cli import cli
 from mcpywrap.dependencies import DependencyError
-from mcpywrap.mcstudio import network as n
+from mcpywrap.mcstudio import network as n, sessions, session_worker
 from mcpywrap.mcstudio.discovery import Engine, discovery_options
 
 
@@ -114,7 +115,7 @@ class NetworkTests(unittest.TestCase):
         run = importlib.import_module('mcpywrap.commands.run_cmd')
         self.config()
         with patch.object(run, '_run_game_with_instance') as local, patch.object(n, 'run_network') as launch:
-            for args in (('run', '--new'), ('run', '1234'), ('run', '--detach')):
+            for args in (('run', '--new'), ('run', '1234')):
                 self.assertEqual(self.call(*args).exit_code, 2)
             self.config('[tool.mcpywrap.server]\nport=123\n')
             self.assertEqual(self.call('run').exit_code, 1)
@@ -144,82 +145,57 @@ class NetworkTests(unittest.TestCase):
         self.assertNotIn('player_info', config)
         self.assertEqual(config['LocalComponentPathsDict'], {})
 
-    def execute_fake(self, *, exit_code=0, interrupt=False, failed_start=False):
-        directory = self.root / 'run output'
-        directory.mkdir()
-        process = Mock(pid=12345)
-        process.poll.return_value = 0
-        process.wait.return_value = exit_code
-        if interrupt:
-            process.poll.return_value = None
-            process.wait.side_effect = [KeyboardInterrupt(), None]
+    def execute_fake(self, *, exit_code=0, failed_start=False, early_exit=False):
+        session = uuid.uuid4().hex
+        directory = sessions.session_path(self.project, session)
+        directory.mkdir(parents=True)
+        from dataclasses import asdict
         engine = Engine('game', '3.10.0.420447', 'engine', str(self.root), 'test')
+        data = {'session': session, 'project': str(self.project), 'state': 'starting', 'game': None,
+                'mode': 'network', 'mcs_auth': False,
+                'network': {'target': asdict(n.ServerTarget('localhost')), 'engine': asdict(engine)},
+                'log_path': str(directory/'game.log'), 'engine_log_path': str(directory/'engine.log')}
+        sessions.save(directory/'session.json', data)
+        process = Mock(pid=12345)
+        process.poll.side_effect = [0, 0] if early_exit else [None, 0]
+        process.wait.return_value = exit_code
+        process.stdout = io.BytesIO('native engine output\n'.encode('gbk'))
 
         def launch(path, **kwargs):
             config = json.loads(Path(path).read_text(encoding='utf-8'))
             self.assertIsNone(config['world_info'])
             self.assertEqual(kwargs['logging_ip'], '127.0.0.1')
-            Path(kwargs['output_path']).write_text('native engine output\n', encoding='utf-8')
+            self.assertTrue(kwargs['capture_output'])
             with socket.create_connection(('127.0.0.1', kwargs['logging_port']), timeout=2) as client:
                 client.sendall('网络日志\n'.encode('utf-8'))
             deadline = time.monotonic() + 2
-            while time.monotonic() < deadline and not (directory / 'game.log').read_text(encoding='utf-8'):
+            while time.monotonic() < deadline and not (directory/'game.log').read_text(encoding='utf-8'):
                 time.sleep(0.01)
             return False if failed_start else process
 
-        with patch.object(n, 'is_windows', return_value=True), \
-                patch.object(n, 'discover_engines', return_value=Mock(require_engine=lambda: engine)) as discover, \
-                patch.object(n, 'require_resources'), \
-                patch.object(n.tempfile, 'mkdtemp', return_value=str(directory)), \
-                patch.object(n, 'open_game', side_effect=launch):
-            try:
-                result = n.run_network(n.ServerTarget('localhost'))
-                self.assertFalse(result['connection_verified'])
-                self.assertFalse(result['authenticated'])
-            finally:
-                self.assertFalse((directory / 'runtime.cppconfig').exists())
-                self.assertEqual((directory / 'game.log').read_text(encoding='utf-8'), '网络日志\n')
-                self.assertEqual((directory / 'engine.log').read_text(encoding='utf-8'), 'native engine output\n')
-                self.assertFalse(discover.call_args.kwargs['read_project_config'])
-                if interrupt:
-                    process.terminate.assert_called_once()
+        with patch.object(n, 'require_resources'), patch.object(n, 'open_game', side_effect=launch), \
+                patch.object(session_worker, 'identity', side_effect=lambda pid: {'pid': pid}):
+            session_worker.run(str(self.project), session)
+        self.assertFalse((directory/'runtime.cppconfig').exists())
+        self.assertEqual((directory/'game.log').read_text(encoding='utf-8'), '网络日志\n')
+        if not failed_start and not early_exit:
+            self.assertEqual((directory/'engine.log').read_text(encoding='utf-8'), 'native engine output\n')
+        return json.loads((directory/'session.json').read_text(encoding='utf-8'))
 
     def test_listener_ready_and_cleanup(self):
-        with patch.object(n.click, 'echo') as output:
-            self.execute_fake()
-        self.assertTrue(any('native engine output' in str(c) for c in output.call_args_list))
-        self.assertTrue(any('网络日志' in str(c) for c in output.call_args_list))
-
-    def test_cli_nonzero_exit_and_structured_result(self):
-        import click
-        failure = click.ClickException('game exited 7')
-        failure.exit_code = 7
-        with patch('mcpywrap.commands.connect_cmd.run_network', side_effect=failure):
-            result = self.call('connect', 'localhost')
-        self.assertEqual(result.exit_code, 7)
-        self.assertFalse(json.loads(result.stdout)['ok'])
-
-    def test_interrupt_stops_only_owned_process(self):
-        with self.assertRaises(KeyboardInterrupt):
-            self.execute_fake(interrupt=True)
+        self.assertEqual(self.execute_fake()['state'], 'exited')
 
     def test_nonzero_and_failed_start(self):
-        import click
-        with self.assertRaises(click.ClickException) as raised:
-            self.execute_fake(exit_code=7)
-        self.assertEqual(raised.exception.exit_code, 7)
-
-    def test_failed_start_cleanup(self):
-        import click
-        with self.assertRaises(click.ClickException):
-            self.execute_fake(failed_start=True)
+        self.assertEqual(self.execute_fake(exit_code=7)['exit_code'], 7)
+        self.assertEqual(self.execute_fake(failed_start=True)['state'], 'failed')
+        self.assertEqual(self.execute_fake(early_exit=True)['state'], 'failed')
 
     def test_engine_validation_precedes_writes(self):
         with patch.object(n, 'is_windows', return_value=True), \
                 patch.object(n, 'discover_engines', side_effect=ValueError('missing engine')), \
-                patch.object(n.tempfile, 'mkdtemp') as create, patch.object(n, 'open_game') as launch:
+                patch.object(sessions, 'start') as create, patch.object(n, 'open_game') as launch:
             with self.assertRaises(ValueError):
-                n.run_network(n.ServerTarget('localhost'))
+                n.run_network(n.ServerTarget('localhost'), detach=True)
             create.assert_not_called()
             launch.assert_not_called()
 

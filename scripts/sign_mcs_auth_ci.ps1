@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 # Secrets are read only in this trusted CI step, after native compilation has completed.
 if (!$env:MCS_BRIDGE_SIGNING_PFX -or !$env:MCS_BRIDGE_SIGNING_PASSWORD) { throw 'Code-signing secrets are not configured' }
-$publisher = Get-Content native/mcs_auth/publisher.json -Raw | ConvertFrom-Json
+$publisher = Get-Content native/mcs_auth/publisher.json -Raw -Encoding UTF8 | ConvertFrom-Json
 $pfxPath = Join-Path $env:RUNNER_TEMP ('mcpy-signing-' + [guid]::NewGuid().ToString('N') + '.pfx')
 $certificate = $null
 try {

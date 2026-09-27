@@ -3,17 +3,15 @@ import codecs
 import ipaddress
 import json
 import re
-import subprocess
-import tempfile
+import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import click
 
 from ..dependencies import DependencyService, addon_directories, read_project
 from .discovery import discover_engines, require_resources
-from .file_logs import FileLogServer
 from .game import open_game
 from .mcs import is_windows
 from .runtime_cppconfig import gen_runtime_config
@@ -90,97 +88,82 @@ def unauthenticated_config(engine, target):
     return config
 
 
-def run_network(target, *, project_dir=None, packs=(), engine_overrides=None):
-    """共用调度入口；packs 留待网络装配支持，本版只报告数量，不挂载。"""
+def launch_network(engine, target, config_path, logging_port, auth_context=None):
+    """由会话 worker 调用；监听、日志脱敏和进程回收由 worker 统一负责。"""
+    require_resources(engine)
+    config = unauthenticated_config(engine, target)
+    if target.auth == 'mcs' and auth_context is None:
+        raise ValueError('网络会话缺少本次请求的 MCS 身份，拒绝匿名回退')
+    if auth_context:
+        auth_context.apply(config)
+        game_id = str(uuid.uuid4())
+        config['misc']['game_id'] = game_id
+        config['room_info']['item_ids'] = [game_id]
+        config.update(vip_using_mod=[], isCloud=False, path=str(config_path))
+    config_path.write_text(json.dumps(config, ensure_ascii=False), encoding='utf-8')
+    return open_game(str(config_path), engine=engine, logging_ip='127.0.0.1',
+                     logging_port=logging_port, wait=False, use_system_color=False,
+                     capture_output=True)
+
+
+def run_network(target, *, project_dir=None, packs=(), engine_overrides=None, detach=False):
+    """预检后创建普通游戏会话；临时 connect 只用项目目录存会话，不读取其配置。"""
+    from ..command_context import project_dir as current_project, json_output
+    from . import sessions
+    if json_output() and not detach:
+        raise click.UsageError('网络运行 --json 需要 --detach；使用 status/logs/stop 管理返回的会话')
     if not is_windows():
         raise ValueError('网络游戏启动仅支持 Windows')
     engine = discover_engines(project_dir, engine_overrides,
                               read_project_config=project_dir is not None).require_engine()
     require_resources(engine)
-    config = unauthenticated_config(engine, target)
     identity = None
-    secrets = []
     if target.auth == 'mcs':
         from .mcs_auth import acquire_identity
         identity = acquire_identity()
-        identity.apply(config)
-        # Match MCS's generated ID relationship for third-party servers without a numeric game ID.
-        game_id = str(uuid.uuid4())
-        config['misc']['game_id'] = game_id
-        config['room_info']['item_ids'] = [game_id]
-        config.update(vip_using_mod=[], isCloud=False)
-        secrets = identity.secrets()
         click.echo('已读取 MCS 当前身份；连接结果仍以服务器响应为准。')
     else:
         click.echo('未认证网络连接：不使用账号/token，服务器可能拒绝连接。')
     click.echo(f'本次仅连接服务器，工具未装配本地 Addon（已解析 {len(packs)} 个）。')
-    directory = Path(tempfile.mkdtemp(prefix='mcpy-network-'))
-    config_path, log_path = directory / 'runtime.cppconfig', directory / 'game.log'
-    engine_log = directory / 'engine.log'
-    process, receiver, engine_capture = None, None, None
+    root = Path(project_dir or current_project()).resolve()
+    data = sessions.start(root, auth_context=identity,
+                          network={'target': asdict(target), 'engine': asdict(engine)})
+    result = sessions.handoff(data)
+    if detach:
+        return result
+    click.echo(f"会话: {data['session']}；PID: {data['game']['pid']}（尚未确认连接）")
+    click.echo(f"日志: {data['log_path']}\n引擎输出: {data['engine_log_path']}\nCtrl+C 结束本次游戏。")
     tails = []
-
     def relay(final=False):
-        for tail, decoder in tails:
-            click.echo(decoder.decode(tail.read(), final=final), nl=False)
-
+        for stream, decoder in tails:
+            click.echo(decoder.decode(stream.read(), final=final), nl=False)
     try:
-        if identity:
-            config['path'] = str(config_path)
-        config_path.write_text(json.dumps(config, ensure_ascii=False), encoding='utf-8')
-        if identity:
-            from .private_logs import RedactedDecoder, EngineLogCapture
-            receiver = FileLogServer(log_path, decoder_factory=lambda: RedactedDecoder(secrets))
-        else:
-            receiver = FileLogServer(log_path)
-        receiver.start()
-        engine_log.touch()
-        for path in (log_path, engine_log):
+        for key in ('log_path', 'engine_log_path'):
+            path = Path(data[key])
+            path.touch(exist_ok=True)
             tails.append((path.open('rb'), codecs.getincrementaldecoder('utf-8')(errors='replace')))
-        click.echo(f'目标: {target.host}:{target.port}\n日志: {log_path}\n引擎输出: {engine_log}')
-        process = open_game(str(config_path), engine=engine, logging_ip='127.0.0.1',
-                            logging_port=receiver.port, wait=False, use_system_color=False,
-                            **({'capture_output': True} if identity else {'output_path': str(engine_log)}))
-        if not process:
-            raise click.ClickException(f'游戏启动失败；日志目录: {directory}')
-        if identity:
-            engine_capture = EngineLogCapture(process.stdout, engine_log, secrets)
-        click.echo(f'游戏进程已创建，PID: {process.pid}（尚未确认连接）；Ctrl+C 结束本次游戏。')
         while True:
             relay()
-            try:
-                code = process.wait(timeout=0.2)
+            final = sessions.read(root, data['session'])
+            if final['state'] == 'failed':
+                sessions.stop(root, data['session'])
+            if final['state'] not in ('starting', 'running'):
+                # read() may observe the game exiting just before the worker flushes logs.
+                if final['state'] == 'exited' and 'exit_code' not in final:
+                    time.sleep(0.2)
+                    continue
                 break
-            except subprocess.TimeoutExpired:
-                continue
+            time.sleep(0.2)
+    except BaseException:
+        sessions.stop(root, data['session'])
+        raise
     finally:
         try:
-            if process and process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
+            relay(final=True)
         finally:
-            try:
-                try:
-                    if engine_capture:
-                        engine_capture.close()
-                finally:
-                    if receiver:
-                        receiver.close()
-                relay(final=True)
-            finally:
-                for tail, _ in tails:
-                    tail.close()
-                config_path.unlink(missing_ok=True)
-    if code:
-        error = click.ClickException(f'游戏退出码 {code}；日志: {log_path}；引擎输出: {engine_log}')
-        error.exit_code = code if 0 < code < 256 else 1
-        raise error
-    return {'application': 'game', 'pid': process.pid, 'state': 'exited', 'exit_code': code,
-            'authenticated': False, 'connection_verified': False, 'addons_assembled': False,
-            'identity_source': target.auth, 'identity_provided': identity is not None,
-            'host': target.host, 'port': target.port, 'log_path': str(log_path),
-            'engine_log_path': str(engine_log), 'engine_version': engine.version}
+            for stream, _ in tails:
+                stream.close()
+    if final['state'] == 'failed' or final.get('exit_code', 0):
+        raise click.ClickException(final.get('error') or f"游戏退出码 {final['exit_code']}；日志: {data['log_path']}")
+    result.update(state=final['state'], exit_code=final.get('exit_code', 0))
+    return result

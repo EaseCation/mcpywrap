@@ -88,7 +88,7 @@ class InteractionTests(unittest.TestCase):
                 patch('mcpywrap.mcstudio.network.require_resources'):
             # Route directly to identity acquisition without a native engine fixture.
             with patch('mcpywrap.mcstudio.network.unauthenticated_config', return_value={}):
-                result = self.runner.invoke(cli, ['--non-interactive', 'connect', 'localhost', '--mcs-auth', '--json'])
+                result = self.runner.invoke(cli, ['--non-interactive', 'connect', 'localhost', '--mcs-auth', '--detach', '--json'])
         data = json.loads(result.stdout)
         self.assertEqual(result.exit_code, 1)
         self.assertEqual(data['code'], 'studio_unavailable')

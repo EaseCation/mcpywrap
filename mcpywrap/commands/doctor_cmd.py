@@ -9,7 +9,8 @@ from ..mcstudio.discovery import (
 
 @click.command(cls=OperationCommand)
 @engine_options
-def doctor_cmd(**overrides):
+@click.option('--mcs-auth', is_flag=True, help='同时只读检查登录组件；不读取身份或安装证书')
+def doctor_cmd(mcs_auth=False, **overrides):
     """诊断游戏发现和运行资源（只读，无需初始化项目）"""
     result = discover_engines(current_project(), overrides=overrides)
     data = result.to_dict()
@@ -21,6 +22,11 @@ def doctor_cmd(**overrides):
         _, issues = studio_installation(purpose)
         data['resources'][purpose].extend(issues)
     data['ok'] = bool(result.selected and not result.error and not data['resources']['run'])
+    if mcs_auth:
+        from ..mcstudio.bridge_assets import inspect_bridge
+        data['mcs_auth'] = inspect_bridge()
+        if not data['mcs_auth']['component_available']:
+            data.update(ok=False, error=data['mcs_auth']['error'], hint=data['mcs_auth']['hint'])
     from ..command_context import json_output
     if not json_output():
         for candidate in result.candidates:
@@ -30,4 +36,7 @@ def doctor_cmd(**overrides):
         for kind, issues in data['resources'].items():
             for issue in issues:
                 click.echo(f'资源 [{kind}]: {issue}')
+        if mcs_auth:
+            click.echo('登录组件: ' + ('文件齐全，尚未验证登录和系统策略' if data['mcs_auth']['component_available']
+                                     else data['mcs_auth']['error']))
     return data

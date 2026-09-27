@@ -1,8 +1,7 @@
 """Streaming credential redaction, including secrets split across read boundaries."""
-import codecs
 import threading
 
-from .log_protocol import LogDecoder
+from .log_protocol import LogDecoder, TextLogDecoder
 
 
 class Redactor:
@@ -42,23 +41,23 @@ class RedactedDecoder:
 
 
 class EngineLogCapture:
-    def __init__(self, stream, path, secrets):
+    def __init__(self, stream, path, secrets=()):
         self.stream, self.path, self.secrets = stream, path, secrets
         self.error = None
         self.thread = threading.Thread(target=self._read, daemon=True)
         self.thread.start()
 
     def _read(self):
-        decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+        decoder = TextLogDecoder()
         redactor = Redactor(self.secrets)
         try:
             with open(self.path, 'w', encoding='utf-8', newline='') as output:
                 while True:
-                    chunk = self.stream.read(4096)
+                    chunk = getattr(self.stream, 'read1', self.stream.read)(4096)
                     if not chunk:
-                        output.write(redactor.feed(decoder.decode(b'', final=True), final=True))
+                        output.write(redactor.feed(decoder.finish(), final=True))
                         break
-                    output.write(redactor.feed(decoder.decode(chunk)))
+                    output.write(redactor.feed(decoder.feed(chunk)))
                     output.flush()
         except (OSError, ValueError) as exc:
             self.error = type(exc).__name__

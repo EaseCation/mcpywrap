@@ -9,6 +9,28 @@ def decode_text(raw):
         return raw.decode('gb18030', errors='replace')
 
 
+class TextLogDecoder:
+    """普通 stdout 按完整行解码，跨块保留字节；UTF-8 优先、GBK/GB18030 回退。"""
+    def __init__(self):
+        self.pending = bytearray()
+
+    def feed(self, data):
+        self.pending.extend(data)
+        output = []
+        while b'\n' in self.pending:
+            line, _, rest = self.pending.partition(b'\n')
+            output.append(decode_text(bytes(line)) + '\n')
+            self.pending = bytearray(rest)
+        if len(self.pending) > 1024 * 1024:
+            output.append(self.finish())
+        return ''.join(output)
+
+    def finish(self):
+        text = decode_text(bytes(self.pending))
+        self.pending.clear()
+        return text
+
+
 class LogDecoder:
     def __init__(self):
         self.pending = bytearray()

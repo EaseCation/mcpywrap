@@ -10,7 +10,9 @@ mcpy ui --mcs-auth
 mcpy --project D:\mods\demo --non-interactive run --mcs-auth --detach --json
 ```
 
-网络模式不支持 `--detach`；GUI 登录支持单人项目，网络目标继续使用 CLI。
+本地与网络均支持 `--detach --json`，共用会话查询、日志和停止。GUI 登录支持单人项目，网络目标使用 CLI。
+
+`mcpy doctor --mcs-auth --json` 可只读检查组件文件，不读取身份、不写缓存、不修改证书。组件具备不表示已登录或系统策略允许启用。
 
 ## 用户会看到什么
 

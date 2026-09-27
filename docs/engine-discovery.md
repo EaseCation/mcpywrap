@@ -52,4 +52,4 @@ mcpy --project D:\mods\demo stop --session <id> --json
 
 只打开游戏窗口，日志写入返回的文件。`running` 表示进程存活，加载是否成功应查看项目日志或游戏画面。
 Computer Use 只接手游戏画面；Qt 管理、模板及日志页留给人工操作。
-本功能不包含第三方网络服 IP/端口连接。
+以上示例是本地世界会话。网络连接可用 `mcpy connect <地址> --detach --json`，或配置服务器后执行 `run --detach --json`；同样使用返回的项目路径、会话 ID 读取日志、截图、输入和停止。临时 connect 不读取项目引擎配置，使用 CLI 参数或环境变量覆盖。

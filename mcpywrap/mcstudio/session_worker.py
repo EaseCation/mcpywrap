@@ -24,7 +24,7 @@ def run(project, session):
         auth_context = None
         if data.get('mcs_auth'):
             from .mcs_auth import AuthContext
-            from .private_logs import RedactedDecoder, EngineLogCapture
+            from .private_logs import RedactedDecoder
             try:
                 payload = json.loads(sys.stdin.buffer.read(65536).decode('utf-8'))
                 auth_context = AuthContext.parse(payload, data['mcs_pid'])
@@ -37,17 +37,27 @@ def run(project, session):
         receiver.start()
         if (directory / 'stop').exists():
             raise ValueError('启动已取消')
-        from ..commands.run_cmd import _run_game_with_instance
-        with project_scope(project):
-            success, process = _run_game_with_instance(
-                data['config_path'], data['level_id'], [], wait=False,
-                engine_overrides=data['engine_overrides'], no_gui=True, logging_port=receiver.port,
-                output_path=str(directory / 'engine.log'),
-                **({'auth_context': auth_context, 'auth_config_path': str(auth_path)} if auth_context else {}))
+        if data.get('mode') == 'network':
+            from .network import launch_network, ServerTarget
+            from .discovery import Engine
+            process = launch_network(Engine(**data['network']['engine']),
+                                     ServerTarget(**data['network']['target']),
+                                     directory/'runtime.cppconfig', receiver.port, auth_context)
+            success = bool(process)
+        else:
+            from ..commands.run_cmd import _run_game_with_instance
+            with project_scope(project):
+                success, process = _run_game_with_instance(
+                    data['config_path'], data['level_id'], [], wait=False,
+                    engine_overrides=data['engine_overrides'], no_gui=True, logging_port=receiver.port,
+                    output_path=str(directory / 'engine.log'), capture_output=True,
+                    **({'auth_context': auth_context, 'auth_config_path': str(auth_path)} if auth_context else {}))
+        if success and process:
+            from .private_logs import EngineLogCapture
+            engine_capture = EngineLogCapture(process.stdout, directory/'engine.log',
+                                              auth_context.secrets() if auth_context else ())
         if not success or not process or process.poll() is not None:
-            raise ValueError('游戏进程未成功启动，详见 worker.log')
-        if auth_context:
-            engine_capture = EngineLogCapture(process.stdout, directory/'engine.log', secrets)
+            raise ValueError('游戏进程未成功启动，详见 worker.log 和 engine.log')
         data.update(state='running', game=identity(process.pid))
         sessions.save(path, data)
         while process.poll() is None:
@@ -66,10 +76,14 @@ def run(project, session):
         try:
             if engine_capture:
                 engine_capture.close()
+        except OSError as exc:
+            data.update(state='failed', error=str(exc))
         finally:
             if receiver:
                 receiver.close()
             auth_path.unlink(missing_ok=True)
+            if data.get('mode') == 'network':
+                (directory/'runtime.cppconfig').unlink(missing_ok=True)
             sessions.save(path, data)
 
 

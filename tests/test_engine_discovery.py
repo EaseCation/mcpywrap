@@ -326,7 +326,8 @@ class EngineDiscoveryTests(unittest.TestCase):
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=self.root):
             Path('pyproject.toml').write_text('[project]\nname="sample"\n')
-            record = {'session': 'test', 'state': 'running', 'game': {'pid': 123}, 'log_path': 'test.log'}
+            record = {'project': str(Path.cwd()), 'session': 'test', 'state': 'running',
+                      'game': {'pid': 123}, 'log_path': 'test.log'}
             with patch.object(run, '_setup_dependencies', return_value=[]), patch.object(sessions, 'start', return_value=record) as start:
                 result = runner.invoke(cli, ['run', '--new', '--detach', '--engine-version', '3.10', '--mcs-download-path', 'custom'])
                 self.assertEqual(result.exit_code, 0, result.output)

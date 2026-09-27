@@ -46,7 +46,8 @@ def read(project, session):
     return data
 
 
-def start(project, config_path, level_id, overrides=None, timeout=30, auth_context=None):
+def start(project, config_path=None, level_id=None, overrides=None, timeout=30, auth_context=None,
+          network=None):
     root = Path(project).resolve()
     session = uuid.uuid4().hex
     directory = session_path(root, session)
@@ -54,7 +55,9 @@ def start(project, config_path, level_id, overrides=None, timeout=30, auth_conte
     record = {'session': session, 'project': str(root), 'state': 'starting', 'game': None,
               'worker': None, 'error': None, 'log_path': str(directory / 'game.log'),
               'engine_log_path': str(directory / 'engine.log'),
-              'config_path': str(Path(config_path).resolve()), 'level_id': level_id,
+              'config_path': str(Path(config_path).resolve()) if config_path else str(directory / 'runtime.cppconfig'),
+              'level_id': level_id, 'mode': 'network' if network else 'local',
+              'network': network,
               'engine_overrides': overrides or {}, 'mcs_auth': auth_context is not None,
               'mcs_pid': auth_context.mcs_pid if auth_context else None}
     save(directory / 'session.json', record)
@@ -62,6 +65,7 @@ def start(project, config_path, level_id, overrides=None, timeout=30, auth_conte
         process = subprocess.Popen([sys.executable, '-m', 'mcpywrap.mcstudio.session_worker', str(root), session],
                                    cwd=root, stdin=subprocess.PIPE if auth_context else subprocess.DEVNULL,
                                    stdout=log, stderr=log,
+                                   env=dict(os.environ, PYTHONIOENCODING='utf-8'),
                                    **background_options())
     if auth_context:
         try:
@@ -81,6 +85,22 @@ def start(project, config_path, level_id, overrides=None, timeout=30, auth_conte
         time.sleep(0.1)
     (directory / 'stop').touch()
     raise ValueError(f'启动等待超时，已请求取消会话 {session}；日志: {directory / "worker.log"}')
+
+
+def handoff(data):
+    """本地与网络游戏共用同一进程身份和窗口脚本入口。"""
+    result = {'application': 'game', 'project': data['project'], 'session': data['session'],
+              'state': data['state'], **data['game'], 'log_path': data['log_path'],
+              'engine_log_path': data.get('engine_log_path'),
+              'mode': data.get('mode', 'local'),
+              'window_title_hint': 'Minecraft', 'window_verified': False}
+    if data.get('network'):
+        target = data['network']['target']
+        result.update(host=target['host'], port=target['port'], identity_source=target['auth'],
+                      identity_provided=data['mcs_auth'], authenticated=False,
+                      connection_verified=False, addons_assembled=False,
+                      engine_version=data['network']['engine']['version'])
+    return result
 
 
 def stop(project, session):
@@ -103,6 +123,8 @@ def stop(project, session):
             raise ValueError('worker 尚未退出，请查询会话状态') from exc
     # Also clear credentials when the worker previously crashed before its finally block.
     (session_path(project, session)/'auth.cppconfig').unlink(missing_ok=True)
+    if data.get('mode') == 'network':
+        (session_path(project, session)/'runtime.cppconfig').unlink(missing_ok=True)
     return {'session': session, 'state': 'exited'}
 
 

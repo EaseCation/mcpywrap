@@ -1,5 +1,12 @@
 # 更新记录
 
+## 0.3.5
+
+- 网络连接接入统一游戏会话：`connect/run --detach --json` 返回进程身份与日志，可复用 status/logs/stop、Skill 截图与按键脚本；网络 JSON 启动现在要求 `--detach`。
+- 新增 `doctor --mcs-auth` 只读组件检查；Skill 安装脚本分别报告 CLI 能力与组件是否具备，按任务显式要求可选能力。
+- 冒烟脚本支持 `--mcs-auth` 与 `--connect`，共用日志标记验证和本次会话清理；精简 Skill 入口并补充编辑器、地图合并及网络指引。
+- 修复 Windows PowerShell 5.1 中文脚本读取与 GBK 管道兼容；JSON 无损保留 Unicode，会话 SDK／引擎日志统一解码为 UTF-8 后脱敏。
+
 ## 0.3.4
 
 - 新增显式 `--mcs-auth`：网络连接、单人测试和单人项目 GUI 可按次使用已登录的 MC Studio 身份；默认仍不读取身份，配置文件不能自动启用。

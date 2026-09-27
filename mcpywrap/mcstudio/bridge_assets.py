@@ -9,6 +9,30 @@ BINARIES = ('Injector.exe', 'Loader.dll', 'McpyMcsAuth.dll')
 PAYLOAD = Path(__file__).with_name('bridge_payload')
 
 
+def inspect_bridge():
+    """只检查组件文件；不复制缓存、不读取身份、不改变证书信任。"""
+    override = os.environ.get('MCPY_MCS_BRIDGE_DIR')
+    bundled = not override and (PAYLOAD/'manifest.json').is_file()
+    directory = (Path(override).expanduser().resolve() if override else PAYLOAD if bundled
+                 else Path.home()/'.local/share/mcpywrap/mcs-auth-bridge')
+    result = {'component_available': False, 'directory': str(directory),
+              'source': 'override' if override else 'package' if bundled else 'development',
+              'integrity_verified': False, 'trust_verified': False, 'login_verified': False,
+              'error': None, 'hint': None}
+    try:
+        if bundled:
+            payload_manifest()
+            result['integrity_verified'] = True
+        missing = [name for name in BINARIES if not (directory/name).is_file()]
+        if missing:
+            raise ValueError('缺少登录组件: ' + ', '.join(missing))
+        result['component_available'] = True
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        result.update(error=str(exc), hint='使用包含桥接组件的正式发布包；Git／可编辑安装需另行构建组件，'
+                      '并通过 MCPY_MCS_BRIDGE_DIR 指定目录。组件存在不表示已登录或系统策略允许启用。')
+    return result
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 

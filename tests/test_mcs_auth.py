@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 from click.testing import CliRunner
 
 from mcpywrap.cli import cli
-from mcpywrap.mcstudio import mcs_auth as auth, network
+from mcpywrap.mcstudio import mcs_auth as auth, network, sessions, session_worker
 from mcpywrap.mcstudio.discovery import Engine
 from mcpywrap.mcstudio.private_logs import Redactor, RedactedDecoder, EngineLogCapture
 
@@ -126,7 +126,7 @@ class AuthTests(unittest.TestCase):
                 patch.object(network, 'discover_engines', return_value=Mock(require_engine=lambda: engine)), \
                 patch.object(network, 'require_resources'), \
                 patch.object(auth, 'capture_identity', side_effect=auth.AuthError('not logged in')), \
-                patch.object(network, 'open_game') as launch, patch.object(network.tempfile, 'mkdtemp') as mkdir:
+                patch.object(network, 'open_game') as launch, patch.object(sessions, 'start') as mkdir:
             with self.assertRaises(auth.AuthError):
                 network.run_network(network.ServerTarget('localhost', auth='mcs'))
             launch.assert_not_called(); mkdir.assert_not_called()
@@ -135,7 +135,8 @@ class AuthTests(unittest.TestCase):
         context = auth.AuthContext.parse(snapshot(), 123)
         engine = Engine('game', '3.10', 'engine', str(self.root), 'test')
         process = Mock(pid=777)
-        process.wait.return_value = process.poll.return_value = 0
+        process.wait.return_value = 0
+        process.poll.side_effect = [None, 0]
         process.stdout = io.BytesIO(('LoginToken: '+context.token).encode())
         def launch(path, **kwargs):
             config = json.loads(Path(path).read_text())
@@ -146,17 +147,26 @@ class AuthTests(unittest.TestCase):
             self.assertTrue(kwargs['capture_output'])
             self.assertNotIn('output_path', kwargs)
             return process
-        with patch.object(network, 'is_windows', return_value=True), \
-                patch.object(network, 'discover_engines', return_value=Mock(require_engine=lambda: engine)), \
-                patch.object(network, 'require_resources'), patch.object(auth, 'capture_identity', return_value=context), \
-                patch.object(network.tempfile, 'mkdtemp', return_value=str(self.root)), \
-                patch.object(network, 'open_game', side_effect=launch), patch.object(network.click, 'echo') as output:
-            result = network.run_network(network.ServerTarget('localhost', auth='mcs'))
-        self.assertTrue(result['identity_provided'])
-        self.assertFalse(result['authenticated'])
-        self.assertFalse((self.root/'runtime.cppconfig').exists())
-        self.assertNotIn(context.token, (self.root/'engine.log').read_text())
-        self.assertNotIn(context.token, str(output.call_args_list))
+        from dataclasses import asdict
+        from types import SimpleNamespace
+        session = 'a'*32
+        directory = sessions.session_path(self.root, session)
+        directory.mkdir(parents=True)
+        sessions.save(directory/'session.json', {
+            'state': 'starting', 'game': None, 'mcs_auth': True, 'mcs_pid': 123, 'mode': 'network',
+            'log_path': str(directory/'game.log'),
+            'network': {'target': asdict(network.ServerTarget('localhost', auth='mcs')), 'engine': asdict(engine)}})
+        with patch.object(network, 'require_resources'), \
+                patch.object(network, 'open_game', side_effect=launch), \
+                patch.object(session_worker, 'identity', side_effect=lambda pid: {'pid': pid}), \
+                patch.object(session_worker.sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(json.dumps(snapshot()).encode()))):
+            session_worker.run(str(self.root), session)
+        self.assertEqual(json.loads((directory/'session.json').read_text())['state'], 'exited')
+        self.assertFalse((directory/'runtime.cppconfig').exists())
+        for path in directory.iterdir():
+            if path.is_file():
+                self.assertNotIn(context.token, path.read_text(encoding='utf-8'))
+        self.assertIn('<redacted>', (directory/'engine.log').read_text())
 
 
 if __name__ == '__main__':
