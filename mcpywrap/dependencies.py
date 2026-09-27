@@ -65,7 +65,15 @@ def canonical_path(path):
 
 def resolve_path(project_dir, declaration):
     path = Path(declaration).expanduser()
-    return path.resolve() if path.is_absolute() else (Path(project_dir) / path).resolve()
+    path = path if path.is_absolute() else Path(project_dir) / path
+    value = str(path)
+    # Windows 扩展路径禁用 .. 解释，Python 3.9 的 resolve 也可能原样保留。
+    # 先恢复普通路径，再解析链接和父目录，保持普通本地依赖的路径语义。
+    if os.name == 'nt' and value.startswith('\\\\?\\UNC\\'):
+        value = '\\\\' + value[8:]
+    elif os.name == 'nt' and value.startswith('\\\\?\\'):
+        value = value[4:]
+    return Path(value).resolve()
 
 
 def read_project(project_dir):

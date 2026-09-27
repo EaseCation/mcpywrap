@@ -14,7 +14,7 @@ import uuid
 
 from .code_libraries import sync_libraries
 from .source_files import _relative, digest, long_path
-from .dependencies import DependencyError, addon_directories, read_project, write_project
+from .dependencies import DependencyError, addon_directories, read_project, write_project, resolve_path
 
 LOCK_FILE = 'mcpy-git.lock.json'
 REGISTRATION_VERSION = 1
@@ -143,11 +143,14 @@ def prepare_graph(root, config=None):
         if not isinstance(local, list) or any(not isinstance(v, str) for v in local):
             raise DependencyError('远程项目local_dependencies必须是相对路径数组')
         for value in local:
-            path = (project / value).resolve()
-            if Path(value).is_absolute() or not path.is_relative_to(source.resolve()):
+            path = long_path(resolve_path(project, value))
+            source_root = long_path(resolve_path(source, '.'))
+            if Path(value).is_absolute() or not path.is_relative_to(source_root):
                 raise DependencyError('远程项目本地引用不得离开Git快照；外部仓库请声明git_dependencies')
+            # Python 3.9 的 resolve 会移除 Windows 扩展路径前缀；
+            # 边界检查和相对路径计算必须使用同一个规范化基准。
             child = {'name': path.name, 'git': entry['git'], 'rev': commit,
-                     'subdir': path.relative_to(source).as_posix(), 'kind': 'auto'}
+                     'subdir': path.relative_to(source_root).as_posix(), 'kind': 'auto'}
             children.append(visit(child, (source, commit)))
         with tempfile.TemporaryDirectory(prefix='register-', dir=registered) as temporary:
             stage = Path(temporary) / 'project'

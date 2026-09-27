@@ -75,6 +75,20 @@ class ProjectFixture(unittest.TestCase):
 
 
 class Projects(ProjectFixture):
+    @unittest.skipUnless(os.name == 'nt', 'Windows extended paths')
+    def test_extended_path_parent_dependency(self):
+        from mcpywrap.source_files import long_path
+        from mcpywrap.dependencies import resolve_path
+        resolved = resolve_path(long_path(self.main), '../中文 shared')
+        self.assertTrue(resolved.samefile(self.dep))
+        self.assertNotIn('..', resolved.parts)
+        config = read_project(self.main)
+        config['tool']['mcpywrap']['local_dependencies'] = ['../中文 shared']
+        write_project(self.main, config)
+        packs = DependencyService(long_path(self.main)).resolve().get_all_dependencies()
+        self.assertEqual(len(packs), 1)
+        self.assertTrue(Path(next(iter(packs.values())).path).samefile(self.dep))
+
     def test_plain_addon_readonly_relative_absolute_duplicate(self):
         before = {p.relative_to(self.dep): p.read_bytes() for p in self.dep.rglob('*') if p.is_file()}
         initial_cwd = os.getcwd()

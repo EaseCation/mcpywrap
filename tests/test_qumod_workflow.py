@@ -1,6 +1,7 @@
 """QuMod 向导共享服务、CLI和离屏GUI；真实Git fixture不依赖网络。"""
 import json
 import copy
+import inspect
 import os
 from pathlib import Path
 import shutil
@@ -54,7 +55,8 @@ class QuModFixture(unittest.TestCase):
         preset['sources'] = {'github': self.repo.as_uri(), 'gitee': self.repo.as_uri() + '/'}
         patch.dict(FRAMEWORK_PRESETS, {'qumod': preset}).start()
         patch.dict(os.environ, {'MCPY_CACHE_DIR': str(self.root / 'cache')}).start()
-        self.runner = CliRunner()
+        options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
+        self.runner = CliRunner(**options)
 
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.repo), *args], stderr=subprocess.STDOUT).decode().strip()

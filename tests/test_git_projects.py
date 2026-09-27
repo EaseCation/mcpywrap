@@ -99,6 +99,7 @@ class GitProjects(unittest.TestCase):
         self.assertTrue((self.main / 'build/behavior_pack/Mod/leaf/__init__.py').exists())
         lock = json.loads((self.main / LOCK_FILE).read_text())
         self.assertEqual(len(lock['nodes']), 3)
+        self.assertIn('internal', [node['source']['subdir'] for node in lock['nodes']])
         self.assertNotIn(str(self.root), (self.main / LOCK_FILE).read_text().replace(parent.as_uri(), '').replace(leaf.as_uri(), ''))
 
     def test_shared_source_project_isolation_and_offline_restore(self):
