@@ -17,8 +17,8 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 - macOS 远程端：bootstrap 加 `--remote <地址> --require-capability remote-client --require-capability network-sessions`；截图／输入任务再要求 `screenshot/key/mouse`，可重复传入 `--require-capability`。
 - 本机能力看 `local_capabilities`，Windows 服务能力看 `remote.capabilities`。`remote.ok=false` 时停止远程流程；组件具备不表示已登录、窗口已就绪或已进服。
 - `bootstrap --remote` 只做检测，不保存路由。每次远程调用明确传 `--remote <endpoint>`，或确认当前进程确实继承了 `MCPY_REMOTE`；不依赖上一次终端调用的 export。
-- 先检查相关 `--help` 和能力；不要把新版 Skill 配上旧 CLI 后猜参数。建议使用 CLI 0.3.7+ 与 v0.3.7 配套 Skill，依赖分类提示及原生文件校验从该版本提供；局域网细节见[远程测试](references/remote-testing.md)。
-- Git项目依赖和框架预设需要更新的CLI能力；bootstrap分别用 `--require-capability git-dependencies`、`--require-capability framework-presets` 检查，不以版本号0.3.7推断具备。缺失时显式选择包含这些能力的版本或源码安装。
+- 先检查相关 `--help` 和能力；不要把新版 Skill 配上旧 CLI 后猜参数。建议使用 CLI 0.3.8+ 与 v0.3.8 配套 Skill；局域网细节见[远程测试](references/remote-testing.md)。
+- Git项目依赖和框架快捷添加从0.3.8提供；bootstrap分别用 `--require-capability git-dependencies`、`--require-capability framework-presets` 检查，不以版本号0.3.7推断具备。缺失时显式选择包含这些能力的版本或源码安装。
 
 ## 执行位置与参数
 

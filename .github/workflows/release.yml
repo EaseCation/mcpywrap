@@ -114,6 +114,8 @@ jobs:
         run: python -c "import importlib.util; assert importlib.util.find_spec('PyQt5') is None; import mcpywrap.cli"
       - run: python -m unittest discover -s tests -p test_remote.py -v
       - run: python -m unittest discover -s tests -p test_remote_scripts.py -v
+      - run: python -m unittest discover -s tests -p test_git_projects.py -v
+      - run: python -m unittest discover -s tests -p test_qumod_workflow.py -v
       - name: Build a project using the public CLI
         run: |
           mkdir -p "$RUNNER_TEMP/中文 project"

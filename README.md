@@ -159,7 +159,7 @@ mcpy --project D:\tests\server stop --session <id> --json
 也可以下载仓库 ZIP，将完整的 `skills/mcpywrap` 文件夹复制到对应 Agent 的技能目录。
 无需从源码安装 Python 项目；CLI 和 Skill 分别安装，`pip/uv install` 不会自动注册 Skill。
 两端使用跨平台 `scripts/bootstrap.py` 安装或复用各自的 CLI，Windows 也可用 `bootstrap.ps1`。脚本分别报告本机与远端能力；Skill、CLI 与 Windows 服务需要分别检查，Git／可编辑安装可能缺少登录组件。
-推荐使用 mcpywrap 0.3.7 或更高版本，并从 `v0.3.7` 标签安装配套 Skill，以获得依赖边界提示与校验。实际能力仍以脚本检测为准；更新 Skill 不会自动更新两端 CLI。
+推荐使用 mcpywrap 0.3.8 或更高版本，并从 `v0.3.8` 标签安装配套 Skill，以获得 Git 依赖、QuMod 快捷添加及依赖边界校验。实际能力仍以脚本检测为准；更新 Skill 不会自动更新两端 CLI。
 
 安装后可直接描述任务：
 

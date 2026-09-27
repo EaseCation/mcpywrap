@@ -17,6 +17,7 @@ from .source_files import _relative, digest, long_path
 from .dependencies import DependencyError, addon_directories, read_project, write_project
 
 LOCK_FILE = 'mcpy-git.lock.json'
+REGISTRATION_VERSION = 1
 
 
 def declarations(root, config=None):
@@ -123,6 +124,7 @@ def prepare_graph(root, config=None):
         identity = {k: v for k, v in entry.items() if k != 'name'}
         identity['subdir'] = entry.get('subdir', '.')
         identity['kind'] = kind
+        identity['registration'] = REGISTRATION_VERSION
         if target:
             identity['target'] = target
         key = _key(identity)
@@ -176,7 +178,10 @@ def prepare_graph(root, config=None):
             for file in source.iterdir():
                 if file.is_file() and re.fullmatch(r'(LICENSE|COPYING|NOTICE)(\.[\w-]+)?', file.name, re.I):
                     for folder in addon_directories(stage).values():
-                        (Path(folder) / ('MCPY_UPSTREAM_' + file.name)).write_bytes(file.read_bytes())
+                        # 多个Git项目合并时，各自的许可不得被同名文件覆盖。
+                        notice = Path(folder) / 'mcpy_licenses' / key / file.name
+                        notice.parent.mkdir(parents=True, exist_ok=True)
+                        notice.write_bytes(file.read_bytes())
             if settings.get('code_libraries'):
                 sync_libraries(stage)
             from .dependencies import validate_game_files

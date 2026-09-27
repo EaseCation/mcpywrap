@@ -81,6 +81,7 @@ class GitProjects(unittest.TestCase):
         self.service.add(dep.as_uri(), ref=sha)
         self.build()
         self.assertTrue((self.main / 'build/behavior_pack/unique.py').exists())
+        self.assertEqual(len(list((self.main / 'build/behavior_pack/mcpy_licenses').glob('*/LICENSE'))), 2)
 
     def test_recursive_git_and_internal_local_dependency(self):
         leaf, leaf_rev = self.repository('leaf', 'code')
