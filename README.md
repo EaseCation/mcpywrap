@@ -69,7 +69,7 @@ mcpy add --path "../shared-addon"
 | `mcpy run -l` | 查看已有实例 |
 | `mcpy run -d <ID前缀>` | 删除指定实例 |
 
-`mcpy run` 默认复用最近创建的实例。构建时主项目内容优先于依赖；修改依赖声明后，请重新启动 `mcpy dev`。
+本地世界模式下，`mcpy run` 默认复用最近创建的实例。构建时主项目内容优先于依赖；修改依赖声明后，请重新启动 `mcpy dev`。
 
 ### 打包分发
 
@@ -97,6 +97,26 @@ mcpy run --engine-version 3.10.0.420447
 
 已有实例默认保留原引擎版本；显式指定版本可以切换。自定义路径、项目级设置和环境变量的用法见[引擎配置参考](https://github.com/EaseCation/mcpywrap/blob/main/docs/engine-discovery.md)。
 
+### 连接服务器（实验性）
+
+临时连接无需项目配置，地址可以是 IP 或主机名，端口默认 `19132`：
+
+```powershell
+mcpy connect 192.168.31.101 --port 19132
+```
+
+固定目标可写入 `pyproject.toml`，随后在该目录执行 `mcpy run`：
+
+```toml
+[tool.mcpywrap.server]
+host = "192.168.31.101"
+port = 19132
+```
+
+空目录只需上述配置，无需执行 `mcpy init`；已有 Addon 项目也可添加此表。当前使用未认证连接，不读取登录身份或 token，不保证服务器允许进服；项目依赖仍会校验，但暂不装配本地 Mod。
+
+网络模式前台输出日志并显示日志文件路径，按 Ctrl+C 结束本次游戏。暂不支持 Map 项目、GUI、`--detach`、`--new` 或本地世界实例 ID。
+
 ## AI Agent 使用
 
 仓库提供标准 [mcpywrap Skill](https://github.com/EaseCation/mcpywrap/tree/main/skills/mcpywrap)，帮助 Agent 安装工具、管理依赖、
@@ -109,7 +129,7 @@ mcpy run --engine-version 3.10.0.420447
 也可以下载仓库 ZIP，将完整的 `skills/mcpywrap` 文件夹复制到对应 Agent 的技能目录。
 无需从源码安装 Python 项目；CLI 和 Skill 分别安装，`pip/uv install` 不会自动注册 Skill。
 Skill 中的 `scripts/bootstrap.ps1` 可使用已有 uv 安装 CLI，并检查是否具备所需命令能力。
-请使用 mcpywrap 0.3.2 或更高版本；需要固定组合时，可从 `v0.3.2` 标签安装对应 Skill。
+请使用 mcpywrap 0.3.3 或更高版本；需要固定组合时，可从 `v0.3.3` 标签安装对应 Skill。
 
 安装后可直接描述任务：
 

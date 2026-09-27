@@ -5,6 +5,7 @@ from . import __version__
 from .command_context import OperationGroup, configure_context
 
 from .commands.run_cmd import run_cmd
+from .commands.connect_cmd import connect_cmd
 from .commands.init_cmd import init_cmd
 from .commands.add_cmd import add_cmd
 from .commands.remove_cmd import remove_cmd
@@ -50,6 +51,7 @@ cli.add_command(package_cmd, name='package')
 cli.add_command(publish_cmd, name='publish')
 cli.add_command(mod_cmd, name='mod')
 cli.add_command(run_cmd, name='run')
+cli.add_command(connect_cmd, name='connect')
 cli.add_command(edit_cmd, name='edit')
 cli.add_command(ui_cmd, name='ui')
 cli.add_command(doctor_cmd, name='doctor')

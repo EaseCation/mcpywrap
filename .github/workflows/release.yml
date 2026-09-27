@@ -77,6 +77,7 @@ jobs:
           wheel-smoke/bin/python -c "from importlib.metadata import version; from mcpywrap import __version__; assert __version__ == version('mcpywrap'); from mcpywrap.dependencies import DependencyService; from mcpywrap.minecraft.template.generate_mod_files import generate_mod_framework"
           wheel-smoke/bin/mcpy --help
           wheel-smoke/bin/mcpy add --help
+          wheel-smoke/bin/mcpy connect --help
           wheel-smoke/bin/python -m pip check
           mkdir wheel-cli-project
           cd wheel-cli-project

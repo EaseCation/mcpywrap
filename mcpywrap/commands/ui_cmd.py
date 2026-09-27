@@ -18,6 +18,10 @@ def ui_cmd():
     # 检查项目是否已初始化
     if not config_exists():
         require_project()
+
+    from ..dependencies import read_project
+    if 'server' in read_project(current_project()).get('tool', {}).get('mcpywrap', {}):
+        raise click.UsageError('服务器目标暂不支持 GUI，请使用 mcpy run')
     
     from ..ui.project_ui import show_run_ui
     # 显示图形界面

@@ -96,7 +96,7 @@ def fixed_drives():
             if mask & (1 << i) and kernel.GetDriveTypeW(ctypes.c_wchar_p(f'{chr(65 + i)}:\\')) == 3]
 
 
-def discovery_options(project_dir=None, overrides=None, environ=None, cwd=None):
+def discovery_options(project_dir=None, overrides=None, environ=None, cwd=None, read_project_config=True):
     """逐字段合并 CLI、环境变量、项目配置，并保留各自路径基准。"""
     cwd = Path(cwd or os.getcwd()).resolve()
     project_dir = Path(project_dir or cwd).resolve()
@@ -105,7 +105,7 @@ def discovery_options(project_dir=None, overrides=None, environ=None, cwd=None):
     config_file = project_dir / 'pyproject.toml'
     config = {}
     try:
-        if config_file.exists():
+        if read_project_config and config_file.exists():
             with config_file.open('rb') as stream:
                 document = tomli.load(stream)
             config = document.get('tool', {}).get('mcpywrap', {})
@@ -187,10 +187,10 @@ def _download_from_exe(exe):
     return None
 
 
-def discover_engines(project_dir=None, overrides=None, instance_version=None):
+def discover_engines(project_dir=None, overrides=None, instance_version=None, *, read_project_config=True):
     result = DiscoveryResult()
     try:
-        options = discovery_options(project_dir, overrides)
+        options = discovery_options(project_dir, overrides, read_project_config=read_project_config)
         requested = options.get('engine_version') or instance_version
         if requested:
             try:

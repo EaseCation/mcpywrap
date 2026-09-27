@@ -142,6 +142,9 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
     from ..dependencies import read_project
     project_dir = str(Path(config_path).resolve().parent.parent)
     config = read_project(project_dir)
+    if 'server' in config.get('tool', {}).get('mcpywrap', {}):
+        # GUI/旧会话也不能将网络目标误启动成本地世界。
+        raise ValueError('服务器目标请通过 CLI mcpy run 启动，不能使用本地世界实例')
     project_type = config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
     project_name = config.get('project', {}).get('name', 'project')
     all_packs = _setup_dependencies(project_name, project_dir)
@@ -337,7 +340,11 @@ def _gen_random_port():
 def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, **engine_overrides):
     """游戏实例运行与管理
     
-    可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例
+    可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例。
+
+    配置 [tool.mcpywrap.server] host/port 时改为未认证网络连接，
+    不装配本地 Mod，不保证服务器接受连接。网络模式前台采集日志，
+    Ctrl+C 结束本次游戏，暂不支持 --detach。
     """
     base_dir = str(current_project())
     if (delete or clean_all) and non_interactive() and not force:
@@ -345,6 +352,21 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
     # 检查项目是否已初始化
     if not config_exists():
         require_project()
+
+    # 在存档选择、配置同步和目录创建之前分流；管理选项仍只管理本地存档。
+    if not (list or delete or clean_all):
+        from ..dependencies import read_project
+        from ..mcstudio.network import configured_target, prepare_project, run_network
+        config = read_project(base_dir)
+        target = configured_target(config)
+        if target is not None:
+            if new or instance_prefix:
+                raise click.UsageError('网络模式不支持 --new 或本地世界实例 ID')
+            if detach:
+                raise click.UsageError('网络模式暂不支持 --detach；请在终端会话中前台运行')
+            packs = prepare_project(base_dir, config)
+            return run_network(target, project_dir=base_dir, packs=packs,
+                               engine_overrides=engine_overrides)
 
     # 确保 map 项目的 setuptools 配置同步
     ensure_map_setuptools_sync(interactive=False)

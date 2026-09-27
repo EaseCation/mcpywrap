@@ -1,6 +1,6 @@
 ---
 name: mcpywrap
-description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图项目、Python 包与本地依赖，构建分发 ZIP，启动游戏并读取日志；使用会话绑定的脚本截图和发送按键，复杂界面交互交接 Computer Use。
+description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图项目与依赖，构建 ZIP，启动本地世界或尝试未认证服务器连接并读取日志；使用会话绑定的脚本截图和发送按键，复杂界面交互交接 Computer Use。
 ---
 
 # mcpywrap
@@ -9,7 +9,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图项�
 
 ## 准备
 
-- 明确用户的项目绝对路径；每条命令使用 `--project`，不依赖当前目录。
+- 项目操作使用绝对路径 `--project`，不依赖当前目录；临时 `connect` 无需项目。
 - 检查 `mcpy --version`、`mcpy --help` 及要调用的子命令帮助。版本号不能代替能力检查。
 - 需要安装时使用 [bootstrap.ps1](scripts/bootstrap.ps1)。脚本使用已有 uv，缺少时返回官方安装入口；默认复用已有可用安装，升级或更换来源使用 `-Upgrade`。
 - 正式版本使用 `-Version`，固定源码使用 `-GitRef <完整提交 SHA>`，开发目录使用 `-EditablePath <绝对路径>`。当前 Skill 对应的 CLI 必须支持 `--project`、`--non-interactive`、`--json` 和会话命令。
@@ -39,7 +39,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图项�
 `dev` 持续输出文本日志，不使用 `--json`；修改依赖声明后重启监控。
 `publish --yes` 是真实上传；只有用户请求发布时才调用。
 
-## 游戏验证
+## 本地世界验证
 
 1. `doctor --json` 检查引擎与资源；编辑器缺失不等于无法运行游戏。
 2. `run --no-gui --detach --json` 启动本次会话，只显示游戏本体。
@@ -50,6 +50,23 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图项�
 
 可使用 [smoke.py](scripts/smoke.py) 自动检查并打包；`--game` 才运行游戏，
 `--expect-log` 可重复指定加载标记。该脚本会停止自己创建的游戏；不要用于要求保留游戏窗口的任务。
+
+## 网络连接（实验性）
+
+网络能力需 CLI 0.3.3 或更高版本，先检查 `connect --help`。临时连接用 `mcpy connect <IP或主机名> --port 19132`，不读取项目配置。
+固定目标在 `pyproject.toml` 添加以下表，再执行 `mcpy --project <绝对路径> --non-interactive run`：
+
+```toml
+[tool.mcpywrap.server]
+host = "192.168.31.101"
+port = 19132
+```
+
+纯连接目录只需此表，无需 `init`；Addon 项目仍校验依赖，但本版不装配本地 Mod。
+不读取登录身份或 token，不能把进程创建成功当成进服成功。
+在可持续运行的终端会话中执行，读取输出的 PID 和两路日志路径；Ctrl+C 结束本次游戏。
+`--json` 在游戏退出后才返回最终结果；不支持 `--detach`、`--new`、世界实例 ID、Map 或 GUI。
+网络运行不生成本地会话 ID，不使用 `status/logs/stop --session`、`smoke.py --game` 或 `game_window.py` 管理它。
 
 ## 游戏截图与键盘操作
 
