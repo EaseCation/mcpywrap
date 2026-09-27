@@ -1,5 +1,6 @@
 """用参数生成 Mod 脚本，GUI 向导仅用于人工交互。"""
 import keyword
+import os
 import click
 from ..command_context import OperationCommand, project_dir, non_interactive, require_project
 from ..minecraft.addons import find_behavior_pack_dir
@@ -20,6 +21,8 @@ def mod_cmd(name, version, script_dir, server_system, client_system, gui):
     if not behavior:
         raise click.ClickException('未找到行为包，请先初始化 Addon')
     if gui or (not name and not non_interactive()):
+        if os.name != 'nt':
+            raise click.ClickException('Qt 模板向导仅支持 Windows，请使用 --name 等参数')
         from ..command_context import json_output
         if non_interactive() or json_output():
             raise click.UsageError('Qt 模板向导仅供人工使用；请提供 --name 等生成参数')

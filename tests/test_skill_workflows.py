@@ -141,54 +141,31 @@ class BridgeInspection(unittest.TestCase):
             self.assertFalse(result['integrity_verified'])
 
 
-@unittest.skipUnless(shutil.which('pwsh') or shutil.which('powershell'), 'PowerShell required')
 class BootstrapCapabilities(unittest.TestCase):
     def test_old_new_and_missing_component_installations(self):
-        path = str(ROOT/'skills/mcpywrap/scripts/bootstrap.ps1').replace("'", "''")
-        harness = r'''
-$ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-$tree = [System.Management.Automation.Language.Parser]::ParseInput(
-    [IO.File]::ReadAllText('__PATH__'), [ref]$null, [ref]$null)
-$fn = $tree.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Capabilities'}, $true)
-Invoke-Expression $fn.Extent.Text
-function fixture {
-    $global:LASTEXITCODE = 0
-    if ($args -contains '--json') {
-        $global:LASTEXITCODE = 1 # Missing engine must not hide available auth components.
-        return (@{ok=$false; mcs_auth=@{component_available=$script:ready}} | ConvertTo-Json -Compress)
-    }
-    if ($args -contains 'doctor') { return '--mcs-auth' }
-    if ($args -contains 'run') {
-        if ($script:modern) { return '--detach --no-gui --mcs-auth' }
-        return '--detach --no-gui'
-    }
-    if ($args -contains 'connect') { return '--detach --mcs-auth' }
-    $base = '--project --non-interactive --json status logs stop package'
-    if ($script:modern) { $base += "`n  connect  network" }
-    return $base
-}
-$script:modern = $false
-$old = Capabilities fixture
-$script:modern = $true
-$script:ready = $false
-$missing = Capabilities fixture
-$script:ready = $true
-$ready = Capabilities fixture
-@{old=$old; missing=$missing; ready=$ready} | ConvertTo-Json -Depth 8 -Compress
-'''.replace('__PATH__', path)
-        for shell in filter(None, (shutil.which('pwsh'), shutil.which('powershell'))):
-            with self.subTest(shell=shell):
-                proc = subprocess.run([shell, '-NoProfile', '-Command', harness],
-                                      capture_output=True, text=True, encoding='utf-8-sig', errors='strict', timeout=30)
-                self.assertEqual(proc.returncode, 0, proc.stderr)
-                data = json.loads(proc.stdout)
-                self.assertNotIn('network', data['old']['capabilities'])
-                self.assertIsNone(data['old']['mcs_auth']['component_available'])
-                self.assertIn('network-sessions', data['ready']['capabilities'])
-                self.assertIn('mcs-auth', data['missing']['capabilities'])
-                self.assertFalse(data['missing']['mcs_auth']['component_available'])
-                self.assertTrue(data['ready']['mcs_auth']['component_available'])
+        spec = importlib.util.spec_from_file_location('bootstrap_test', ROOT/'skills/mcpywrap/scripts/bootstrap.py')
+        bootstrap = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(bootstrap)
+        for modern, ready in ((False, False), (True, False), (True, True)):
+            def invoke(args):
+                if '--json' in args:
+                    data = {'ok': False, 'mcs_auth': {'component_available': ready}}
+                    return Mock(stdout=json.dumps(data), returncode=1)
+                if 'doctor' in args:
+                    text = '--mcs-auth'
+                elif 'run' in args:
+                    text = '--detach --no-gui' + (' --mcs-auth' if modern else '')
+                elif 'connect' in args:
+                    text = '--detach --mcs-auth'
+                else:
+                    text = '--project --non-interactive --json status logs stop package'
+                    if modern:
+                        text += '\n  connect  network'
+                return Mock(stdout=text, returncode=0)
+            with patch.object(bootstrap, 'invoke', side_effect=invoke):
+                result = bootstrap.capabilities('mcpy')
+            self.assertEqual('network-sessions' in result['capabilities'], modern)
+            self.assertEqual(result['mcs_auth']['component_available'], ready if modern else None)
 
 
 class EncodingCompatibility(unittest.TestCase):

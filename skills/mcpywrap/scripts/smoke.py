@@ -11,6 +11,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--project', required=True)
     parser.add_argument('--command', default='mcpy', help='bootstrap 返回的 mcpy 命令路径')
+    parser.add_argument('--remote', help='Windows 局域网服务地址，也可使用 MCPY_REMOTE')
+    parser.add_argument('--local', action='store_true', help='强制本机验证')
     parser.add_argument('--game', action='store_true', help='验证新的本地世界')
     parser.add_argument('--connect', metavar='HOST', help='验证临时网络目标，不打包或读取项目配置')
     parser.add_argument('--port', type=int, default=19132)
@@ -30,8 +32,11 @@ def main(argv=None):
     report = {'ok': False, 'project': project, 'error': None}
 
     def invoke(*arguments, allow_failure=False):
+        routing = ['--remote', args.remote] if args.remote else []
+        if args.local:
+            routing += ['--local']
         proc = subprocess.run([args.command, '--project', project, '--non-interactive',
-                               *arguments, '--json'], stdin=subprocess.DEVNULL,
+                               *routing, *arguments, '--json'], stdin=subprocess.DEVNULL,
                               capture_output=True, text=True, encoding='utf-8-sig', errors='replace', timeout=180,
                               env=dict(os.environ, PYTHONIOENCODING='utf-8'))
         try:

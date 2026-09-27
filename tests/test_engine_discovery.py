@@ -209,7 +209,7 @@ class EngineDiscoveryTests(unittest.TestCase):
         self.assertEqual(self.discover(instance_version='3.9').selected.version, '3.10')
 
     def test_doctor_is_readonly_without_project_and_json_on_failure(self):
-        doctor = importlib.import_module('mcpywrap.commands.doctor_cmd')
+        doctor = importlib.import_module('mcpywrap.mcstudio.diagnostics')
         root = self.root / 'registered'
         self.engine(root, '3.10')
         self.resources(root)

@@ -25,6 +25,8 @@ from ..utils.project_setup import find_and_configure_behavior_pack
 @click.option("--detach", is_flag=True, help="启动编辑器后返回进程信息")
 def edit_cmd(detach, **engine_overrides):
     """使用 MC Studio Editor 编辑器进行编辑"""
+    if os.name != 'nt':
+        raise click.ClickException('此界面仅支持 Windows 人工操作，不支持远程 GUI')
     # 检查项目是否已初始化
     if not config_exists():
         require_project()

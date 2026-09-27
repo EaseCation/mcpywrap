@@ -106,12 +106,8 @@ def launch_network(engine, target, config_path, logging_port, auth_context=None)
                      capture_output=True)
 
 
-def run_network(target, *, project_dir=None, packs=(), engine_overrides=None, detach=False):
-    """预检后创建普通游戏会话；临时 connect 只用项目目录存会话，不读取其配置。"""
-    from ..command_context import project_dir as current_project, json_output
-    from . import sessions
-    if json_output() and not detach:
-        raise click.UsageError('网络运行 --json 需要 --detach；使用 status/logs/stop 管理返回的会话')
+def prepare_network(target, project_dir=None, engine_overrides=None, interactive=None):
+    """Preflight and optional identity acquisition, without terminal/UI output."""
     if not is_windows():
         raise ValueError('网络游戏启动仅支持 Windows')
     engine = discover_engines(project_dir, engine_overrides,
@@ -120,10 +116,18 @@ def run_network(target, *, project_dir=None, packs=(), engine_overrides=None, de
     identity = None
     if target.auth == 'mcs':
         from .mcs_auth import acquire_identity
-        identity = acquire_identity()
-        click.echo('已读取 MCS 当前身份；连接结果仍以服务器响应为准。')
-    else:
-        click.echo('未认证网络连接：不使用账号/token，服务器可能拒绝连接。')
+        identity = acquire_identity() if interactive is None else acquire_identity(interactive=interactive)
+    return engine, identity
+
+
+def run_network(target, *, project_dir=None, packs=(), engine_overrides=None, detach=False):
+    """预检后创建普通游戏会话；临时 connect 只用项目目录存会话，不读取其配置。"""
+    from ..command_context import project_dir as current_project, json_output
+    from . import sessions
+    if json_output() and not detach:
+        raise click.UsageError('网络运行 --json 需要 --detach；使用 status/logs/stop 管理返回的会话')
+    engine, identity = prepare_network(target, project_dir, engine_overrides)
+    click.echo('已提供 MCS 身份；仍需验证进服。' if identity else '未认证网络连接；服务器可能拒绝连接。')
     click.echo(f'本次仅连接服务器，工具未装配本地 Addon（已解析 {len(packs)} 个）。')
     root = Path(project_dir or current_project()).resolve()
     data = sessions.start(root, auth_context=identity,

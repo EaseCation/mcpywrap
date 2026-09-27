@@ -47,12 +47,13 @@ def read(project, session):
 
 
 def start(project, config_path=None, level_id=None, overrides=None, timeout=30, auth_context=None,
-          network=None):
+          network=None, session_id=None, origin=None, request_id=None):
     root = Path(project).resolve()
-    session = uuid.uuid4().hex
+    session = session_id or uuid.uuid4().hex
     directory = session_path(root, session)
-    directory.mkdir(parents=True)
+    directory.mkdir(parents=True, exist_ok=False)
     record = {'session': session, 'project': str(root), 'state': 'starting', 'game': None,
+              'origin': origin, 'request_id': request_id, 'created_at': time.time(),
               'worker': None, 'error': None, 'log_path': str(directory / 'game.log'),
               'engine_log_path': str(directory / 'engine.log'),
               'config_path': str(Path(config_path).resolve()) if config_path else str(directory / 'runtime.cppconfig'),
@@ -108,7 +109,7 @@ def stop(project, session):
     # 先核对身份，再发停止请求。worker 失效时也能准确清理自己创建的游戏。
     game = checked_process(data['game']) if data.get('game') else None
     worker = checked_process(data['worker']) if data.get('worker') else None
-    if worker:
+    if worker or data['state'] == 'starting':
         (session_path(project, session) / 'stop').touch()
     if game:
         game.terminate()
@@ -128,9 +129,11 @@ def stop(project, session):
     return {'session': session, 'state': 'exited'}
 
 
-def logs(project, session, tail=100):
+def logs(project, session, tail=100, source='game'):
     from collections import deque
-    path = session_path(project, session) / 'game.log'
+    if source not in ('game', 'engine', 'worker') or type(tail) is not int or not 1 <= tail <= 10000:
+        raise ValueError('无效的日志来源或行数')
+    path = session_path(project, session) / (source + '.log')
     if not (path.parent / 'session.json').is_file():
         raise ValueError('会话不存在')
     if not path.is_file():

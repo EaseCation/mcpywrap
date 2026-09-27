@@ -12,10 +12,7 @@ import unittest
 from unittest.mock import Mock, patch
 import zlib
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'skills/mcpywrap/scripts/game_window.py'
-spec = importlib.util.spec_from_file_location('game_window_skill', SCRIPT)
-window = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(window)
+from mcpywrap.mcstudio import window, sessions
 
 
 class SkillWindowTests(unittest.TestCase):
@@ -57,33 +54,20 @@ class SkillWindowTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             window.png_bytes(2, 2, b'wrong')
 
-    def test_status_rejects_other_process_and_exited_session(self):
-        with tempfile.TemporaryDirectory() as folder:
-            data = {'ok': True, 'project': folder, 'state': 'running',
-                    'game': {'executable': 'notepad.exe'}}
-            result = Mock(returncode=0, stdout=json.dumps(data), stderr='')
-            with patch.object(window.subprocess, 'run', return_value=result) as run:
-                with self.assertRaisesRegex(ValueError, 'Minecraft'):
-                    window.load_session('custom mcpy.exe', folder, 'id')
-                self.assertEqual(run.call_args.args[0][0], 'custom mcpy.exe')
-                self.assertFalse(run.call_args.kwargs.get('shell', False))
-            data.update(state='exited')
-            result.stdout = json.dumps(data)
-            with patch.object(window.subprocess, 'run', return_value=result):
-                with self.assertRaisesRegex(ValueError, '未运行'):
-                    window.load_session('mcpy', folder, 'id')
+    def test_session_must_be_running_and_minecraft(self):
+        data = {'project': '.', 'state': 'running', 'game': {'executable': 'notepad.exe'}}
+        with patch.object(sessions, 'read', return_value=data):
+            with self.assertRaisesRegex(ValueError, 'Minecraft'):
+                window.session_game('.', 'id')
+            data['state'] = 'exited'
+            with self.assertRaisesRegex(ValueError, '未运行'):
+                window.session_game('.', 'id')
 
     def test_project_mismatch_rejected(self):
-        data = {'ok': True, 'project': '/somewhere/else', 'state': 'running',
-                'game': {'executable': 'Minecraft.Windows.exe'}}
-        with patch.object(window.subprocess, 'run', return_value=Mock(returncode=0, stdout=json.dumps(data))):
+        data = {'project': '/elsewhere', 'state': 'running', 'game': {'executable': 'Minecraft.Windows.exe'}}
+        with patch.object(sessions, 'read', return_value=data):
             with self.assertRaisesRegex(ValueError, '项目路径'):
-                window.load_session('mcpy', '/my/project', 'id')
-
-    def test_bad_cli_json_is_error(self):
-        with patch.object(window.subprocess, 'run', return_value=Mock(stdout='unexpected')):
-            with self.assertRaisesRegex(ValueError, 'JSON'):
-                window.load_session('mcpy', '.', 'id')
+                window.session_game('/project', 'id')
 
     def fake_window(self):
         target = window.GameWindow.__new__(window.GameWindow)
@@ -191,10 +175,12 @@ class SkillWindowTests(unittest.TestCase):
             output = Path(folder) / 'blocked.png'
             fake = Mock()
             fake.screenshot.side_effect = ValueError('游戏客户区被其他窗口覆盖')
-            with patch.object(window, 'load_session', return_value={}), patch.object(window, 'GameWindow', return_value=fake), contextlib.redirect_stdout(io.StringIO()) as stdout:
-                code = window.main(['--project', folder, '--session', 'id', 'screenshot', '--output', str(output)])
-            self.assertEqual(code, 1)
-            self.assertIn('覆盖', json.loads(stdout.getvalue())['error'])
+            from click.testing import CliRunner
+            from mcpywrap.cli import cli
+            with patch.object(window, 'session_game', return_value={}), patch.object(window, 'GameWindow', return_value=fake):
+                result = CliRunner().invoke(cli, ['--local', '--project', folder, 'screenshot', '--session', 'id', '--output', str(output), '--json'])
+            self.assertEqual(result.exit_code, 1)
+            self.assertIn('覆盖', json.loads(result.stdout)['error'])
             self.assertFalse(output.exists())
             fake.close.assert_called_once()
 
@@ -214,10 +200,12 @@ class SkillWindowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / 'already.png'
             output.write_bytes(b'preserve')
-            with patch.object(window, 'load_session') as lookup, contextlib.redirect_stdout(io.StringIO()) as stdout:
-                code = window.main(['--project', folder, '--session', 'id', 'screenshot', '--output', str(output)])
-            self.assertEqual(code, 1)
-            self.assertFalse(json.loads(stdout.getvalue())['ok'])
+            from click.testing import CliRunner
+            from mcpywrap.cli import cli
+            with patch.object(window, 'session_game') as lookup:
+                result = CliRunner().invoke(cli, ['--local', '--project', folder, 'screenshot', '--session', 'id', '--output', str(output), '--json'])
+            self.assertEqual(result.exit_code, 1)
+            self.assertFalse(json.loads(result.stdout)['ok'])
             lookup.assert_not_called()
             self.assertEqual(output.read_bytes(), b'preserve')
 

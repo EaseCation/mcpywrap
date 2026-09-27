@@ -1,6 +1,6 @@
 # 发布流程
 
-主分支和 PR 运行 Windows Python 3.9、3.12、3.14 的自动化测试。通过后构建 wheel/sdist、运行严格元数据检查、检查产物内容，并在独立环境安装 wheel 验证 CLI 和模块导入。
+主分支和 PR 运行 Windows Python 3.9、3.12、3.14 的自动化测试，以及 macOS 的无 Qt 安装、项目构建与远程客户端测试。通过后构建 wheel/sdist、运行严格元数据检查、检查产物内容，并在独立环境安装 wheel 验证 CLI 和模块导入。
 
 Windows CI 先用 MSVC 从 `native/mcs_auth` 编译 x86 登录桥接，再签名并通过构建产物交给测试和 Python 打包任务；编译后的 EXE/DLL 不提交到 Git。仓库只保留发布者公钥证书和指纹。
 

@@ -16,6 +16,8 @@ def ui_cmd(mcs_auth=False):
     from ..command_context import json_output
     if non_interactive() or json_output():
         raise click.UsageError("Qt 管理页仅供人工使用；Agent 请调用 run、add、remove 等命令")
+    if os.name != 'nt':
+        raise click.ClickException('此界面仅支持 Windows 人工操作，不支持远程 GUI')
     # 检查项目是否已初始化
     if not config_exists():
         require_project()

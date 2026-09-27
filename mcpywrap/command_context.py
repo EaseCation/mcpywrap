@@ -17,6 +17,8 @@ class CommandContext:
     project: Path
     non_interactive: bool = False
     json_output: bool = False
+    remote: str = None
+    local: bool = False
 
 
 _context = contextvars.ContextVar('mcpy_context', default=None)
@@ -67,6 +69,10 @@ class OperationCommand(click.Command):
 
     def invoke(self, ctx):
         ctx.params.pop('json_output', None)
+        from .remote.client import routed_command
+        routed, result = routed_command(ctx.info_name, ctx.params)
+        if routed:
+            return result
         return super().invoke(ctx)
 
 
@@ -131,9 +137,31 @@ class OperationGroup(click.Group):
         return result
 
 
-def configure_context(project, interactive_disabled):
+def configure_context(project, interactive_disabled, remote=None, local=False):
     current = _context.get()
+    current.remote, current.local = remote, local
     current.project = Path(project or os.getcwd()).expanduser().resolve()
     current.non_interactive = interactive_disabled or not sys.stdin.isatty()
     if not current.project.is_dir():
         raise click.UsageError(f'项目目录不存在: {current.project}')
+
+
+def remote_url():
+    """Resolve only for game operations; local project commands never depend on a remote."""
+    state = _context.get()
+    if state and state.local:
+        return None
+    if state and state.remote is not None:
+        return state.remote
+    if os.environ.get('MCPY_REMOTE'):
+        return os.environ['MCPY_REMOTE']
+    path = project_dir()/'pyproject.toml'
+    if path.is_file():
+        import tomli
+        try:
+            with path.open('rb') as stream:
+                return tomli.load(stream).get('tool', {}).get('mcpywrap', {}).get('remote_url')
+        except tomli.TOMLDecodeError:
+            # connect intentionally ignores unrelated malformed project configuration.
+            return None
+    return None

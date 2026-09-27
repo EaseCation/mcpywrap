@@ -27,11 +27,13 @@ from .commands.session_cmd import status_cmd, logs_cmd, stop_cmd
 @click.option("--project", type=click.Path(file_okay=False), help="项目目录，默认当前目录")
 @click.option("--non-interactive", is_flag=True, help="不读取终端输入")
 @click.option("--json", "json_output", is_flag=True, help="输出 JSON 结果")
+@click.option('--remote', help='Windows 测试服务地址，例如 http://192.168.1.20:18765')
+@click.option('--local', 'local_only', is_flag=True, help='本次强制本机执行')
 @click.version_option(__version__)
 @click.pass_context
-def cli(ctx, project, non_interactive, json_output):
+def cli(ctx, project, non_interactive, json_output, remote, local_only):
     """mcpywrap - 《我的世界》中国版 依赖管理与项目构建工具"""
-    configure_context(project, non_interactive)
+    configure_context(project, non_interactive, remote, local_only)
     # 如果没有提供子命令，则运行 default_cmd
     if ctx.invoked_subcommand is None:
         # 导入并运行默认命令
@@ -59,6 +61,13 @@ cli.add_command(sync_cmd, name='sync')
 cli.add_command(status_cmd)
 cli.add_command(logs_cmd)
 cli.add_command(stop_cmd)
+
+from .commands.desktop_cmd import screenshot_cmd, key_cmd, mouse_cmd
+from .commands.serve_cmd import serve_cmd
+cli.add_command(screenshot_cmd, 'screenshot')
+cli.add_command(key_cmd, 'key')
+cli.add_command(mouse_cmd, 'mouse')
+cli.add_command(serve_cmd, 'serve')
 
 if __name__ == '__main__':
     cli()

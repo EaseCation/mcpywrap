@@ -1,5 +1,12 @@
 # 更新记录
 
+## 0.3.6
+
+- 新增局域网 serve 服务与 --remote/--local 路由；macOS 本机开发、Windows 网络游戏测试共用 CLI 和 Skill。
+- 新增会话截图、键盘、鼠标命令，支持菜单操作与相对视角移动；远端截图保存到调用端。
+- 支持启动去重、所属会话恢复、串行桌面输入与服务退出清理；日志可选择 game/engine/worker。
+- 跨平台 bootstrap.py 共用安装逻辑，PowerShell 入口保留兼容；macOS 安装不依赖 Qt。
+
 ## 0.3.5
 
 - 网络连接接入统一游戏会话：`connect/run --detach --json` 返回进程身份与日志，可复用 status/logs/stop、Skill 截图与按键脚本；网络 JSON 启动现在要求 `--detach`。

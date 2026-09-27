@@ -52,12 +52,9 @@ class NetworkSessions(unittest.TestCase):
         self.assertFalse(self.discovery.call_args.kwargs['read_project_config'])
         self.assertFalse((self.root/'.runtime').exists())  # mocked worker, no world side effects
         # Existing screenshot/input script accepts network status without an arbitrary PID bypass.
-        path = Path(__file__).resolve().parents[1]/'skills/mcpywrap/scripts/game_window.py'
-        spec = importlib.util.spec_from_file_location('network_window_test', path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        with patch.object(module.subprocess, 'run', return_value=Mock(returncode=0, stdout=json.dumps({'ok': True, **self.data}))):
-            self.assertEqual(module.load_session('mcpy', self.root, data['session']), self.data['game'])
+        from mcpywrap.mcstudio import window
+        with patch.object(sessions, 'read', return_value=self.data):
+            self.assertEqual(window.session_game(self.root, data['session']), self.data['game'])
 
     def test_configured_network_uses_same_session(self):
         (self.root/'pyproject.toml').write_text('[tool.mcpywrap.server]\nhost="localhost"\n')

@@ -23,3 +23,7 @@ python skills/mcpywrap/scripts/smoke.py --project D:\mods\test --game --expect-l
 历史验收记录仅用于追溯，不能代替当前版本测试。
 
 发布见 [发布流程](releasing.md)。
+
+局域网协议与路由测试使用 `tests/test_remote.py` 的真实回环 HTTP 和模拟游戏，不需要实际登录。
+桌面原生实现集中在 `mcstudio/window.py`，Skill 脚本只组合公开 CLI。鼠标逻辑通过模拟 Win32 测试释放与坐标，实机效果按截图验证。
+Windows CI 保留 3.9/3.12/3.14；macOS CI 验证无 Qt 安装、本机构建与远程客户端。真实跨机验收需另行准备 Windows 桌面和 macOS 客户端。

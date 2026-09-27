@@ -5,18 +5,26 @@ from ..mcstudio import sessions
 
 
 @click.command(cls=OperationCommand, name='status')
-@click.option('--session', required=True)
-def status_cmd(session):
+@click.option('--session')
+@click.option('--list', 'list_sessions', is_flag=True, help='列举会话，远端可用于找回启动结果')
+def status_cmd(session, list_sessions):
     """查询会话；running 只表示进程存活。"""
+    if bool(session) == list_sessions:
+        raise click.UsageError('指定 --session 或 --list 中的一项')
+    if list_sessions:
+        root = project_dir()/'.runtime/sessions'
+        return {'sessions': [sessions.read(project_dir(), p.parent.name)
+                             for p in sorted(root.glob('*/session.json'))]}
     return sessions.read(project_dir(), session)
 
 
 @click.command(cls=OperationCommand, name='logs')
 @click.option('--session', required=True)
 @click.option('--tail', type=click.IntRange(1, 10000), default=100, show_default=True)
-def logs_cmd(session, tail):
+@click.option('--source', type=click.Choice(['game', 'engine', 'worker']), default='game', show_default=True)
+def logs_cmd(session, tail, source):
     """读取会话日志末尾，不等待新日志。"""
-    text = sessions.logs(project_dir(), session, tail)
+    text = sessions.logs(project_dir(), session, tail, source)
     if json_output():
         return {'session': session, 'text': text}
     click.echo(text, nl=False)

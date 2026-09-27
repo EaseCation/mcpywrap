@@ -145,8 +145,8 @@ mcpy --project D:\tests\server stop --session <id> --json
 
 也可以下载仓库 ZIP，将完整的 `skills/mcpywrap` 文件夹复制到对应 Agent 的技能目录。
 无需从源码安装 Python 项目；CLI 和 Skill 分别安装，`pip/uv install` 不会自动注册 Skill。
-Skill 中的 `scripts/bootstrap.ps1` 使用已有 uv 安装或复用 CLI，报告可选能力；`-RequireCapability network-sessions` 或 `mcs-auth` 仅在任务需要时检查。身份参数与桥接组件就绪分别报告，Git／可编辑安装可能缺少组件。
-推荐使用 mcpywrap 0.3.5 或更高版本，可从 `v0.3.5` 标签安装对应 Skill。网络会话需 `connect --help` 包含 `--detach`，实际能力以脚本检测为准。
+两端使用跨平台 `scripts/bootstrap.py` 安装或复用各自的 CLI，Windows 也可用 `bootstrap.ps1`。脚本分别报告本机与远端能力；Skill、CLI 与 Windows 服务需要分别检查，Git／可编辑安装可能缺少登录组件。
+局域网流程请使用 mcpywrap 0.3.6 或更高版本，可从 `v0.3.6` 标签安装配套 Skill。实际能力仍以脚本检测为准；更新 Skill 不会自动更新两端 CLI。
 
 安装后可直接描述任务：
 
@@ -154,8 +154,23 @@ Skill 中的 `scripts/bootstrap.ps1` 使用已有 uv 安装或复用 CLI，报�
 - “启动这个项目，不弹日志界面，检查客户端和服务端的加载日志。”
 - “启动游戏并截图，模拟组合按键移动，检查 F11 输入模式和 F3 调试信息层。”
 
-Agent 通过 CLI 管理项目，Skill 自带游戏截图与键盘输入脚本；复杂游戏交互交给 Computer Use。Qt 管理与模板界面用于人工操作。
+Agent 通过 CLI 管理项目、截图和输入键鼠。远程交互查看下载的图片后继续操作；本机复杂交互可交给 Computer Use。Qt 管理与模板界面用于人工操作。
 常用入口：`mcpy --project <目录> --non-interactive <命令> --json`。
+
+## macOS 与 Windows 局域网联调
+
+Windows 用户在测试桌面运行 `mcpy --local serve`，默认监听 `0.0.0.0:18765`；macOS 使用同一服务地址调用：
+
+```bash
+mcpy --remote http://192.168.1.20:18765 --non-interactive connect 192.168.1.10 --port 19132 --detach --json
+mcpy --remote http://192.168.1.20:18765 screenshot --session <id> --output ./game.png --json
+mcpy --remote http://192.168.1.20:18765 key --session <id> SHIFT+W --hold-ms 1000 --json
+mcpy --remote http://192.168.1.20:18765 stop --session <id> --json
+```
+
+项目依赖与构建仍在 macOS，游戏诊断、网络启动、日志和输入转发到 Windows，截图下载到调用端。
+默认免认证，可用两端 `MCPY_REMOTE_TOKEN` 启用令牌；服务 Ctrl+C 清理所属游戏。需要 Windows 保持登录未锁屏，一次只接受一个活动会话。
+bootstrap 检测不会保存远端地址，独立终端调用请每次显式传 `--remote <地址>`。部署、鼠标与恢复见[远程测试指引](skills/mcpywrap/references/remote-testing.md)。
 
 ## 更多信息
 

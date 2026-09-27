@@ -1,37 +1,25 @@
 """不创建项目、不启动程序的本机诊断。"""
 import click
-from ..command_context import OperationCommand, project_dir as current_project, non_interactive, require_project
-
-from ..mcstudio.discovery import (
-    discover_engines, engine_options, resource_issues, studio_installation,
-)
+from ..command_context import OperationCommand, project_dir as current_project
+from ..mcstudio.discovery import engine_options
 
 
 @click.command(cls=OperationCommand)
 @engine_options
 @click.option('--mcs-auth', is_flag=True, help='同时只读检查登录组件；不读取身份或安装证书')
-def doctor_cmd(mcs_auth=False, **overrides):
+@click.option('--capabilities', is_flag=True, help='报告本机或远端能力，不启动游戏')
+def doctor_cmd(mcs_auth=False, capabilities=False, **overrides):
     """诊断游戏发现和运行资源（只读，无需初始化项目）"""
-    result = discover_engines(current_project(), overrides=overrides)
-    data = result.to_dict()
-    data['resources'] = {'run': [], 'editor': [], 'safaia': []}
-    if result.selected:
-        data['resources']['run'] = resource_issues(result.selected)
-        data['resources']['editor'] = resource_issues(result.selected, 'editor')
-    for purpose in ('editor', 'safaia'):
-        _, issues = studio_installation(purpose)
-        data['resources'][purpose].extend(issues)
-    data['ok'] = bool(result.selected and not result.error and not data['resources']['run'])
-    if mcs_auth:
-        from ..mcstudio.bridge_assets import inspect_bridge
-        data['mcs_auth'] = inspect_bridge()
-        if not data['mcs_auth']['component_available']:
-            data.update(ok=False, error=data['mcs_auth']['error'], hint=data['mcs_auth']['hint'])
+    from ..mcstudio.diagnostics import diagnose
+    if capabilities:
+        from ..remote.service import capabilities as inspect_capabilities
+        return inspect_capabilities()
+    data = diagnose(current_project(), overrides, mcs_auth)
     from ..command_context import json_output
     if not json_output():
-        for candidate in result.candidates:
-            click.echo(f'候选 [{candidate.source}] {candidate.version}: {candidate.executable}')
-        for issue in result.diagnostics:
+        for candidate in data['candidates']:
+            click.echo(f"候选 [{candidate['source']}] {candidate['version']}: {candidate['executable']}")
+        for issue in data['diagnostics']:
             click.echo(f'{issue["path"]}: {issue["message"]}')
         for kind, issues in data['resources'].items():
             for issue in issues:
