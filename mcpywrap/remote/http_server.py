@@ -1,4 +1,5 @@
 """Versioned, bounded HTTP interface; no file server, arbitrary paths, or shell endpoint."""
+import base64
 import hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -34,6 +35,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'image/png')
             for key in ('width', 'height', 'session', 'service_instance'):
                 self.send_header('X-Mcpy-' + key.replace('_', '-'), str(data[key]))
+            if 'capture' in data:
+                self.send_header('X-Mcpy-Capture', data['capture'])
+                self.send_header('X-Mcpy-Capture-Fallback', 'true' if data.get('capture_fallback') else 'false')
+                if data.get('capture_fallback_reason'):
+                    reason = base64.b64encode(data['capture_fallback_reason'].encode('utf-8')).decode('ascii')
+                    self.send_header('X-Mcpy-Capture-Fallback-Reason-B64', reason)
         else:
             content = json.dumps({'ok': status < 400, 'error': None, 'hint': None, **data},
                                  ensure_ascii=True, allow_nan=False).encode('utf-8')

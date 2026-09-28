@@ -5,6 +5,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.obj
 .Python
 env/
 build/
@@ -25,6 +26,8 @@ var/
 # mcpywrap specific
 .mcpywrap.json
 /mcpywrap/mcstudio/bridge_payload/
+/mcpywrap/mcstudio/window_capture/*.exe
+/mcpywrap/mcstudio/window_capture/manifest.json
 *.pfx
 *.p12
 .venv/

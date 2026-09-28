@@ -1,6 +1,7 @@
 """Skill 的窗口工具：解析、PNG 像素、进程身份及按键释放保护。"""
 import contextlib
 import ctypes
+import hashlib
 import importlib.util
 import io
 import json
@@ -169,12 +170,67 @@ class SkillWindowTests(unittest.TestCase):
                 target.press('W+A', 1000)
         self.assertEqual(events[-1], (0x57, 2))
 
+    def test_background_screenshot_does_not_activate_window(self):
+        target = window.GameWindow.__new__(window.GameWindow)
+        target.screenshot_background = Mock(return_value=(b'png', 800, 600))
+        target.screenshot = Mock()
+        content, width, height, status = target.screenshot_with_fallback()
+        self.assertEqual((content, width, height), (b'png', 800, 600))
+        self.assertEqual(status, {'capture': 'background-window', 'capture_fallback': False})
+        target.screenshot.assert_not_called()
+
+    def test_background_screenshot_falls_back_to_visible_capture(self):
+        target = window.GameWindow.__new__(window.GameWindow)
+        target.screenshot_background = Mock(
+            side_effect=window.BackgroundCaptureUnavailable('辅助程序不可用'))
+        target.screenshot = Mock(return_value=(b'png', 800, 600))
+        content, width, height, status = target.screenshot_with_fallback()
+        self.assertEqual((content, width, height), (b'png', 800, 600))
+        self.assertEqual(status['capture'], 'visible-client-area')
+        self.assertTrue(status['capture_fallback'])
+        self.assertEqual(status['capture_fallback_reason'], '辅助程序不可用')
+        target.screenshot.assert_called_once_with()
+
+    def test_background_capture_protocol_is_validated(self):
+        target = window.GameWindow.__new__(window.GameWindow)
+        target.game = {'pid': 123}
+        target.hwnd = 456
+        target.user = Mock()
+        target.user.IsIconic.return_value = False
+        target.owner = Mock(return_value=123)
+        target.usable = Mock(return_value=True)
+        target.validate_process = Mock()
+        target._client_area = Mock(return_value=(800, 600, Mock()))
+        target._background_helper = Mock(return_value=Path('capture.exe'))
+        png = b'\x89PNG\r\n\x1a\ncontent'
+        completed = Mock(returncode=0, stdout=b'MCPYCAP1 800 600 ' + str(len(png)).encode() + b'\n' + png,
+                         stderr=b'')
+        with patch.object(window.subprocess, 'run', return_value=completed):
+            result = target.screenshot_background()
+        self.assertEqual(result, (png, 800, 600))
+        self.assertEqual(target.validate_process.call_count, 2)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows')
+    def test_background_helper_rejects_tampered_binary(self):
+        with tempfile.TemporaryDirectory() as folder:
+            payload = Path(folder) / 'window_capture'
+            payload.mkdir()
+            executable = payload / 'mcpy-window-capture.exe'
+            executable.write_bytes(b'changed')
+            (payload / 'manifest.json').write_text(
+                json.dumps({'executable_sha256': hashlib.sha256(b'original').hexdigest()}),
+                encoding='utf-8')
+            target = window.GameWindow.__new__(window.GameWindow)
+            with patch.object(window, '__file__', str(Path(folder) / 'window.py')):
+                with self.assertRaisesRegex(window.BackgroundCaptureUnavailable, '完整性'):
+                    target._background_helper()
+
     @unittest.skipUnless(os.name == 'nt', 'Windows')
     def test_screenshot_failure_leaves_no_output(self):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / 'blocked.png'
             fake = Mock()
-            fake.screenshot.side_effect = ValueError('游戏客户区被其他窗口覆盖')
+            fake.screenshot_with_fallback.side_effect = ValueError('游戏客户区被其他窗口覆盖')
             from click.testing import CliRunner
             from mcpywrap.cli import cli
             with patch.object(window, 'session_game', return_value={}), patch.object(window, 'GameWindow', return_value=fake):

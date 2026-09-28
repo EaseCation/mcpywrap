@@ -1,4 +1,5 @@
 """CLI routing and standard-library transport. Never falls back or retries mutations."""
+import base64
 import json
 import os
 from http.client import HTTPException
@@ -66,8 +67,19 @@ class Client:
                 if not raw.startswith(b'\x89PNG\r\n\x1a\n') or len(raw) < 24:
                     raise RemoteError('远端未返回有效 PNG', 'invalid_response')
                 width, height = struct.unpack('>II', raw[16:24])
-                return {'content': raw, 'width': width, 'height': height,
-                        'service_instance': response.headers.get('X-Mcpy-Service-Instance')}
+                result = {'content': raw, 'width': width, 'height': height,
+                          'service_instance': response.headers.get('X-Mcpy-Service-Instance')}
+                capture = response.headers.get('X-Mcpy-Capture')
+                if capture:
+                    result['capture'] = capture
+                    result['capture_fallback'] = response.headers.get('X-Mcpy-Capture-Fallback') == 'true'
+                    reason = response.headers.get('X-Mcpy-Capture-Fallback-Reason-B64')
+                    if reason:
+                        try:
+                            result['capture_fallback_reason'] = base64.b64decode(reason, validate=True).decode('utf-8')
+                        except (ValueError, UnicodeError):
+                            raise RemoteError('远端截图状态无效', 'invalid_response') from None
+                return result
             try:
                 result = json.loads(raw.decode('utf-8-sig'))
             except (ValueError, UnicodeError):

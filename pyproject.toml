@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcpywrap"
-version = "0.3.8"
+version = "0.3.9"
 description = "A wrapper for Minecraft China Edition Addons management"
 readme = "README.md"
 authors = [{name = "boybook", email = "boybook@easecation.net"}]
@@ -42,4 +42,4 @@ mcpy = "mcpywrap.__main__:main"
 include = ["mcpywrap*"]
 
 [tool.setuptools.package-data]
-"mcpywrap.mcstudio" = ["bridge_payload/*.exe", "bridge_payload/*.dll", "bridge_payload/*.cer", "bridge_payload/manifest.json"]
+"mcpywrap.mcstudio" = ["bridge_payload/*.exe", "bridge_payload/*.dll", "bridge_payload/*.cer", "bridge_payload/manifest.json", "window_capture/*.exe", "window_capture/manifest.json"]

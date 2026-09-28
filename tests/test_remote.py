@@ -179,14 +179,30 @@ class RemoteTests(unittest.TestCase):
     def test_screenshot_download_and_input_bound_to_session(self):
         self.create()
         image = window.png_bytes(1, 1, b'\x00\x00\xff\x00')
-        with patch.object(window, 'operate', return_value={'content': image, 'width': 1, 'height': 1, 'session': 'a'*32}) as action:
+        with patch.object(window, 'operate', return_value={
+                'content': image, 'width': 1, 'height': 1, 'session': 'a'*32,
+                'capture': 'background-window', 'capture_fallback': False}) as action:
             output = self.local/'截图 😀.png'
             result = self.call('screenshot', '--session', 'a'*32, '--output', str(output))
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertEqual(output.read_bytes(), image)
-            self.assertEqual(Path(json.loads(result.stdout)['image']), output)
+            response = json.loads(result.stdout)
+            self.assertEqual(Path(response['image']), output)
+            self.assertEqual(response['capture'], 'background-window')
+            self.assertFalse(response['capture_fallback'])
             self.assertNotEqual(self.call('screenshot', '--session', 'a'*32, '--output', str(output)).exit_code, 0)
             self.assertEqual(action.call_count, 1)
+        with patch.object(window, 'operate', return_value={
+                'content': image, 'width': 1, 'height': 1, 'session': 'a'*32,
+                'capture': 'visible-client-area', 'capture_fallback': True,
+                'capture_fallback_reason': '后台捕获返回全黑画面'}):
+            output = self.local/'fallback.png'
+            result = self.call('screenshot', '--session', 'a'*32, '--output', str(output))
+            self.assertEqual(result.exit_code, 0, result.output)
+            response = json.loads(result.stdout)
+            self.assertEqual(response['capture'], 'visible-client-area')
+            self.assertTrue(response['capture_fallback'])
+            self.assertEqual(response['capture_fallback_reason'], '后台捕获返回全黑画面')
         with patch.object(window, 'operate', return_value={'sent': True, 'released': True, 'effect_verified': False}) as action:
             result = self.call('key', '--session', 'a'*32, 'SHIFT+W', '--hold-ms', '500')
             self.assertEqual(result.exit_code, 0, result.output)

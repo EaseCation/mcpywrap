@@ -42,11 +42,8 @@ jobs:
             git merge-base --is-ancestor HEAD origin/main
             if ($LASTEXITCODE -ne 0) { throw 'Release tag must belong to main' }
           }
-      - name: Compile x86 bridge from source with MSVC
-        shell: cmd
-        run: |
-          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do call "%%i\Common7\Tools\VsDevCmd.bat" -arch=x86 -host_arch=x64
-          python scripts/build_mcs_auth_bridge.py --cc cl --output mcpywrap/mcstudio/bridge_payload
+      - name: Compile all native components from source
+        run: python scripts/build_all_native.py
       - name: Sign using protected repository secrets
         if: steps.mode.outputs.signed == 'true'
         shell: pwsh
@@ -55,6 +52,7 @@ jobs:
           MCS_BRIDGE_SIGNING_PASSWORD: ${{ secrets.MCS_BRIDGE_SIGNING_PASSWORD }}
         run: ./scripts/sign_mcs_auth_ci.ps1
       - run: python scripts/check_mcs_auth_bridge.py ${{ steps.mode.outputs.signed == 'true' && '--require-signed' || '' }}
+      - run: python scripts/check_window_capture.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mcs-auth-bridge
@@ -63,6 +61,13 @@ jobs:
             mcpywrap/mcstudio/bridge_payload/*.dll
             mcpywrap/mcstudio/bridge_payload/*.cer
             mcpywrap/mcstudio/bridge_payload/manifest.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: window-capture
+          path: |
+            mcpywrap/mcstudio/window_capture/*.exe
+            mcpywrap/mcstudio/window_capture/manifest.json
           if-no-files-found: error
 
   test:
@@ -84,9 +89,20 @@ jobs:
         with:
           name: mcs-auth-bridge
           path: mcpywrap/mcstudio/bridge_payload
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: window-capture
+          path: mcpywrap/mcstudio/window_capture
       - run: python -m pip install .
       - run: python -m pip check
+      - name: Verify installed native components
+        shell: pwsh
+        run: |
+          Push-Location $env:RUNNER_TEMP
+          python -c "from importlib.metadata import distribution; from pathlib import Path; import hashlib,json; root=Path(distribution('mcpywrap').locate_file('mcpywrap/mcstudio')); capture=root/'window_capture'; manifest=json.loads((capture/'manifest.json').read_text(encoding='utf-8')); assert hashlib.sha256((capture/'mcpy-window-capture.exe').read_bytes()).hexdigest()==manifest['executable_sha256']; bridge=root/'bridge_payload'; assert all((bridge/name).is_file() for name in ('Injector.exe','Loader.dll','McpyMcsAuth.dll','manifest.json'))"
+          Pop-Location
       - run: python scripts/check_mcs_auth_bridge.py
+      - run: python scripts/check_window_capture.py
       - name: Verify bridge signatures without changing certificate trust
         if: needs.native.outputs.signed == 'true'
         shell: pwsh
@@ -136,6 +152,10 @@ jobs:
         with:
           name: mcs-auth-bridge
           path: mcpywrap/mcstudio/bridge_payload
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: window-capture
+          path: mcpywrap/mcstudio/window_capture
       - run: python -m pip install build twine
       - name: Check release version and main ancestry
         shell: bash
@@ -154,6 +174,7 @@ jobs:
       - run: python -m build
       - run: python -m twine check --strict dist/*
       - run: python scripts/check_release.py
+      - run: python scripts/check_window_capture.py
       - run: python scripts/check_mcs_auth_bridge.py ${{ needs.native.outputs.signed == 'true' && '--require-signed' || '' }}
       - name: Smoke test the built wheel outside the checkout
         shell: bash

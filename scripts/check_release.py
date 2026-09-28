@@ -1,5 +1,6 @@
 """检查实际发布产物的版本、代码完整性及本机文件排除规则。"""
 from email.parser import BytesParser
+import json
 from pathlib import Path
 import tarfile
 import tomllib
@@ -23,8 +24,12 @@ with zipfile.ZipFile(wheel) as archive:
     assert any(requirement.startswith('pip>=') for requirement in metadata.get_all('Requires-Dist'))
     entries = archive.read(f'mcpywrap-{version}.dist-info/entry_points.txt').decode()
     assert 'mcpy = mcpywrap.__main__:main' in entries
-    bridge_files = {p.relative_to(root).as_posix() for p in (root/'mcpywrap/mcstudio/bridge_payload').iterdir() if p.is_file()}
+    bridge_manifest = json.loads((root/'mcpywrap/mcstudio/bridge_payload/manifest.json').read_text(encoding='utf-8'))
+    bridge_files = {f'mcpywrap/mcstudio/bridge_payload/{name}' for name in bridge_manifest['files']}
+    bridge_files.add('mcpywrap/mcstudio/bridge_payload/manifest.json')
     assert bridge_files <= wheel_names, 'Wheel missing signed bridge payload'
+    capture_files = {f'mcpywrap/mcstudio/window_capture/{name}' for name in ('mcpy-window-capture.exe', 'manifest.json')}
+    assert capture_files <= wheel_names, 'Wheel missing window capture helper'
 
 with tarfile.open(sdist) as archive:
     sdist_names = {'/'.join(Path(name).parts[1:]) for name in archive.getnames()}
@@ -35,6 +40,8 @@ with tarfile.open(sdist) as archive:
     assert skill_files <= sdist_names, f'Sdist missing skill files: {skill_files - sdist_names}'
     assert bridge_files <= sdist_names, 'Sdist missing signed bridge payload'
     assert 'native/mcs_auth/Bridge.cs' in sdist_names
+    assert capture_files <= sdist_names, 'Sdist missing window capture helper'
+    assert 'native/window_capture/window_capture.cpp' in sdist_names
 
 for name in wheel_names | sdist_names:
     parts = Path(name).parts

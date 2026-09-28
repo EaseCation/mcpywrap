@@ -1,8 +1,11 @@
 """Windows 游戏会话的键盘输入与客户区截图，仅依赖 Python 标准库。"""
 import ctypes as C
 from ctypes import wintypes as W
+import hashlib
+import json
 import os
 from pathlib import Path
+import subprocess
 import struct
 import time
 import zlib
@@ -169,6 +172,10 @@ class BitmapHeader(C.Structure):
                 ('used', W.DWORD), ('important', W.DWORD)]
 
 
+class BackgroundCaptureUnavailable(ValueError):
+    """The optional background capture path cannot produce a frame."""
+
+
 class GameWindow:
     def __init__(self, game, cancel=None):
         if os.name != 'nt':
@@ -331,30 +338,37 @@ class GameWindow:
                 'sent': True, 'released': True, 'effect_verified': False}
 
     def client_area(self):
+        return self._client_area(require_foreground=True, require_uncovered=True)
+
+    def _client_area(self, *, require_foreground, require_uncovered):
         rect, point = W.RECT(), W.POINT()
         if not self.user.GetClientRect(self.hwnd, C.byref(rect)) or not self.user.ClientToScreen(self.hwnd, C.byref(point)):
             raise ValueError('无法获取游戏客户区')
         width, height = rect.right, rect.bottom
         if not 1 <= width * height <= 32_000_000:
             raise ValueError('游戏窗口尺寸无效或超过 3200 万像素')
-        left, top = self.user.GetSystemMetrics(76), self.user.GetSystemMetrics(77)
-        if not (left <= point.x and top <= point.y and point.x + width <= left + self.user.GetSystemMetrics(78)
-                and point.y + height <= top + self.user.GetSystemMetrics(79)):
-            raise ValueError('游戏客户区部分位于屏幕外，无法可靠截图')
-        # 可见截图要求无上层窗口覆盖；宁可拒绝，也不截取其他应用内容。
-        for hwnd in self.windows():
-            if hwnd == self.hwnd:
-                break
-            if self.usable(hwnd) and not self.user.IsIconic(hwnd):
-                other = W.RECT()
-                if self.user.GetWindowRect(hwnd, C.byref(other)) and (
-                    max(other.left, point.x) < min(other.right, point.x + width) and
-                    max(other.top, point.y) < min(other.bottom, point.y + height)):
-                    raise ValueError('游戏客户区被其他窗口覆盖，请移开后重试')
-        self.check_foreground()
+        if require_foreground or require_uncovered:
+            left, top = self.user.GetSystemMetrics(76), self.user.GetSystemMetrics(77)
+            if not (left <= point.x and top <= point.y and point.x + width <= left + self.user.GetSystemMetrics(78)
+                    and point.y + height <= top + self.user.GetSystemMetrics(79)):
+                raise ValueError('游戏客户区部分位于屏幕外，无法可靠截图')
+        if require_uncovered:
+            # 可见截图要求无上层窗口覆盖；宁可拒绝，也不截取其他应用内容。
+            for hwnd in self.windows():
+                if hwnd == self.hwnd:
+                    break
+                if self.usable(hwnd) and not self.user.IsIconic(hwnd):
+                    other = W.RECT()
+                    if self.user.GetWindowRect(hwnd, C.byref(other)) and (
+                        max(other.left, point.x) < min(other.right, point.x + width) and
+                        max(other.top, point.y) < min(other.bottom, point.y + height)):
+                        raise ValueError('游戏客户区被其他窗口覆盖，请移开后重试')
+        if require_foreground:
+            self.check_foreground()
         return width, height, point
 
     def screenshot(self):
+        """Capture the visible client area after making the game foreground."""
         self.foreground()
         width, height, point = self.client_area()
         screen = self.user.GetDC(None)
@@ -392,6 +406,73 @@ class GameWindow:
                 self.gdi.DeleteDC(memory)
             if screen:
                 self.user.ReleaseDC(None, screen)
+
+    def _background_helper(self):
+        if os.name != 'nt':
+            raise BackgroundCaptureUnavailable('Windows Graphics Capture 仅支持 Windows')
+        helper = Path(__file__).with_name('window_capture') / 'mcpy-window-capture.exe'
+        if not helper.is_file():
+            raise BackgroundCaptureUnavailable('未安装 Windows Graphics Capture 辅助程序')
+        try:
+            manifest = json.loads(helper.with_name('manifest.json').read_text(encoding='utf-8'))
+            if hashlib.sha256(helper.read_bytes()).hexdigest() != manifest['executable_sha256']:
+                raise BackgroundCaptureUnavailable('Windows Graphics Capture 辅助程序完整性校验失败')
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise BackgroundCaptureUnavailable(f'Windows Graphics Capture 辅助程序校验失败: {exc}') from exc
+        return helper
+
+    def screenshot_background(self):
+        """Capture an occluded window without changing the foreground window."""
+        self.validate_process()
+        if self.owner(self.hwnd) != self.game['pid']:
+            raise ValueError('游戏窗口归属已改变')
+        if not self.usable(self.hwnd) or self.user.IsIconic(self.hwnd):
+            raise BackgroundCaptureUnavailable('游戏窗口不可进行后台捕获')
+        width, height, _ = self._client_area(require_foreground=False, require_uncovered=False)
+        helper = self._background_helper()
+        flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+        try:
+            completed = subprocess.run(
+                [str(helper), '--hwnd', str(int(self.hwnd))],
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=5, creationflags=flags, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise BackgroundCaptureUnavailable(f'后台捕获程序不可用: {exc}') from exc
+        if completed.returncode:
+            reason = completed.stderr.decode('utf-8', errors='replace').strip()
+            raise BackgroundCaptureUnavailable(reason or f'后台捕获程序退出码 {completed.returncode}')
+        header, separator, content = completed.stdout.partition(b'\n')
+        fields = header.decode('ascii', errors='replace').split()
+        if len(fields) != 4 or fields[0] != 'MCPYCAP1':
+            raise BackgroundCaptureUnavailable('后台捕获返回格式无效')
+        try:
+            captured_width, captured_height, content_size = map(int, fields[1:])
+        except ValueError as exc:
+            raise BackgroundCaptureUnavailable('后台捕获尺寸无效') from exc
+        if not separator or content_size != len(content) or content[:8] != b'\x89PNG\r\n\x1a\n':
+            raise BackgroundCaptureUnavailable('后台捕获没有返回有效 PNG')
+        if (captured_width, captured_height) != (width, height):
+            raise BackgroundCaptureUnavailable(
+                f'后台捕获尺寸 {captured_width}x{captured_height} 与客户区 {width}x{height} 不一致')
+        self.validate_process()
+        return content, captured_width, captured_height
+
+    def screenshot_with_fallback(self):
+        try:
+            content, width, height = self.screenshot_background()
+            return content, width, height, {
+                'capture': 'background-window', 'capture_fallback': False,
+            }
+        except BackgroundCaptureUnavailable as background_error:
+            try:
+                content, width, height = self.screenshot()
+            except Exception as visible_error:
+                raise ValueError(
+                    f'后台截图不可用: {background_error}; 前台回退失败: {visible_error}') from visible_error
+            return content, width, height, {
+                'capture': 'visible-client-area', 'capture_fallback': True,
+                'capture_fallback_reason': str(background_error),
+            }
 
     def mouse(self, action, *, x=None, y=None, width=None, height=None, to_x=None, to_y=None,
               dx=0, dy=0, delta=0, button='left', duration_ms=80, keys=()):
@@ -520,8 +601,8 @@ def operate(project, session, action, parameters=None, cancel=None):
     window = GameWindow(session_game(project, session), cancel=cancel)
     try:
         if action == 'screenshot':
-            content, width, height = window.screenshot()
-            result = {'content': content, 'width': width, 'height': height, 'capture': 'visible-client-area'}
+            content, width, height, capture = window.screenshot_with_fallback()
+            result = {'content': content, 'width': width, 'height': height, **capture}
         elif action == 'key':
             result = window.press(parameters['keys'], parameters.get('hold_ms', 80))
         elif action == 'mouse':
