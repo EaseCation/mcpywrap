@@ -52,6 +52,10 @@ def package_cmd(merge):
                     # 新构建器保留源包目录名；分发包仍遵循 PR 的 name_bp/name_rp 约定。
                     for kind, suffix in (('behavior', 'bp'), ('resource', 'rp')):
                         folder = getattr(builder.target_addon, kind + '_pack_dir')
+                        # 网易上传错误码24检查行为包entities目录；纯脚本Addon也保留
+                        # 空目录条目，不创建虚构实体，不修改项目源码或外层包名。
+                        if kind == 'behavior' and folder and Path(folder).is_dir():
+                            (Path(folder) / 'entities').mkdir(exist_ok=True)
                         _zip_dir_keep_empty(zipf, folder, f'{name}_{suffix}')
                 else:
                     _zip_dir_keep_empty(zipf, output, '')

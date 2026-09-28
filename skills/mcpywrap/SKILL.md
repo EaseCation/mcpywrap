@@ -63,6 +63,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 
 游戏使用内置 Python，不读取工具环境的 site-packages；原生扩展或依赖外部安装步骤的库不能直接用于游戏。处理 import 错误时检查组装后的代码和加载入口，不通过反复 pip 安装框架解决。
 构建时主项目优先；检查 package 返回的 `artifact`。`dev` 持续输出文本，不用 JSON；依赖声明变化后重启监控。
+网易Add-on生产包用公开 `mcpy package` 导出，不自行重压缩或更改包名。打包器需保留行为包entities空目录以满足平台结构检查；仅脚本Addon不应为此创建虚构实体。发布前检查实际ZIP，旧CLI可能尚未包含此修复；本地加载或上传201不证明平台自测通过。
 检查 ZIP 的实际内容及游戏脚本加载日志；pip 安装、系统 Python 导入或构建成功都不能代替游戏验收。`publish` 的 PyPI 分发与游戏 ZIP 分发不同。
 涉及具体玩法时，原版 API、事件、枚举和 JSON 组件须查证目标网易版本；不能套用 Java 版或通用 Bedrock 的名称。若提供了 netease-modsdk MCP，可查询精确接口、端侧、参数和备注；未查到的能力明确标为未验证。
 `publish --yes` 仅在用户请求真实上传时调用；卸载和实例删除也需相应明确选项。

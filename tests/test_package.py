@@ -62,6 +62,24 @@ class Packaging(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual({name.split('/')[0] for name in self.contents()}, {'demo_rp'})
 
+    def test_script_only_addon_has_entities_directory_without_dummy_entity(self):
+        result = self.invoke()
+        self.assertEqual(result.exit_code, 0, result.output)
+        files = self.contents()
+        self.assertEqual(files['demo_bp/entities/'], b'')
+        self.assertFalse(any(n.startswith('demo_bp/entities/') and n.endswith('.json') for n in files))
+        self.assertFalse((self.main / 'behavior_pack/entities').exists())
+
+    def test_real_entities_are_preserved_once(self):
+        folder = self.main / 'behavior_pack/entities'
+        folder.mkdir()
+        (folder / 'example.json').write_text('{"format_version":"1.10.0"}')
+        self.assertEqual(self.invoke().exit_code, 0)
+        files = self.contents()
+        self.assertEqual(files['demo_bp/entities/example.json'], b'{"format_version":"1.10.0"}')
+        with zipfile.ZipFile(self.main / 'dist/demo-0.1.0.zip') as archive:
+            self.assertEqual(archive.namelist().count('demo_bp/entities/'), 1)
+
     def test_map_layout_dependencies_and_merge(self):
         world = self.root / 'world'
         world.mkdir()
