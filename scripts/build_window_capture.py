@@ -28,7 +28,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     target = output / 'mcpy-window-capture.exe'
     command = [
-        str(compiler), '/nologo', '/std:c++17', '/EHsc', '/O2', '/MT', '/utf-8',
+        str(compiler), '/nologo', '/std:c++20', '/EHsc', '/O2', '/MT', '/utf-8',
         str(source), '/Fe:' + str(target),
         '/link', '/MACHINE:X64',
         'd3d11.lib', 'dxgi.lib', 'dwmapi.lib', 'ole32.lib', 'user32.lib',
