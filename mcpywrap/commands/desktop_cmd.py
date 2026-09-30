@@ -62,6 +62,6 @@ def key_cmd(session, keys, hold_ms):
 @click.option('--duration-ms', type=click.IntRange(20, 60000), default=80, show_default=True)
 @click.option('--keys', multiple=True, help='同时按住的修饰键，例如 SHIFT 或 CTRL+ALT')
 def mouse_cmd(session, **parameters):
-    """客户区鼠标操作；relative 用于视角转向，其他动作需 x/y/width/height。"""
+    """客户区鼠标操作；click-current 仅需宽高，relative 用于转向，其余需坐标与宽高。"""
     from ..mcstudio.window import operate
     return operate(project_dir(), session, 'mouse', parameters)

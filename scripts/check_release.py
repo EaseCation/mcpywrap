@@ -35,7 +35,7 @@ with tarfile.open(sdist) as archive:
     sdist_names = {'/'.join(Path(name).parts[1:]) for name in archive.getnames()}
     assert expected <= sdist_names, f'Sdist missing modules: {expected - sdist_names}'
     assert 'tests/test_local_dependencies.py' in sdist_names
-    assert {'docs/code-libraries.md', 'docs/git-dependencies.md', 'docs/qumod.md'} <= sdist_names
+    assert {'docs/code-libraries.md', 'docs/git-dependencies.md', 'docs/qumod.md', 'docs/runtime-debug.md'} <= sdist_names
     skill_files = {p.relative_to(root).as_posix() for p in (root / 'skills').rglob('*') if p.is_file() and '__pycache__' not in p.parts}
     assert skill_files <= sdist_names, f'Sdist missing skill files: {skill_files - sdist_names}'
     assert bridge_files <= sdist_names, 'Sdist missing signed bridge payload'

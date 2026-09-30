@@ -93,7 +93,7 @@ class QuModWorkflow(QuModFixture):
         self.assertEqual(entry['target'], 'Demo/QuModLibs')
         self.assertFalse((self.main / 'behavior_pack/Demo/QuModLibs').exists())
         self.assertIn('EasyMod, QMain', (self.main / 'behavior_pack/Demo/modMain.py').read_text('utf-8'))
-        self.assertIn('.mcpy/', (self.main / '.gitignore').read_text())
+        self.assertIn('.mcpy/', (self.main / '.gitignore').read_text(encoding='utf-8'))
         before = (self.main / 'pyproject.toml').read_bytes(), (self.main / LOCK_FILE).read_bytes()
         result = self.call('add', '--qumod')
         self.assertEqual(result.exit_code, 0, result.output)

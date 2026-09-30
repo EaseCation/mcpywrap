@@ -177,6 +177,11 @@ def reload_session(project, session, kind, target=None, source=None, side='clien
         raise ValueError('热更模块源码必须是字节内容且不超过 24 KiB')
     result = control_request(project, session, 'reload', kind=kind, target=target, side=side,
                              **({'source': base64.b64encode(source).decode('ascii')} if source else {}))
+    actual_side = result.get('side')
+    if kind == 'python' and (actual_side not in (None, side) or
+                            (result.get('state') == 'completed' and actual_side is None)):
+        result.update(state='unknown', code='reload_side_mismatch', expected_side=side,
+                      error='worker 返回的执行端侧与请求不一致；副作用未确认，请检查会话，不要自动重试。')
     value = result.get('value')
     if result.get('state') == 'completed' and isinstance(value, dict):
         if value.get('unsupported'):

@@ -1,5 +1,6 @@
 include LICENSE README.md CHANGELOG.md
 include docs/releasing.md
+include docs/runtime-debug.md
 include docs/local-dependencies.md docs/engine-discovery.md docs/development.md
 include docs/mcs-auth.md
 include docs/code-libraries.md docs/git-dependencies.md docs/qumod.md

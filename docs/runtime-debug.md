@@ -18,7 +18,9 @@ mcpy --local --project D:\mods\demo runtime watch --session <id>
 
 Python 热更要求模块已加载，使用当前项目或已装配依赖包内的源码更新该模块命名空间。它不会自动重建已存在的类实例、事件订阅或游戏世界状态。`runtime watch` 只对成功组装的变更触发热更；停止监控不停止游戏。顶层 `py`、`reload` 和 `dev --reload-session` 暂时保留为旧脚本兼容入口，不再出现在常规帮助中。
 
-手动Python热更可显式`--side server`；默认client只适合客户端或不执行端侧API的纯逻辑模块。服务端模块在client上下文重新初始化可把GetLevelId缓存为None，不能只检查模块执行成功。资源热更仅client；watch目前沿用client默认值。升级后已启动worker不会自动更换，新增端侧参数需在正常重启自己的测试会话后使用。
+从0.3.13起，手动Python热更可显式`--side server`；默认client只适合客户端或不执行端侧API的纯逻辑模块。服务端模块在client上下文重新初始化可缓存无效组件，不能只检查模块执行成功。资源热更仅client；watch仍沿用client默认值。
+
+worker启动时在现有control.json声明`python_reload_sides`。服务端热更在建立执行连接前检查该字段；旧worker缺失能力时不会收到源码，须正常保存并重启会话。客户端热更保留旧worker兼容。返回端侧与请求不一致，或成功结果缺失端侧时，结果为unknown／reload_side_mismatch；可能已有副作用，不能自动重试。更新CLI不会替换正在运行的worker。
 
 ## 实机结果
 

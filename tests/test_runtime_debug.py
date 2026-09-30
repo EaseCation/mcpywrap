@@ -14,7 +14,7 @@ from click.testing import CliRunner
 
 from mcpywrap.cli import cli
 from mcpywrap.mcstudio.hot_reload import reload_code, target_from_file, reload_session
-from mcpywrap.mcstudio.runtime_debug import SafaiaChannel, RuntimeControlServer, frame, recv_frame, recv_exact, script_request
+from mcpywrap.mcstudio.runtime_debug import SafaiaChannel, RuntimeControlServer, frame, recv_frame, recv_exact, script_request, control_request
 from mcpywrap.commands.dev_cmd import changed_reload_targets
 
 
@@ -30,9 +30,62 @@ class RuntimeDebugTests(unittest.TestCase):
 
     def test_reload_transport_preserves_server_side(self):
         with patch('mcpywrap.mcstudio.sessions.read',return_value={'mode':'local','game':{'executable':'engine/game.exe'}}), \
-             patch('mcpywrap.mcstudio.runtime_debug.control_request',return_value={'state':'completed','value':{'ok':True}}) as request:
+             patch('mcpywrap.mcstudio.runtime_debug.control_request',return_value={'state':'completed','side':'server','value':{'ok':True}}) as request:
             reload_session('.', 'a'*32, 'python', 'Demo.server', source=b'VALUE=2', side='server')
         self.assertEqual(request.call_args.kwargs['side'],'server')
+
+    def test_wrong_or_missing_execution_side_is_unknown_not_success(self):
+        for response in ({'state': 'completed', 'side': 'client'},
+                         {'state': 'completed'}, {'state': 'failed', 'side': 'client'}):
+            with self.subTest(response=response), \
+                 patch('mcpywrap.mcstudio.sessions.read', return_value={'mode': 'local'}), \
+                 patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value=dict(response)) as request:
+                result = reload_session('.', 'a'*32, 'python', 'Demo.server', source=b'VALUE=2', side='server')
+            self.assertEqual(result['state'], 'unknown')
+            self.assertEqual(result['code'], 'reload_side_mismatch')
+            self.assertEqual(result['expected_side'], 'server')
+            request.assert_called_once()
+
+    def test_legacy_worker_rejected_before_sending_server_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            for sides in (None, ['client'], 'server'):
+                settings = {'port': 1, 'token': 'test-token'}
+                if sides is not None:
+                    settings['python_reload_sides'] = sides
+                (directory/'control.json').write_text(json.dumps(settings), encoding='utf-8')
+                with self.subTest(sides=sides), \
+                     patch('mcpywrap.mcstudio.sessions.session_path', return_value=directory), \
+                     patch('mcpywrap.mcstudio.sessions.read', return_value={'state': 'running', 'worker': {'pid': 1}}), \
+                     patch('mcpywrap.mcstudio.processes.checked_process', return_value=True), \
+                     patch('mcpywrap.mcstudio.runtime_debug.socket.create_connection') as connect:
+                    with self.assertRaisesRegex(ValueError, '未发送执行请求'):
+                        control_request('.', 'a'*32, 'reload', kind='python', target='Demo.server',
+                                        side='server', source=base64.b64encode(b'VALUE=2').decode())
+                    connect.assert_not_called()
+
+    def test_advertised_sides_and_legacy_client_use_real_control_transport(self):
+        channel = Mock()
+        channel.execute.side_effect = lambda code, side: {'state': 'completed', 'side': side, 'value': {'ok': True}}
+        control = RuntimeControlServer(channel, 'test-token')
+        control.start()
+        self.addCleanup(control.close)
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            for advertised, side in ((True, 'client'), (True, 'server'), (False, 'client')):
+                settings = {'port': control.server_address[1], 'token': 'test-token'}
+                if advertised:
+                    settings['python_reload_sides'] = ['client', 'server']
+                (directory/'control.json').write_text(json.dumps(settings), encoding='utf-8')
+                with self.subTest(advertised=advertised, side=side), \
+                     patch('mcpywrap.mcstudio.sessions.session_path', return_value=directory), \
+                     patch('mcpywrap.mcstudio.sessions.read', return_value={'state': 'running', 'worker': {'pid': 1}}), \
+                     patch('mcpywrap.mcstudio.processes.checked_process', return_value=True):
+                    result = control_request('.', 'a'*32, 'reload', kind='python', target='Demo.logic',
+                                             side=side, source=base64.b64encode(b'VALUE=2').decode())
+                self.assertEqual(result['state'], 'completed')
+                self.assertEqual(result['side'], side)
+                self.assertEqual(channel.execute.call_args.args[1], side)
 
     def test_worker_executes_server_reload_in_server_context(self):
         channel=Mock();channel.execute.return_value={'state':'completed'}

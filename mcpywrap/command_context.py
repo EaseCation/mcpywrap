@@ -47,13 +47,18 @@ def human_interaction():
 
 def report_dependency_warnings(manager):
     """CLI 展示与 JSON 共用诊断；解析服务本身不进行输出。"""
-    current = _context.get()
     for message in manager.warnings:
-        if current is not None:
-            if message in current.warnings:
-                continue
-            current.warnings.append(message)
-        click.secho(message, fg='yellow', err=True)
+        report_warning(message)
+
+
+def report_warning(message):
+    """Keep non-fatal diagnostics visible in both human and JSON output."""
+    current = _context.get()
+    if current is not None:
+        if message in current.warnings:
+            return
+        current.warnings.append(message)
+    click.secho(message, fg='yellow', err=True)
 
 
 @contextlib.contextmanager

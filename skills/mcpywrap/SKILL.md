@@ -132,4 +132,4 @@ mcpy --local --project "<Windows项目>" runtime watch --session <id>
 
 `runtime reload` 还支持 `shader`、`material` 和 `particle`；引擎没有对应接口或已知会阻塞时返回 `unsupported`。3.9.0.401155／3.10.0.420447 的 Shader 已禁用；JSON UI 的 `triggered` 只表示快捷键已投递，须用画面确认效果。`runtime watch` 在成功组装文件后触发重载，停止监控不会停止游戏。不要对远程联机会话执行热更。
 
-含服务端组件初始化的Python模块必须在服务端执行热更，先检查`runtime reload --help`包含`--side`；旧版默认在客户端执行会使服务端GetLevelId返回None。资源热更只能在客户端；watch当前默认客户端，不用于自动重载带服务端初始化的模块。更新CLI不更新已经运行的worker，需在下次正常启动自己的会话后使用新增端侧参数。首次runtime执行前先确认游戏加载完成；Safaia已连接不代表脚本系统已初始化。
+含服务端组件初始化的Python模块必须在服务端执行热更；服务端热更要求0.3.13+的CLI与新启动worker。工具在发送源码前检查worker声明的端侧能力，旧worker不支持时先正常保存并重启自己的会话。返回`reload_side_mismatch`表示执行端侧未确认，可能已有副作用，不自动重试。资源热更只能在客户端；watch当前默认客户端，不用于自动重载带服务端初始化的模块。首次runtime执行前先确认游戏加载完成；Safaia已连接不代表脚本系统已初始化。

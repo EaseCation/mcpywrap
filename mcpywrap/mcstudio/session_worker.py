@@ -68,7 +68,8 @@ def run(project, session):
         control_server = RuntimeControlServer(debug_channel, token)
         control_server.start()
         sessions.save(directory/'control.json', {'port': control_server.server_address[1],
-                                                 'token': token})
+                                                 'token': token,
+                                                 'python_reload_sides': ['client', 'server']})
         data.update(state='running', game=identity(process.pid))
         sessions.save(path, data)
         while process.poll() is None:

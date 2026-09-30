@@ -347,6 +347,10 @@ def control_request(project, session, action, **options):
     if not path.is_file():
         raise ValueError('此会话没有运行时调试通道；请更新 CLI 后重新启动游戏')
     settings = json.loads(path.read_text(encoding='utf-8'))
+    if action == 'reload' and options.get('kind') == 'python' and options.get('side') == 'server':
+        sides = settings.get('python_reload_sides')
+        if not isinstance(sides, list) or 'server' not in sides:
+            raise ValueError('当前 worker 不支持服务端 Python 热更；请正常保存并重启此会话。未发送执行请求。')
     payload = json.dumps({'token': settings['token'], 'action': action, **options},
                          ensure_ascii=True).encode('utf-8')
     if len(payload) > MAX_CODE * 2 + 4096:

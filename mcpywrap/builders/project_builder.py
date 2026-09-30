@@ -4,7 +4,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from ..command_context import report_dependency_warnings
+from ..command_context import report_dependency_warnings, report_warning
 from ..dependencies import DependencyError, DependencyService, addon_directories, read_project
 from .AddonsPack import AddonsPack
 from .MapPack import MapPack
@@ -75,22 +75,39 @@ class AddonProjectBuilder:
             self.initialize()
             target = Path(self.target_dir)
             target.parent.mkdir(parents=True, exist_ok=True)
-            with tempfile.TemporaryDirectory(prefix='.mcpy-build-', dir=target.parent) as temporary:
-                stage = Path(temporary) / 'output'
+            temporary = Path(tempfile.mkdtemp(prefix='.mcpy-build-', dir=target.parent))
+            backup = temporary / 'previous'
+            installed = False
+            try:
+                stage = temporary / 'output'
                 stage.mkdir()
                 staged_addon = AddonsPack(self.project_name, stage)
                 for kind in ('behavior', 'resource'):
                     setattr(staged_addon, kind + '_pack_dir', str(stage / Path(getattr(self.target_addon, kind + '_pack_dir')).name))
                 assemble_addon(self.packs, staged_addon)
-                backup = Path(temporary) / 'previous'
                 if target.exists():
                     _replace_with_retry(target, backup)
                 try:
                     _replace_with_retry(stage, target)
-                except OSError:
+                    installed = True
+                except OSError as install_error:
                     if backup.exists():
-                        _replace_with_retry(backup, target)
+                        try:
+                            _replace_with_retry(backup, target)
+                        except OSError as restore_error:
+                            raise OSError('安装新构建失败: %s；恢复旧构建失败: %s；旧构建保留于 %s，目标为 %s'
+                                          % (install_error, restore_error, backup, target)) from install_error
                     raise
+            finally:
+                # Also preserve the old build if interrupted between renames.
+                # No TemporaryDirectory finalizer may remove this recovery copy.
+                if backup.exists() and not installed:
+                    report_warning('旧构建恢复目录已保留: %s；目标: %s' % (backup, target))
+                else:
+                    try:
+                        shutil.rmtree(temporary)
+                    except OSError as cleanup_error:
+                        report_warning('构建临时目录未清理: %s (%s)' % (temporary, cleanup_error))
             return True, None
         except (DependencyError, OSError, ValueError) as exc:
             return False, str(exc)
