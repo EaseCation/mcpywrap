@@ -47,7 +47,7 @@ def key_cmd(session, keys, hold_ms):
 
 
 @click.command(cls=OperationCommand)
-@click.argument('action', type=click.Choice(['move', 'click', 'double-click', 'scroll', 'drag', 'relative']))
+@click.argument('action', type=click.Choice(['move', 'click', 'click-current', 'double-click', 'scroll', 'drag', 'relative']))
 @click.option('--session', required=True)
 @click.option('--x', type=int)
 @click.option('--y', type=int)

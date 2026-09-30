@@ -41,7 +41,9 @@ def py_cmd(session, side, code, filename):
 @click.option('--session', required=True, help='本地世界会话 ID')
 @click.option('--file', 'filename', type=click.Path(dir_okay=False), help='当前项目内的目标文件')
 @click.option('--module', help='Python 模块名，例如 MyMod.client.logic')
-def reload_cmd(kind, session, filename, module):
+@click.option('--side', type=click.Choice(['client', 'server']), default='client', show_default=True,
+              help='Python 执行端侧；资源热更仅支持 client')
+def reload_cmd(kind, session, filename, module, side):
     """重载本地测试世界中的一个模块或资源。"""
     from ..command_context import remote_url
     from ..mcstudio.hot_reload import reload_session, target_from_file
@@ -49,11 +51,13 @@ def reload_cmd(kind, session, filename, module):
         raise click.UsageError('远程联机会话暂不支持热更；Windows 本地世界请显式使用 --local')
     if module and (kind != 'python' or filename):
         raise click.UsageError('--module 仅可单独用于 Python 热更')
+    if side == 'server' and kind != 'python':
+        raise click.UsageError('--side server 仅适用于 Python 模块')
     if not filename and not module and kind != 'ui':
         raise click.UsageError('此热更类型需要 --file 或 --module')
     target = target_from_file(project_dir(), kind, filename) if filename else module
     source = Path(filename).read_bytes() if filename and kind == 'python' else None
-    result = reload_session(project_dir(), session, kind, target, source=source)
+    result = reload_session(project_dir(), session, kind, target, source=source, side=side)
     return {'ok': result.get('state') in ('completed', 'triggered'), 'session': session, **result}
 
 

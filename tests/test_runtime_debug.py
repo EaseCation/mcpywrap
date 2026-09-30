@@ -3,21 +3,51 @@ import base64
 import json
 import re
 import socket
+import struct
 import tempfile
 import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from click.testing import CliRunner
 
 from mcpywrap.cli import cli
-from mcpywrap.mcstudio.hot_reload import reload_code, target_from_file
-from mcpywrap.mcstudio.runtime_debug import SafaiaChannel, frame, recv_frame, script_request
+from mcpywrap.mcstudio.hot_reload import reload_code, target_from_file, reload_session
+from mcpywrap.mcstudio.runtime_debug import SafaiaChannel, RuntimeControlServer, frame, recv_frame, recv_exact, script_request
 from mcpywrap.commands.dev_cmd import changed_reload_targets
 
 
 class RuntimeDebugTests(unittest.TestCase):
+    def test_server_reload_cli_routes_selected_side(self):
+        with patch('mcpywrap.mcstudio.hot_reload.reload_session', return_value={'state':'completed'}) as call:
+            result=CliRunner().invoke(cli,['--local','runtime','reload','python','--session','a'*32,
+                                          '--module','Demo.server','--side','server','--json'])
+        self.assertEqual(result.exit_code,0,result.output)
+        self.assertEqual(call.call_args.kwargs['side'],'server')
+        bad=CliRunner().invoke(cli,['--local','runtime','reload','ui','--session','a'*32,'--side','server','--json'])
+        self.assertNotEqual(bad.exit_code,0)
+
+    def test_reload_transport_preserves_server_side(self):
+        with patch('mcpywrap.mcstudio.sessions.read',return_value={'mode':'local','game':{'executable':'engine/game.exe'}}), \
+             patch('mcpywrap.mcstudio.runtime_debug.control_request',return_value={'state':'completed','value':{'ok':True}}) as request:
+            reload_session('.', 'a'*32, 'python', 'Demo.server', source=b'VALUE=2', side='server')
+        self.assertEqual(request.call_args.kwargs['side'],'server')
+
+    def test_worker_executes_server_reload_in_server_context(self):
+        channel=Mock();channel.execute.return_value={'state':'completed'}
+        control=RuntimeControlServer(channel,'test-token');control.start()
+        try:
+            payload=json.dumps({'token':'test-token','action':'reload','kind':'python','target':'Demo.server',
+                                'side':'server','source':base64.b64encode(b'VALUE=2').decode('ascii')}).encode()
+            with socket.create_connection(control.server_address,timeout=2) as client:
+                client.sendall(struct.pack('!I',len(payload))+payload)
+                size=struct.unpack('!I',recv_exact(client,4))[0]
+                result=json.loads(recv_exact(client,size))
+            self.assertEqual(result['state'],'completed')
+            self.assertEqual(channel.execute.call_args.args[1],'server')
+        finally:control.close()
+
     def test_runtime_group_is_public_and_old_commands_are_hidden(self):
         runner = CliRunner()
         root_help = runner.invoke(cli, ['--help']).output

@@ -156,9 +156,11 @@ def reload_ui(project, session):
     return {'state': 'triggered', 'kind': 'ui', 'effect_verified': False}
 
 
-def reload_session(project, session, kind, target=None, source=None):
+def reload_session(project, session, kind, target=None, source=None, side='client'):
     from . import sessions
     from .runtime_debug import control_request
+    if side not in ('client', 'server') or (side == 'server' and kind != 'python'):
+        raise ValueError('服务端热更仅支持 Python 模块')
     data = sessions.read(project, session)
     if data.get('mode') != 'local':
         raise ValueError('热更只支持 Windows 本地测试世界')
@@ -173,7 +175,7 @@ def reload_session(project, session, kind, target=None, source=None):
     source = (source if source is not None else module_source(project, target)) if kind == 'python' else None
     if source is not None and (not isinstance(source, bytes) or len(source) > 24000):
         raise ValueError('热更模块源码必须是字节内容且不超过 24 KiB')
-    result = control_request(project, session, 'reload', kind=kind, target=target,
+    result = control_request(project, session, 'reload', kind=kind, target=target, side=side,
                              **({'source': base64.b64encode(source).decode('ascii')} if source else {}))
     value = result.get('value')
     if result.get('state') == 'completed' and isinstance(value, dict):

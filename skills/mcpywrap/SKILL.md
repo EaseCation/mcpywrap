@@ -103,6 +103,7 @@ mcpy --remote <endpoint> mouse click --session <id> --x 400 --y 300 --width 1280
 本机操作把 remote 改成 `--local --project "<Windows项目>"`。兼容脚本 [game_window.py](scripts/game_window.py) 的 `--remote/--local/--project/--command` 放在 screenshot/key/mouse 之前。
 截图保存到调用端、不覆盖文件；查看 `image` 确认画面。绝对坐标对应截图客户区宽高，尺寸变化后重新截图。
 键盘支持组合与 VK/SC/E0；鼠标支持点击、双击、滚轮、拖拽和 relative。相对位移不保证触屏模式转向，必要时在视角区域拖拽；均以截图验证效果。
+世界准星已瞄准时，可用`mouse click-current --width <截图宽> --height <截图高> --button right`避免绝对鼠标移动带动视角。此操作仍核验会话、前台、画布大小、鼠标位于客户区且没有其他窗口遮挡；不是后台点击。组合点击先让修饰键状态同步，再发送鼠标按下，发送成功仍需检查游戏实际状态。
 **F11** 切换鼠标／触屏模式，**F3** 循环调试层。切换后确认画面，测试结束恢复原状态，除非用户要求保留。
 失焦、遮挡或释放失败时按[故障排查](references/troubleshooting.md)处理；不连续猜测输入。所有持有操作有时限并释放本次按键／按钮。
 [smoke.py](scripts/smoke.py) 默认检查并打包；Windows 本地世界用 `--local --game`，远端用 `--remote <地址> --connect <服务器>`，均可显式加 `--mcs-auth`。
@@ -124,8 +125,11 @@ mcpy --remote <endpoint> --non-interactive runtime py --session <id> --file ./pr
 
 ```powershell
 mcpy --local --project "<Windows项目>" runtime reload python --session <id> --module MyMod.client.logic --json
+mcpy --local --project "<Windows项目>" runtime reload python --session <id> --module MyMod.server.logic --side server --json
 mcpy --local --project "<Windows项目>" runtime reload ui --session <id> --json
 mcpy --local --project "<Windows项目>" runtime watch --session <id>
 ```
 
 `runtime reload` 还支持 `shader`、`material` 和 `particle`；引擎没有对应接口或已知会阻塞时返回 `unsupported`。3.9.0.401155／3.10.0.420447 的 Shader 已禁用；JSON UI 的 `triggered` 只表示快捷键已投递，须用画面确认效果。`runtime watch` 在成功组装文件后触发重载，停止监控不会停止游戏。不要对远程联机会话执行热更。
+
+含服务端组件初始化的Python模块必须在服务端执行热更，先检查`runtime reload --help`包含`--side`；旧版默认在客户端执行会使服务端GetLevelId返回None。资源热更只能在客户端；watch当前默认客户端，不用于自动重载带服务端初始化的模块。更新CLI不更新已经运行的worker，需在下次正常启动自己的会话后使用新增端侧参数。首次runtime执行前先确认游戏加载完成；Safaia已连接不代表脚本系统已初始化。

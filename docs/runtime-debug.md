@@ -7,6 +7,7 @@ mcpy --local --project D:\mods\demo run --no-gui --detach --json
 mcpy --local --project D:\mods\demo runtime py --session <id> --side client --code "1+1" --json
 mcpy --local --project D:\mods\demo runtime py --session <id> --side server --file .\probe.py --json
 mcpy --local --project D:\mods\demo runtime reload python --session <id> --file .\behavior_pack\MyMod\config.py --json
+mcpy --local --project D:\mods\demo runtime reload python --session <id> --module MyMod.server.logic --side server --json
 mcpy --local --project D:\mods\demo runtime reload ui --session <id> --json
 mcpy --local --project D:\mods\demo runtime watch --session <id>
 ```
@@ -16,6 +17,8 @@ mcpy --local --project D:\mods\demo runtime watch --session <id>
 `state=completed` 表示脚本返回；`failed` 包含异常；`unavailable` 表示连接未就绪；`unknown` 表示等待超时，代码可能继续运行，不能自动重试。同一会话的前一个未知请求结束前会拒绝新的脚本。执行结果限制 256 KiB，代码限制 32 KiB。
 
 Python 热更要求模块已加载，使用当前项目或已装配依赖包内的源码更新该模块命名空间。它不会自动重建已存在的类实例、事件订阅或游戏世界状态。`runtime watch` 只对成功组装的变更触发热更；停止监控不停止游戏。顶层 `py`、`reload` 和 `dev --reload-session` 暂时保留为旧脚本兼容入口，不再出现在常规帮助中。
+
+手动Python热更可显式`--side server`；默认client只适合客户端或不执行端侧API的纯逻辑模块。服务端模块在client上下文重新初始化可把GetLevelId缓存为None，不能只检查模块执行成功。资源热更仅client；watch目前沿用client默认值。升级后已启动worker不会自动更换，新增端侧参数需在正常重启自己的测试会话后使用。
 
 ## 实机结果
 

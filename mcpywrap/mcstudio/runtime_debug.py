@@ -303,7 +303,10 @@ class _ControlHandler(socketserver.BaseRequestHandler):
                 source = request.get('source')
                 source = base64.b64decode(source, validate=True) if source is not None else None
                 code = reload_code(request.get('kind'), request.get('target'), source)
-                result = self.server.channel.execute(code, 'client')
+                side = request.get('side', 'client')
+                if side == 'server' and request.get('kind') != 'python':
+                    raise ValueError('服务端热更仅支持 Python 模块')
+                result = self.server.channel.execute(code, side)
             else:
                 raise ValueError('未知的会话操作')
         except (OSError, ValueError, KeyError, UnicodeError) as exc:

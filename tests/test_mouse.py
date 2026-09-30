@@ -46,13 +46,56 @@ class MouseTests(unittest.TestCase):
                 target.mouse('click', **args)
         self.assertEqual(events, [])
 
+    def test_current_click_does_not_move_captured_game_cursor(self):
+        target,events=self.target();target.game={'pid':123};target.owner=Mock(return_value=123)
+        def cursor(pointer):pointer._obj.x=-1000;pointer._obj.y=300;return True
+        target.user.GetCursorPos.side_effect=cursor
+        target.mouse('click-current',width=800,height=600,duration_ms=20)
+        self.assertEqual([v[-1] for v in events],[2,4])
+        events.clear();target.owner.return_value=999
+        with self.assertRaisesRegex(ValueError,'遮挡'):
+            target.mouse('click-current',width=800,height=600)
+        self.assertEqual(events,[])
+
+    def test_current_click_rejects_cursor_outside_game(self):
+        target,events=self.target()
+        def cursor(pointer):pointer._obj.x=0;pointer._obj.y=0;return True
+        target.user.GetCursorPos.side_effect=cursor
+        with self.assertRaisesRegex(ValueError,'客户区'):
+            target.mouse('click-current',width=800,height=600)
+        self.assertEqual(events,[])
+
     def test_drag_failure_releases_button_and_keys(self):
         target, events = self.target()
-        target.check_foreground.side_effect = [None, None, None, ValueError('focus lost')]
+        original_send=target.user.SendInput.side_effect
+        def lose_focus_after_down(count,pointer,size):
+            result=original_send(count,pointer,size)
+            if pointer._obj.kind==0 and pointer._obj.mouse.flags==2:
+                target.check_foreground.side_effect=ValueError('focus lost')
+            return result
+        target.user.SendInput.side_effect=lose_focus_after_down
         with self.assertRaisesRegex(ValueError, 'focus lost'):
             target.mouse('drag', x=1, y=1, to_x=100, to_y=100, width=800, height=600, keys=['CTRL'])
         self.assertEqual(events[-2][-1], 4)
         self.assertEqual(events[-1], ('key', 0xA2, 2))
+
+    def test_modifier_lead_time_and_safe_release_before_click(self):
+        target,events=self.target()
+        clock=[0.0];down=[];original_send=target.user.SendInput.side_effect
+        def send(count,pointer,size):
+            if pointer._obj.kind==0 and pointer._obj.mouse.flags==2:down.append(clock[0])
+            return original_send(count,pointer,size)
+        target.user.SendInput.side_effect=send
+        with patch.object(window.time,'monotonic',side_effect=lambda:clock[0]), \
+             patch.object(window.time,'sleep',side_effect=lambda seconds:clock.__setitem__(0,clock[0]+seconds)):
+            target.mouse('click',x=20,y=20,width=800,height=600,keys=['SHIFT'])
+        self.assertGreaterEqual(down[0],.15)
+        target,events=self.target()
+        target.check_foreground.side_effect=[None,None,ValueError('focus lost')]
+        with self.assertRaisesRegex(ValueError,'focus lost'):
+            target.mouse('click',x=20,y=20,width=800,height=600,keys=['SHIFT'])
+        self.assertEqual(events[-1],('key',0xA0,2))
+        self.assertFalse(any(e[0]=='mouse' and e[-1]==2 for e in events))
 
     def test_relative_movement_sums_to_requested_delta(self):
         target, events = self.target()

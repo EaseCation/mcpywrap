@@ -202,10 +202,14 @@ class GameWindow:
             (self.user, 'IsIconic', W.BOOL, [W.HWND]),
             (self.user, 'ShowWindow', W.BOOL, [W.HWND, C.c_int]),
             (self.user, 'SetForegroundWindow', W.BOOL, [W.HWND]),
+            (self.user, 'AttachThreadInput', W.BOOL, [W.DWORD, W.DWORD, W.BOOL]),
+            (self.kernel, 'GetCurrentThreadId', W.DWORD, []),
             (self.user, 'GetForegroundWindow', W.HWND, []),
             (self.user, 'GetClientRect', W.BOOL, [W.HWND, C.POINTER(W.RECT)]),
             (self.user, 'GetWindowRect', W.BOOL, [W.HWND, C.POINTER(W.RECT)]),
             (self.user, 'ClientToScreen', W.BOOL, [W.HWND, C.POINTER(W.POINT)]),
+            (self.user, 'GetCursorPos', W.BOOL, [C.POINTER(W.POINT)]),
+            (self.user, 'WindowFromPoint', W.HWND, [W.POINT]),
             (self.user, 'GetWindowTextW', C.c_int, [W.HWND, W.LPWSTR, C.c_int]),
             (self.user, 'GetSystemMetrics', C.c_int, [C.c_int]),
             (self.user, 'GetAsyncKeyState', C.c_short, [C.c_int]),
@@ -284,6 +288,20 @@ class GameWindow:
             self.user.ShowWindow(self.hwnd, 9)
         if self.user.GetForegroundWindow() != self.hwnd:
             self.user.SetForegroundWindow(self.hwnd)
+        if self.user.GetForegroundWindow() != self.hwnd:
+            # Windows can deny a short-lived CLI foreground rights even after
+            # the user selected its game. Temporarily share the foreground
+            # input queue; never send a workaround keystroke to another app.
+            current_thread = self.kernel.GetCurrentThreadId()
+            foreground = self.user.GetForegroundWindow()
+            foreground_thread = self.user.GetWindowThreadProcessId(foreground, None) if foreground else 0
+            if foreground_thread and foreground_thread != current_thread:
+                attached = self.user.AttachThreadInput(current_thread, foreground_thread, True)
+                if attached:
+                    try:
+                        self.user.SetForegroundWindow(self.hwnd)
+                    finally:
+                        self.user.AttachThreadInput(current_thread, foreground_thread, False)
         deadline = time.monotonic() + 2
         while self.user.GetForegroundWindow() != self.hwnd and time.monotonic() < deadline:
             time.sleep(0.05)
@@ -476,7 +494,7 @@ class GameWindow:
 
     def mouse(self, action, *, x=None, y=None, width=None, height=None, to_x=None, to_y=None,
               dx=0, dy=0, delta=0, button='left', duration_ms=80, keys=()):
-        if action not in ('move', 'click', 'double-click', 'scroll', 'drag', 'relative'):
+        if action not in ('move', 'click', 'click-current', 'double-click', 'scroll', 'drag', 'relative'):
             raise ValueError('未知鼠标动作')
         if type(duration_ms) is not int or not 20 <= duration_ms <= 60000:
             raise ValueError('duration-ms 必须在 20–60000 之间')
@@ -493,7 +511,8 @@ class GameWindow:
         if action != 'relative':
             if type(width) is not int or type(height) is not int or (width, height) != (area_width, area_height):
                 raise ValueError('客户区尺寸与截图不一致，请重新截图')
-            for px, py in [(x, y)] + ([(to_x, to_y)] if action == 'drag' else []):
+            coordinates=[] if action=='click-current' else [(x,y)]+([(to_x,to_y)] if action=='drag' else [])
+            for px, py in coordinates:
                 if type(px) is not int or type(py) is not int or not (0 <= px < width and 0 <= py < height):
                     raise ValueError('鼠标坐标不在游戏客户区内')
         for vk in MODIFIERS | {1, 2, 4}:
@@ -534,12 +553,25 @@ class GameWindow:
                 event = Input(kind=1, keyboard=Keyboard(key.vk, 0, int(key.extended), 0, 0))
                 pressed.append(Input(kind=1, keyboard=Keyboard(key.vk, 0, int(key.extended) | 2, 0, 0)))
                 send(event)
-            if action != 'relative':
+            if action not in ('relative','click-current'):
                 absolute(x, y)
-            if action in ('click', 'double-click', 'drag'):
+            if modifiers:
+                # A game may replicate modifier state (e.g. sneaking) before
+                # handling the click. Same-frame key-down + mouse-down can be
+                # interpreted as an unmodified action. Keep focus guarded.
+                pause(.15)
+            if action in ('click', 'click-current', 'double-click', 'drag'):
                 repeats = 2 if action == 'double-click' else 1
                 for repeat in range(repeats):
                     guard()
+                    if action=='click-current':
+                        point=W.POINT()
+                        if not self.user.GetCursorPos(C.byref(point)):
+                            raise ValueError('无法读取当前鼠标位置')
+                        if not (origin.x<=point.x<origin.x+area_width and origin.y<=point.y<origin.y+area_height):
+                            raise ValueError('当前鼠标不在游戏客户区内')
+                        if self.owner(self.user.WindowFromPoint(point))!=self.game['pid']:
+                            raise ValueError('当前鼠标位置被其他窗口遮挡')
                     pressed.append(Input(kind=0, mouse=Mouse(0, 0, 0, up, 0, 0)))
                     send(Input(kind=0, mouse=Mouse(0, 0, 0, down, 0, 0)))
                     if action == 'drag':
