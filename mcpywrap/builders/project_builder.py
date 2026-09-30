@@ -2,6 +2,7 @@
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 from ..command_context import report_dependency_warnings
 from ..dependencies import DependencyError, DependencyService, addon_directories, read_project
@@ -9,6 +10,19 @@ from .AddonsPack import AddonsPack
 from .MapPack import MapPack
 from .assembly import assemble_addon, validate_target, is_within, pack_files, rebuild_file
 from ..code_libraries import prepare_libraries
+
+
+def _replace_with_retry(source, target):
+    """Keep atomic replacement, tolerating short Windows scanner/file locks."""
+    delays = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6)
+    for attempt in range(len(delays) + 1):
+        try:
+            os.replace(source, target)
+            return
+        except OSError as exc:
+            if getattr(exc, 'winerror', None) not in (5, 32, 33) or attempt == len(delays):
+                raise
+            time.sleep(delays[attempt])
 
 
 def _clear_directory(directory):
@@ -70,12 +84,12 @@ class AddonProjectBuilder:
                 assemble_addon(self.packs, staged_addon)
                 backup = Path(temporary) / 'previous'
                 if target.exists():
-                    os.replace(target, backup)
+                    _replace_with_retry(target, backup)
                 try:
-                    os.replace(stage, target)
+                    _replace_with_retry(stage, target)
                 except OSError:
                     if backup.exists():
-                        os.replace(backup, target)
+                        _replace_with_retry(backup, target)
                     raise
             return True, None
         except (DependencyError, OSError, ValueError) as exc:
