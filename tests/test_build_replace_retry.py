@@ -2,6 +2,7 @@ import unittest
 import os
 import tempfile
 import json
+import inspect
 from pathlib import Path
 from unittest.mock import patch
 from click.testing import CliRunner
@@ -92,8 +93,9 @@ class BuildRecovery(unittest.TestCase):
         self.assertEqual(len(list(self.source.glob('.mcpy-build-*/previous/known-good.txt'))), 1)
 
     def test_cleanup_failure_keeps_success_and_json_warning(self):
+        options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
         with patch('mcpywrap.builders.project_builder.shutil.rmtree', side_effect=locked()):
-            result = CliRunner().invoke(cli, ['--project', str(self.source), 'build', '--json'])
+            result = CliRunner(**options).invoke(cli, ['--project', str(self.source), 'build', '--json'])
         self.assertEqual(result.exit_code, 0, result.output)
         data = json.loads(result.stdout)
         self.assertTrue(data['ok'])
