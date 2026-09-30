@@ -17,6 +17,8 @@ def serve_cmd(host, port, data_dir, **engine_overrides):
         raise click.UsageError('serve 是持续服务，不支持 --json')
     if os.name != 'nt':
         raise click.ClickException('serve 只能在 Windows 交互桌面启动；macOS 请配置 --remote')
+    if not os.environ.get('MCPY_REMOTE_TOKEN'):
+        raise click.ClickException('serve 需要 MCPY_REMOTE_TOKEN；远程服务允许在游戏客户端执行 Python')
     from ..remote.service import GameService, directory_lock
     from ..remote.http_server import GameHTTPServer
     root = Path(data_dir).expanduser().resolve() if data_dir else Path.home()/'.local/share/mcpywrap/remote'

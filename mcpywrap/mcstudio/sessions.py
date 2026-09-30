@@ -78,7 +78,13 @@ def start(project, config_path=None, level_id=None, overrides=None, timeout=30, 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         # worker 是记录的唯一写入者，父进程不与其竞争覆盖。
-        data = json.loads((directory / 'session.json').read_text(encoding='utf-8'))
+        try:
+            data = json.loads((directory / 'session.json').read_text(encoding='utf-8'))
+        except PermissionError:
+            if os.name != 'nt':
+                raise
+            time.sleep(0.1)
+            continue
         if data['state'] == 'running':
             return data
         if data['state'] in ('failed', 'exited') or process.poll() is not None:

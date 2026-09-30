@@ -333,7 +333,8 @@ class RemoteTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'Windows interactive service command')
     def test_serve_ctrl_c_always_closes_service(self):
-        with patch('mcpywrap.remote.service.GameService') as service, \
+        with patch.dict(os.environ, {'MCPY_REMOTE_TOKEN': 'test-token'}), \
+                patch('mcpywrap.remote.service.GameService') as service, \
                 patch('mcpywrap.remote.http_server.GameHTTPServer') as server:
             http = server.return_value.__enter__.return_value
             http.token = None
@@ -342,6 +343,32 @@ class RemoteTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(server.call_args.args[0], ('0.0.0.0', 18765))
         service.return_value.close.assert_called_once()
+
+    def test_python_execution_requires_owned_network_session_and_client_side(self):
+        self.create()
+        with patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value={
+                'state': 'completed', 'side': 'client', 'stdout': 'hello\n', 'value': 2}) as run:
+            response = self.call('py', '--session', 'a'*32, '--code', '1+1')
+        self.assertEqual(response.exit_code, 0, response.output)
+        self.assertEqual(json.loads(response.stdout)['value'], 2)
+        run.assert_called_once()
+        self.assertEqual(run.call_args.args[2], 'execute')
+        rejected = self.call('py', '--session', 'a'*32, '--side', 'server', '--code', '1')
+        self.assertNotEqual(rejected.exit_code, 0)
+
+    def test_python_file_is_read_on_caller_and_remote_reload_is_rejected(self):
+        self.create()
+        source = self.local/'probe.py'
+        source.write_text('print("remote probe")\n', encoding='utf-8')
+        with patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value={
+                'state': 'completed', 'side': 'client', 'stdout': 'remote probe\n', 'value': None}) as run:
+            response = self.call('py', '--session', 'a'*32, '--file', str(source))
+        self.assertEqual(response.exit_code, 0, response.output)
+        self.assertEqual(run.call_args.kwargs['code'], 'print("remote probe")\n')
+        self.assertNotIn(str(source), run.call_args.kwargs['code'])
+        rejected = self.call('reload', 'ui', '--session', 'a'*32)
+        self.assertNotEqual(rejected.exit_code, 0)
+        self.assertIn('远程联机会话暂不支持热更', json.loads(rejected.stdout)['error'])
 
 
 if __name__ == '__main__':

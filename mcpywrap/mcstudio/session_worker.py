@@ -1,5 +1,6 @@
 """会话 worker：先启动日志接收，再启动游戏，最后关闭监听。"""
 import json
+import uuid
 import sys
 import time
 from pathlib import Path
@@ -19,6 +20,8 @@ def run(project, session):
     process = None
     receiver = None
     engine_capture = None
+    debug_channel = None
+    control_server = None
     auth_path = directory/'auth.cppconfig'
     try:
         auth_context = None
@@ -58,6 +61,14 @@ def run(project, session):
                                               auth_context.secrets() if auth_context else ())
         if not success or not process or process.poll() is not None:
             raise ValueError('游戏进程未成功启动，详见 worker.log 和 engine.log')
+        from .runtime_debug import SafaiaChannel, RuntimeControlServer
+        debug_channel = SafaiaChannel(receiver._write)
+        debug_channel.start(process.pid)
+        token = uuid.uuid4().hex
+        control_server = RuntimeControlServer(debug_channel, token)
+        control_server.start()
+        sessions.save(directory/'control.json', {'port': control_server.server_address[1],
+                                                 'token': token})
         data.update(state='running', game=identity(process.pid))
         sessions.save(path, data)
         while process.poll() is None:
@@ -73,6 +84,11 @@ def run(project, session):
             process.terminate()
             process.wait(timeout=10)
     finally:
+        if control_server:
+            control_server.close()
+        if debug_channel:
+            debug_channel.close()
+        (directory/'control.json').unlink(missing_ok=True)
         try:
             if engine_capture:
                 engine_capture.close()

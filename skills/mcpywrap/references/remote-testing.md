@@ -2,7 +2,7 @@
 
 本页用于首次设置局域网测试。区分三个地址：Windows 测试服务的 HTTP 地址、游戏服务器的 IP/端口、本机项目目录。
 两台机器分别安装 CLI 和完整 Skill；bootstrap 返回的 command 只属于执行 bootstrap 的那台机器。
-局域网流程使用 CLI 0.3.6+，推荐使用 CLI 0.3.7+ 与 v0.3.7 配套 Skill，以获得依赖边界校验。main 分支 Skill 可能领先 CLI；仍须检查下列能力，不能仅靠版本号或安装成功判定可用。
+局域网流程使用 CLI 0.3.11+ 与 v0.3.11 配套 Skill。main 分支 Skill 可能领先 CLI；仍须检查下列能力，不能仅靠版本号或安装成功判定可用。
 
 ## Windows：准备执行端
 
@@ -18,7 +18,7 @@ mcpy --local serve
 服务是持续的前台控制台程序，不传 --json，保持窗口打开。--local 避免已有 MCPY_REMOTE／项目配置把诊断送往其他电脑。
 默认监听 `0.0.0.0:18765`，客户端填写 Windows 的实际局域网 IP，不填写 0.0.0.0。会话保存在 `.local/share/mcpywrap/remote`。
 可用 `serve --host/--port/--data-dir` 调整；引擎 EXE／下载目录也在此设置。服务不注册后台任务或修改防火墙，按本机网络条件允许访问。
-默认免认证；可在启动前设置 MCPY_REMOTE_TOKEN，并在 macOS 设置同一个值。它是控制接口令牌，和游戏的 --mcs-auth 无关。
+启动前必须在 Windows 设置 `MCPY_REMOTE_TOKEN`，并在 macOS 设置同一个值。远程服务允许在游戏客户端执行 Python，因此不再提供免认证启动；令牌和游戏的 `--mcs-auth` 无关。
 需要 MCS 身份时，在 Windows 额外检查 `mcpy --local doctor --mcs-auth --json`，由用户打开并登录 MCS。
 Git／可编辑安装可能缺少 CI 生成的桥接组件；使用包含组件且支持 serve 的发布构建，或在明确的源码开发任务中另行构建。不要通过安装旧发布版意外丢失 serve 能力。
 
@@ -40,6 +40,7 @@ bootstrap 的 --remote 只检查，不保存设置；上述每条命令显式携
 登录任务额外使用 bootstrap 的 `--require-capability mcs-auth` 并在 connect/run 添加 --mcs-auth；检查 remote.mcs_auth，不以 macOS 本机 component_available=false 判失败。
 游戏服务器必须从 Windows 可达；macOS 上的 localhost 不是 Windows 的 localhost。相同局域网里的 HTTP 服务地址和游戏服务器地址也可能完全不同。
 init/add/build/package 仍操作 macOS 项目；只有配置 `[tool.mcpywrap.server] host/port` 的 run 可以远程执行，不上传或装配本地 Mod。
+远程联机会话可用 `mcpy --remote <地址> py --session <id> --code "1+1" --json` 执行客户端 Python；不支持服务端执行或远程热更。超时是结果未知，不自动重发。
 
 ## 返回字段与脚本参数
 

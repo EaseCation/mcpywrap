@@ -15,7 +15,7 @@ from ..mcstudio.network import ServerTarget, prepare_network
 from ..mcstudio.processes import checked_process
 
 PROTOCOL = 1
-ACTIONS = ['doctor', 'network-sessions', 'status', 'logs', 'stop', 'screenshot', 'key', 'mouse']
+ACTIONS = ['doctor', 'network-sessions', 'status', 'logs', 'stop', 'screenshot', 'key', 'mouse', 'py']
 ID = re.compile(r'^[0-9a-f]{32}$')
 
 
@@ -247,6 +247,19 @@ class GameService:
         self.record(session)
         return self.context({'session': session, 'source': source,
                              'text': sessions.logs(self.root, session, tail, source)})
+
+    def execute_python(self, session, data):
+        fields(data, ('code', 'side'))
+        if not isinstance(data.get('code'), str) or not data['code'].strip():
+            raise RemoteError('code 必须是非空字符串', 'invalid_request')
+        record = self.record(session)
+        if record.get('mode') != 'network' or record.get('state') != 'running':
+            raise RemoteError('仅运行中的远程联机会话支持 Python 执行', 'session_unavailable', 409)
+        if data.get('side', 'client') != 'client':
+            raise RemoteError('联机会话只能在客户端执行 Python', 'unsupported', 400)
+        from ..mcstudio.runtime_debug import control_request
+        result = control_request(self.root, session, 'execute', code=data.get('code'), side='client')
+        return self.context({'session': session, 'ok': result.get('state') == 'completed', **result})
 
     def desktop(self, session, action, data):
         self.record(session)

@@ -13,7 +13,7 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 import click
 from .service import RemoteError, PROTOCOL, identifier
 
-GAME_COMMANDS = {'doctor', 'connect', 'run', 'status', 'logs', 'stop', 'screenshot', 'key', 'mouse'}
+GAME_COMMANDS = {'doctor', 'connect', 'run', 'status', 'logs', 'stop', 'screenshot', 'key', 'mouse', 'py'}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -163,6 +163,10 @@ def routed_command(name, parameters):
         return True, result
     if name == 'stop':
         return True, client.request('POST', path+'/stop', {})
+    if name == 'py':
+        from ..commands.runtime_cmd import code_argument
+        source = code_argument(p.get('code'), p.get('filename'))
+        return True, client.request('POST', path+'/py', {'code': source, 'side': p['side']})
     if name == 'screenshot':
         from ..commands.desktop_cmd import output_path, save_image
         output = output_path(p['output'])

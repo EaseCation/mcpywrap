@@ -111,6 +111,8 @@ class Handler(BaseHTTPRequestHandler):
                     if query.keys() - {'source', 'tail'} or any(len(v) != 1 for v in query.values()):
                         raise RemoteError('无效的日志查询参数', 'invalid_request')
                     result = service.logs(session, query.get('source', ['game'])[0], int(query.get('tail', ['100'])[0]))
+                elif action == 'py' and self.command == 'POST':
+                    result = service.execute_python(session, data)
                 elif action == 'stop' and self.command == 'POST':
                     fields(data, ())
                     result = service.stop(session)

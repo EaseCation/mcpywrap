@@ -1,5 +1,11 @@
 # 更新记录
 
+## 0.3.11
+
+- 新增 `mcpy py`：通过游戏内置 Safaia 通道在本地测试世界的客户端或服务端执行 Python 2，并返回输出、值与异常；远程联机会话支持客户端执行。
+- 新增本地 `mcpy reload` 和 `mcpy dev --reload-session`，支持已加载 Python 模块及 JSON UI 的手动、自动重载；资源重载按引擎接口探测，已发现会阻塞的 Shader 版本明确禁用。
+- 远程测试服务现要求 `MCPY_REMOTE_TOKEN`；Skill、README 与实机能力矩阵同步更新。
+
 ## 0.3.10
 
 - `mcpy package` 为脚本型 Addon ZIP 保留空的行为包 `entities/` 条目，满足网易发布包结构检查；不向项目源码添加虚构实体。
