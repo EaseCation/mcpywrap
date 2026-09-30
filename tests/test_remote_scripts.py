@@ -21,6 +21,24 @@ def script(name):
 
 
 class RemoteScripts(unittest.TestCase):
+    def test_bootstrap_detects_runtime_subcommands(self):
+        module = script('bootstrap.py')
+        def invoke(args, **kwargs):
+            if args[-2:] == ['runtime', '--help']:
+                output = 'Commands:\n  py Execute\n  reload Reload\n  watch Watch\n'
+            elif args[-2:] == ['run', '--help']:
+                output = '--detach --no-gui'
+            elif args[-2:] == ['connect', '--help']:
+                output = '--detach'
+            elif args[-2:] == ['doctor', '--capabilities']:
+                output = '{"ok":true,"execution":"local"}'
+            else:
+                output = '--project --non-interactive --json status logs stop package\n  connect Connect\n  runtime Control\n'
+            return Mock(returncode=0, stdout=output, stderr='')
+        with patch.object(module, 'invoke', side_effect=invoke):
+            result = module.capabilities('mcpy', local=True)
+        self.assertTrue({'runtime', 'py', 'reload', 'watch'} <= set(result['capabilities']))
+
     def test_window_wrapper_preserves_command_arguments_and_remote(self):
         module = script('game_window.py')
         with patch.object(module.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"ok":true}', stderr='')) as run, \

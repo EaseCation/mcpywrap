@@ -348,12 +348,12 @@ class RemoteTests(unittest.TestCase):
         self.create()
         with patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value={
                 'state': 'completed', 'side': 'client', 'stdout': 'hello\n', 'value': 2}) as run:
-            response = self.call('py', '--session', 'a'*32, '--code', '1+1')
+            response = self.call('runtime', 'py', '--session', 'a'*32, '--code', '1+1')
         self.assertEqual(response.exit_code, 0, response.output)
         self.assertEqual(json.loads(response.stdout)['value'], 2)
         run.assert_called_once()
         self.assertEqual(run.call_args.args[2], 'execute')
-        rejected = self.call('py', '--session', 'a'*32, '--side', 'server', '--code', '1')
+        rejected = self.call('runtime', 'py', '--session', 'a'*32, '--side', 'server', '--code', '1')
         self.assertNotEqual(rejected.exit_code, 0)
 
     def test_python_file_is_read_on_caller_and_remote_reload_is_rejected(self):
@@ -362,11 +362,11 @@ class RemoteTests(unittest.TestCase):
         source.write_text('print("remote probe")\n', encoding='utf-8')
         with patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value={
                 'state': 'completed', 'side': 'client', 'stdout': 'remote probe\n', 'value': None}) as run:
-            response = self.call('py', '--session', 'a'*32, '--file', str(source))
+            response = self.call('runtime', 'py', '--session', 'a'*32, '--file', str(source))
         self.assertEqual(response.exit_code, 0, response.output)
         self.assertEqual(run.call_args.kwargs['code'], 'print("remote probe")\n')
         self.assertNotIn(str(source), run.call_args.kwargs['code'])
-        rejected = self.call('reload', 'ui', '--session', 'a'*32)
+        rejected = self.call('runtime', 'reload', 'ui', '--session', 'a'*32)
         self.assertNotEqual(rejected.exit_code, 0)
         self.assertIn('远程联机会话暂不支持热更', json.loads(rejected.stdout)['error'])
 

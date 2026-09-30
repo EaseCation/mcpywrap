@@ -17,7 +17,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 - macOS 远程端：bootstrap 加 `--remote <地址> --require-capability remote-client --require-capability network-sessions`；截图／输入任务再要求 `screenshot/key/mouse`，可重复传入 `--require-capability`。
 - 本机能力看 `local_capabilities`，Windows 服务能力看 `remote.capabilities`。`remote.ok=false` 时停止远程流程；组件具备不表示已登录、窗口已就绪或已进服。
 - `bootstrap --remote` 只做检测，不保存路由。每次远程调用明确传 `--remote <endpoint>`，或确认当前进程确实继承了 `MCPY_REMOTE`；不依赖上一次终端调用的 export。
-- 先检查相关 `--help` 和能力；不要把新版 Skill 配上旧 CLI 后猜参数。运行时 Python 与热更使用 CLI 0.3.11+ 和 v0.3.11 配套 Skill；局域网细节见[远程测试](references/remote-testing.md)。
+- 先检查相关 `--help` 和能力；不要把新版 Skill 配上旧 CLI 后猜参数。`runtime` 命令组使用 CLI 0.3.12+ 和 v0.3.12 配套 Skill；局域网细节见[远程测试](references/remote-testing.md)。
 - Git项目依赖和框架快捷添加从0.3.8提供；bootstrap分别用 `--require-capability git-dependencies`、`--require-capability framework-presets` 检查，不以版本号0.3.7推断具备。缺失时显式选择包含这些能力的版本或源码安装。
 
 ## 执行位置与参数
@@ -28,8 +28,8 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 | 操作 | 执行位置 |
 |---|---|
 | init/add/remove/mod/modsdk/sync/build/package/dev/publish | 调用端本机，配置远端后也不迁移项目文件 |
-| doctor/connect/status/logs/stop/screenshot/key/mouse/py | 配置的 Windows 服务；没有远端配置则在本机 |
-| reload、dev --reload-session | 仅 Windows 本地测试世界，显式使用 --local |
+| doctor/connect/status/logs/stop/screenshot/key/mouse、runtime py | 配置的 Windows 服务；没有远端配置则在本机 |
+| runtime reload、runtime watch | 仅 Windows 本地测试世界，显式使用 --local |
 | 配置服务器目标的 run | 本机校验项目与依赖，远端只连接服务器 |
 | 本地世界 run、实例管理 | Windows 本机，明确使用 `--local`；远端不支持 |
 | serve、edit、ui、mod --gui | Windows 本机；后面三个界面用于人工操作，不远程交接 |
@@ -109,13 +109,13 @@ mcpy --remote <endpoint> mouse click --session <id> --x 400 --y 300 --width 1280
 `--expect-log` 可重复，默认等 90 秒；未指定时只报告启动。脚本停止自己创建的会话，不用于需要保留游戏窗口的任务。
 远程交互由 Agent 查看下载的图，再调用远程键鼠；macOS Computer Use 不会自动看到 Windows。Windows 本机复杂操作可按需使用环境已有的 Computer Use，Qt 页和编辑器仍留给人工。
 
-## 游戏内 Python 与热更
+## 已启动会话的 Python 与热更
 
 使用前检查本机或远端 `py` 能力，并确认 `status` 的会话仍在运行。游戏使用内置 Python 2；脚本文件在调用端按 UTF-8 读取，远程模式传输代码内容。
 
 ```bash
-mcpy --local --project "<Windows项目>" --non-interactive py --session <id> --side client --code "1 + 1" --json
-mcpy --remote <endpoint> --non-interactive py --session <id> --file ./probe.py --json
+mcpy --local --project "<Windows项目>" --non-interactive runtime py --session <id> --side client --code "1 + 1" --json
+mcpy --remote <endpoint> --non-interactive runtime py --session <id> --file ./probe.py --json
 ```
 
 本地世界可选 `--side server`，远程联机仅客户端。检查 `state`、`stdout`、`stderr`、`value` 和 `error`；`unknown` 表示请求可能已经在游戏中执行，先查日志与状态，不自动重试。脚本副作用由调用者负责，优先调用项目明确的测试函数。
@@ -123,9 +123,9 @@ mcpy --remote <endpoint> --non-interactive py --session <id> --file ./probe.py -
 热更只支持 Windows 本地世界；手动目标必须属于当前项目的包，成功投递仍需观察游戏效果：
 
 ```powershell
-mcpy --local --project "<Windows项目>" reload python --session <id> --module MyMod.client.logic --json
-mcpy --local --project "<Windows项目>" reload ui --session <id> --json
-mcpy --local --project "<Windows项目>" dev --reload-session <id>
+mcpy --local --project "<Windows项目>" runtime reload python --session <id> --module MyMod.client.logic --json
+mcpy --local --project "<Windows项目>" runtime reload ui --session <id> --json
+mcpy --local --project "<Windows项目>" runtime watch --session <id>
 ```
 
-`reload` 还支持 `shader`、`material` 和 `particle`；引擎没有对应接口或已知会阻塞时返回 `unsupported`。3.9.0.401155／3.10.0.420447 的 Shader 已禁用；JSON UI 的 `triggered` 只表示快捷键已投递，须用画面确认效果。`dev --reload-session` 在成功组装文件后触发重载，停止监控不会停止游戏。不要对远程联机会话执行热更。
+`runtime reload` 还支持 `shader`、`material` 和 `particle`；引擎没有对应接口或已知会阻塞时返回 `unsupported`。3.9.0.401155／3.10.0.420447 的 Shader 已禁用；JSON UI 的 `triggered` 只表示快捷键已投递，须用画面确认效果。`runtime watch` 在成功组装文件后触发重载，停止监控不会停止游戏。不要对远程联机会话执行热更。

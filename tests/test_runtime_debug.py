@@ -9,13 +9,32 @@ import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from click.testing import CliRunner
 
+from mcpywrap.cli import cli
 from mcpywrap.mcstudio.hot_reload import reload_code, target_from_file
 from mcpywrap.mcstudio.runtime_debug import SafaiaChannel, frame, recv_frame, script_request
 from mcpywrap.commands.dev_cmd import changed_reload_targets
 
 
 class RuntimeDebugTests(unittest.TestCase):
+    def test_runtime_group_is_public_and_old_commands_are_hidden(self):
+        runner = CliRunner()
+        root_help = runner.invoke(cli, ['--help']).output
+        runtime_help = runner.invoke(cli, ['runtime', '--help']).output
+        self.assertIn('  runtime ', root_help)
+        self.assertNotIn('  py ', root_help)
+        self.assertNotIn('  reload ', root_help)
+        for name in ('py', 'reload', 'watch'):
+            self.assertIn('  '+name+' ', runtime_help)
+
+    def test_runtime_watch_passes_session_to_build_watcher(self):
+        with patch('mcpywrap.commands.dev_cmd.dev_cmd.callback', return_value={'started': True}) as watch:
+            result = CliRunner().invoke(cli, ['runtime', 'watch', '--session', 'a'*32, '--json'])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertTrue(json.loads(result.stdout)['started'])
+        watch.assert_called_once_with(reload_session='a'*32)
+
     def connect(self, channel):
         client = socket.create_connection(('127.0.0.1', channel.port))
         client.settimeout(2)

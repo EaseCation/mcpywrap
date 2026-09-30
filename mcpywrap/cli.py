@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import click
+from copy import copy
 from . import __version__
 from .command_context import OperationGroup, configure_context
 
@@ -21,7 +22,7 @@ from .commands.ui_cmd import ui_cmd
 from .commands.doctor_cmd import doctor_cmd
 from .commands.sync_cmd import sync_cmd
 from .commands.session_cmd import status_cmd, logs_cmd, stop_cmd
-from .commands.runtime_cmd import py_cmd, reload_cmd
+from .commands.runtime_cmd import py_cmd, reload_cmd, runtime_cmd
 
 
 @click.group(cls=OperationGroup, invoke_without_command=True)
@@ -62,8 +63,12 @@ cli.add_command(sync_cmd, name='sync')
 cli.add_command(status_cmd)
 cli.add_command(logs_cmd)
 cli.add_command(stop_cmd)
-cli.add_command(py_cmd)
-cli.add_command(reload_cmd)
+cli.add_command(runtime_cmd)
+for old_command in (py_cmd, reload_cmd):
+    alias = copy(old_command)
+    alias.hidden = True
+    alias.deprecated = True
+    cli.add_command(alias)
 
 from .commands.desktop_cmd import screenshot_cmd, key_cmd, mouse_cmd
 from .commands.serve_cmd import serve_cmd

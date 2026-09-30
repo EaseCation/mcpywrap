@@ -98,20 +98,20 @@ Addon ZIP 内为 `<项目名>_bp/`、`<项目名>_rp/`（仅包含实际构建�
 
 ### 运行时 Python 与本地热更
 
-后台会话可使用 MC Studio 游戏自带的 Safaia 调试通道执行 Python 2，无需安装调试 Mod：
+`runtime` 下的命令控制已启动的游戏会话，均需传入启动时返回的会话 ID。游戏内 Python 使用 MC Studio 自带的 Safaia 调试通道，无需安装调试 Mod：
 
 ```powershell
 mcpy run --no-gui --detach --json
-mcpy py --session <id> --side client --code "1+1" --json
-mcpy py --session <id> --side server --file .\probe.py --json
-mcpy reload python --session <id> --module MyMod.client.logic --json
-mcpy reload ui --session <id> --json
-mcpy dev --reload-session <id>
+mcpy runtime py --session <id> --side client --code "1+1" --json
+mcpy runtime py --session <id> --side server --file .\probe.py --json
+mcpy runtime reload python --session <id> --module MyMod.client.logic --json
+mcpy runtime reload ui --session <id> --json
+mcpy runtime watch --session <id>
 ```
 
 本地世界支持客户端和服务端执行；联机会话只支持客户端。`py --file` 在调用端读取 UTF-8 内容，返回输出、表达式或 `_result` 的值及异常。执行超时的状态为 `unknown`，游戏内代码可能仍会运行，不应自动重试。
 
-`reload` 支持 `python/ui/shader/material/particle`，资源类型通过 `--file` 指向项目包内目标；`dev --reload-session` 在成功构建后自动触发。本期热更仅支持 Windows 本地测试世界。推荐先使用 Python 和 JSON UI 热更：Python 要求模块已加载，现有对象或事件订阅不会自动重建；JSON UI 返回 `triggered` 仅表示快捷键已投递，需要用画面确认效果。3.9.0.401155 和 3.10.0.420447 的 Shader 重载已禁用，Material 在这两版没有对应接口。完整实机结果见[运行时调试参考](docs/runtime-debug.md)。
+`runtime reload` 支持 `python/ui/shader/material/particle`，资源类型通过 `--file` 指向项目包内目标；`runtime watch` 在成功构建后自动触发。本期热更仅支持 Windows 本地测试世界。推荐先使用 Python 和 JSON UI 热更：Python 要求模块已加载，现有对象或事件订阅不会自动重建；JSON UI 返回 `triggered` 仅表示快捷键已投递，需要用画面确认效果。3.9.0.401155 和 3.10.0.420447 的 Shader 重载已禁用，Material 在这两版没有对应接口。完整实机结果见[运行时调试参考](docs/runtime-debug.md)。
 
 通常不需要手动指定游戏路径。mcpywrap 会优先查找 MC Studio 登记的安装，必要时搜索固定磁盘中的标准下载目录，并跳过不完整的引擎版本。
 
@@ -178,7 +178,7 @@ mcpy --project D:\tests\server stop --session <id> --json
 也可以下载仓库 ZIP，将完整的 `skills/mcpywrap` 文件夹复制到对应 Agent 的技能目录。
 无需从源码安装 Python 项目；CLI 和 Skill 分别安装，`pip/uv install` 不会自动注册 Skill。
 两端使用跨平台 `scripts/bootstrap.py` 安装或复用各自的 CLI，Windows 也可用 `bootstrap.ps1`。脚本分别报告本机与远端能力；Skill、CLI 与 Windows 服务需要分别检查，Git／可编辑安装可能缺少登录组件。
-运行时 Python 与热更需要 mcpywrap 0.3.11 或更高版本，并从 `v0.3.11` 标签安装配套 Skill。实际能力仍以脚本检测为准；更新 Skill 不会自动更新两端 CLI。
+`runtime` 命令组需要 mcpywrap 0.3.12 或更高版本，并从 `v0.3.12` 标签安装配套 Skill。实际能力仍以脚本检测为准；更新 Skill 不会自动更新两端 CLI。
 
 安装后可直接描述任务：
 
@@ -201,7 +201,7 @@ mcpy --remote http://192.168.1.20:18765 stop --session <id> --json
 ```
 
 项目依赖与构建仍在 macOS，游戏诊断、网络启动、日志和输入转发到 Windows，截图下载到调用端。
-Windows `serve` 必须配置 `MCPY_REMOTE_TOKEN`，两端使用相同令牌；服务 Ctrl+C 清理所属游戏。需要 Windows 保持登录未锁屏，一次只接受一个活动会话。远程联机会话可用 `mcpy --remote <地址> py --session <id> --code "1+1" --json` 执行客户端 Python，不支持远程热更。
+Windows `serve` 必须配置 `MCPY_REMOTE_TOKEN`，两端使用相同令牌；服务 Ctrl+C 清理所属游戏。需要 Windows 保持登录未锁屏，一次只接受一个活动会话。远程联机会话可用 `mcpy --remote <地址> runtime py --session <id> --code "1+1" --json` 执行客户端 Python，不支持远程热更。
 bootstrap 检测不会保存远端地址，独立终端调用请每次显式传 `--remote <地址>`。部署、鼠标与恢复见[远程测试指引](skills/mcpywrap/references/remote-testing.md)。
 
 ## 更多信息

@@ -5,6 +5,11 @@ import click
 from ..command_context import OperationCommand, project_dir
 
 
+@click.group(name='runtime')
+def runtime_cmd():
+    """控制已启动的游戏会话：执行代码、热更和监控。"""
+
+
 def code_argument(code, filename):
     if (code is None) == (filename is None):
         raise click.UsageError('必须且只能指定 --code 或 --file')
@@ -50,3 +55,16 @@ def reload_cmd(kind, session, filename, module):
     source = Path(filename).read_bytes() if filename and kind == 'python' else None
     result = reload_session(project_dir(), session, kind, target, source=source)
     return {'ok': result.get('state') in ('completed', 'triggered'), 'session': session, **result}
+
+
+@click.command(cls=OperationCommand, name='watch')
+@click.option('--session', required=True, help='运行中的本地世界会话 ID')
+def watch_cmd(session):
+    """监控项目文件，成功组装后更新该游戏会话。"""
+    from .dev_cmd import dev_cmd
+    return dev_cmd.callback(reload_session=session)
+
+
+runtime_cmd.add_command(py_cmd)
+runtime_cmd.add_command(reload_cmd)
+runtime_cmd.add_command(watch_cmd)

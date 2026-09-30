@@ -8,7 +8,8 @@ import shutil
 import subprocess
 import sys
 
-GAME_CAPABILITIES = {'network', 'network-sessions', 'mcs-auth', 'screenshot', 'key', 'mouse', 'py', 'reload'}
+GAME_CAPABILITIES = {'network', 'network-sessions', 'mcs-auth', 'screenshot', 'key', 'mouse',
+                     'runtime', 'py', 'reload', 'watch'}
 
 
 def invoke(command, timeout=30):
@@ -37,9 +38,15 @@ def capabilities(command, remote=None, local=False):
         features.append('network')
         if '--detach' in invoke([command, 'connect', '--help']).stdout:
             features.append('network-sessions')
-    for name in ('screenshot', 'key', 'mouse', 'serve', 'py', 'reload'):
+    for name in ('screenshot', 'key', 'mouse', 'serve'):
         if re.search(r'^\s+'+name+r'\s', help_text, re.M) and (name != 'serve' or os.name == 'nt'):
             features.append(name)
+    if re.search(r'^\s+runtime\s', help_text, re.M):
+        features.append('runtime')
+        runtime_help = invoke([command, 'runtime', '--help']).stdout
+        for name in ('py', 'reload', 'watch'):
+            if re.search(r'^\s+'+name+r'\s', runtime_help, re.M):
+                features.append(name)
     auth = {'supported': '--mcs-auth' in run_help, 'component_available': None}
     if auth['supported']:
         features.append('mcs-auth')

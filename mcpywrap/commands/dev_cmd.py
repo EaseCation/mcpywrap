@@ -49,9 +49,9 @@ def changed_reload_targets(target_dir, changed_paths):
     return targets
 
 @click.command(cls=OperationCommand)
-@click.option('--reload-session', help='文件成功组装后热更指定的本地世界会话')
+@click.option('--reload-session', hidden=True, help='已迁移到 runtime watch --session')
 def dev_cmd(reload_session):
-    """使用watch模式，实时构建为 MCStudio 工程，代码更新时，自动构建"""
+    """监控项目文件变化，持续更新构建结果。"""
     from ..command_context import json_output
     project = current_project()
     if json_output():
