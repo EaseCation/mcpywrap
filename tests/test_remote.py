@@ -342,7 +342,34 @@ class RemoteTests(unittest.TestCase):
             result = self.runner.invoke(cli, ['--local', 'serve', '--data-dir', str(self.root/'console-service')])
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(server.call_args.args[0], ('0.0.0.0', 18765))
+        self.assertEqual(server.call_args.args[2], 'test-token')
         service.return_value.close.assert_called_once()
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows interactive service command')
+    def test_serve_requires_token_by_default(self):
+        with patch.dict(os.environ, {'MCPY_REMOTE_TOKEN': ''}), \
+                patch('mcpywrap.remote.service.GameService') as service:
+            result = self.runner.invoke(cli, ['--local', 'serve'])
+        self.assertEqual(result.exit_code, 1, result.output)
+        self.assertIn('MCPY_REMOTE_TOKEN', result.output)
+        service.assert_not_called()
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows interactive service command')
+    def test_serve_no_token_ignores_environment(self):
+        for token in ('', 'existing-token'):
+            with self.subTest(token=token), \
+                    patch.dict(os.environ, {'MCPY_REMOTE_TOKEN': token}), \
+                    patch('mcpywrap.remote.service.GameService') as service, \
+                    patch('mcpywrap.remote.http_server.GameHTTPServer') as server:
+                http = server.return_value.__enter__.return_value
+                http.token = None
+                http.serve_forever.side_effect = KeyboardInterrupt
+                result = self.runner.invoke(cli, ['--local', 'serve', '--no-token',
+                                                 '--data-dir', str(self.root/'no-token-service')])
+                self.assertEqual(result.exit_code, 0, result.output)
+                self.assertIsNone(server.call_args.args[2])
+                self.assertIn('--no-token', result.output)
+                service.return_value.close.assert_called_once()
 
     def test_python_execution_requires_owned_network_session_and_client_side(self):
         self.create()

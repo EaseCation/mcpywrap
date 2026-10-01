@@ -18,7 +18,7 @@ mcpy --local serve
 服务是持续的前台控制台程序，不传 --json，保持窗口打开。--local 避免已有 MCPY_REMOTE／项目配置把诊断送往其他电脑。
 默认监听 `0.0.0.0:18765`，客户端填写 Windows 的实际局域网 IP，不填写 0.0.0.0。会话保存在 `.local/share/mcpywrap/remote`。
 可用 `serve --host/--port/--data-dir` 调整；引擎 EXE／下载目录也在此设置。服务不注册后台任务或修改防火墙，按本机网络条件允许访问。
-启动前必须在 Windows 设置 `MCPY_REMOTE_TOKEN`，并在 macOS 设置同一个值。远程服务允许在游戏客户端执行 Python，因此不再提供免认证启动；令牌和游戏的 `--mcs-auth` 无关。
+默认在启动前必须在 Windows 设置 `MCPY_REMOTE_TOKEN`，并在 macOS 设置同一个值。可信网络可显式使用 `mcpy --local serve --no-token` 关闭认证；此时忽略 Windows 已有令牌，调用端无需配置令牌，可访问该端口的设备均可执行游戏客户端 Python。先检查 `serve --help` 是否支持该参数。令牌和游戏的 `--mcs-auth` 无关。
 需要 MCS 身份时，在 Windows 额外检查 `mcpy --local doctor --mcs-auth --json`，由用户打开并登录 MCS。
 Git／可编辑安装可能缺少 CI 生成的桥接组件；使用包含组件且支持 serve 的发布构建，或在明确的源码开发任务中另行构建。不要通过安装旧发布版意外丢失 serve 能力。
 

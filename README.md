@@ -201,7 +201,7 @@ mcpy --remote http://192.168.1.20:18765 stop --session <id> --json
 ```
 
 项目依赖与构建仍在 macOS，游戏诊断、网络启动、日志和输入转发到 Windows，截图下载到调用端。
-Windows `serve` 必须配置 `MCPY_REMOTE_TOKEN`，两端使用相同令牌；服务 Ctrl+C 清理所属游戏。需要 Windows 保持登录未锁屏，一次只接受一个活动会话。远程联机会话可用 `mcpy --remote <地址> runtime py --session <id> --code "1+1" --json` 执行客户端 Python，不支持远程热更。
+Windows `serve` 默认必须配置 `MCPY_REMOTE_TOKEN`，两端使用相同令牌；可信网络可显式使用 `mcpy --local serve --no-token` 关闭认证，此时忽略已有令牌，所有可访问该端口的设备均可执行游戏客户端 Python。服务 Ctrl+C 清理所属游戏。需要 Windows 保持登录未锁屏，一次只接受一个活动会话。远程联机会话可用 `mcpy --remote <地址> runtime py --session <id> --code "1+1" --json` 执行客户端 Python，不支持远程热更。
 bootstrap 检测不会保存远端地址，独立终端调用请每次显式传 `--remote <地址>`。部署、鼠标与恢复见[远程测试指引](skills/mcpywrap/references/remote-testing.md)。
 
 ## 更多信息

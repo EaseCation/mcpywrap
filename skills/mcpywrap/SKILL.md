@@ -82,7 +82,7 @@ Windows 用户在专用、已登录未锁屏的桌面设置 `MCPY_REMOTE_TOKEN` 
 
 固定游戏目标在项目 `[tool.mcpywrap.server]` 填 `host/port`。连接不装配本地 Mod，网络模式不支持 Map、`--new` 或世界实例 ID。
 远程机器路径只在 Windows serve 参数中配置，客户端仅可覆盖 `--engine-version`；本机 connect 可使用原有引擎覆盖参数。
-`MCPY_REMOTE_TOKEN` 是服务必需的访问令牌；`--mcs-auth` 才是本次游戏的 MCS 登录身份，二者互不替代。仅用户要求登录身份时添加该选项。
+`MCPY_REMOTE_TOKEN` 是服务默认要求的访问令牌；可信网络可显式用 `mcpy --local serve --no-token` 关闭认证，此时忽略已有令牌，可访问该端口的设备均可执行游戏客户端 Python。先检查 `serve --help` 是否支持该参数。`--mcs-auth` 才是本次游戏的 MCS 登录身份，二者互不替代。仅用户要求登录身份时添加该选项。
 
 1. 保存启动返回的 `endpoint`（远程时）、`project`、`session`、进程身份和日志位置；后续操作始终绑定相同 endpoint 与 session。
 2. 用相同全局参数调用 `status --session <id> --json`、`logs --session <id> --source game --tail 100 --json`；source 也可选 engine/worker。

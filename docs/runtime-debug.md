@@ -12,7 +12,7 @@ mcpy --local --project D:\mods\demo runtime reload ui --session <id> --json
 mcpy --local --project D:\mods\demo runtime watch --session <id>
 ```
 
-本地世界支持客户端和服务端脚本，远程联机会话仅支持客户端。远程 `serve` 必须配置 `MCPY_REMOTE_TOKEN`，调用端使用相同令牌。`--file` 在调用端读取 UTF-8，不向 Windows 发送文件路径。
+本地世界支持客户端和服务端脚本，远程联机会话仅支持客户端。远程 `serve` 默认必须配置 `MCPY_REMOTE_TOKEN`，调用端使用相同令牌；可信网络可显式使用 `serve --no-token` 关闭认证，并忽略已有令牌。`--file` 在调用端读取 UTF-8，不向 Windows 发送文件路径。
 
 `state=completed` 表示脚本返回；`failed` 包含异常；`unavailable` 表示连接未就绪；`unknown` 表示等待超时，代码可能继续运行，不能自动重试。同一会话的前一个未知请求结束前会拒绝新的脚本。执行结果限制 256 KiB，代码限制 32 KiB。
 
