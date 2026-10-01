@@ -351,7 +351,7 @@ class RemoteTests(unittest.TestCase):
                 patch('mcpywrap.remote.service.GameService') as service:
             result = self.runner.invoke(cli, ['--local', 'serve'])
         self.assertEqual(result.exit_code, 1, result.output)
-        self.assertIn('MCPY_REMOTE_TOKEN', result.output)
+        self.assertIn('MCPY_REMOTE_TOKEN', result.output + result.stderr)
         service.assert_not_called()
 
     @unittest.skipUnless(os.name == 'nt', 'Windows interactive service command')
