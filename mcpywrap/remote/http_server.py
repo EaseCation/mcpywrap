@@ -51,6 +51,19 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def stream_artifact(self, path, info, content_type):
+        from ..mcstudio.recordings import CHUNK
+        with path.open('rb') as stream:
+            self.artifact_started = True
+            self.send_response(200)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(info['size']))
+            self.send_header('X-Mcpy-Artifact-SHA256', info['sha256'])
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            for block in iter(lambda: stream.read(CHUNK), b''):
+                self.wfile.write(block)
+
     def request_data(self):
         if self.headers.get('Transfer-Encoding'):
             raise RemoteError('不支持分块请求', 'invalid_request')
@@ -78,6 +91,7 @@ class Handler(BaseHTTPRequestHandler):
         self.dispatch()
 
     def dispatch(self):
+        self.artifact_started = False
         try:
             if self.server.token:
                 provided = self.headers.get('Authorization', '').encode('utf-8')
@@ -102,6 +116,32 @@ class Handler(BaseHTTPRequestHandler):
                 result = service.inspect(data)
             elif parts == ['v1', 'sessions'] and not query:
                 result = service.create(data) if self.command == 'POST' else service.list_sessions()
+            elif len(parts) in (4, 5, 6) and parts[:2] == ['v1', 'sessions'] and parts[3] == 'recordings' and not query:
+                from ..mcstudio import recordings
+                session = parts[2]
+                service.record(session)  # Authorize the session even for completed artifacts.
+                recording = recordings.identifier(parts[4]) if len(parts) >= 5 else None
+                action = parts[5] if len(parts) == 6 else 'status'
+                if len(parts) == 4 and self.command == 'POST':
+                    result = service.recording_action(session, 'start', data=data)
+                elif action == 'status' and self.command == 'GET':
+                    result = service.recording_action(session, 'status', recording)
+                elif len(parts) == 6 and action in ('stop', 'delete') and self.command == 'POST':
+                    result = service.recording_action(session, action, recording, data)
+                elif len(parts) == 6 and action == 'video' and self.command == 'GET':
+                    with recordings.artifact(service.root, session, recording) as (video, info):
+                        self.stream_artifact(video, info, 'video/mp4')
+                    return
+                elif len(parts) == 6 and action == 'frames' and self.command == 'POST':
+                    fields(data, ('frames', 'times'))
+                    frames, times = data.get('frames', []), data.get('times', [])
+                    if not isinstance(frames, list) or not isinstance(times, list):
+                        raise RemoteError('Frame selectors must be lists', 'invalid_request')
+                    with recordings.frames_archive(service.root, session, recording, frames, times) as (archive, info):
+                        self.stream_artifact(archive, info, 'application/zip')
+                    return
+                else:
+                    raise RemoteError('Unsupported recording operation', 'not_found', 404)
             elif len(parts) in (3, 4) and parts[:2] == ['v1', 'sessions']:
                 session = parts[2]
                 action = parts[3] if len(parts) == 4 else 'status'
@@ -139,6 +179,9 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass  # A disconnected client never cancels or retries its game/input operation.
         except (ValueError, OSError, KeyError, TypeError) as exc:
+            if self.artifact_started:
+                self.close_connection = True
+                return
             self.error_reply(str(exc), getattr(exc, 'code', 'execution_failed'),
                              getattr(exc, 'status', 400), getattr(exc, 'hint', None))
         except Exception:

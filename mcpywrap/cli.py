@@ -76,6 +76,8 @@ cli.add_command(screenshot_cmd, 'screenshot')
 cli.add_command(key_cmd, 'key')
 cli.add_command(mouse_cmd, 'mouse')
 cli.add_command(serve_cmd, 'serve')
+from .commands.record_cmd import record_cmd
+cli.add_command(record_cmd)
 
 if __name__ == '__main__':
     cli()

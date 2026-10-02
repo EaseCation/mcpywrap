@@ -189,6 +189,22 @@ mcpy --project D:\tests\server stop --session <id> --json
 Agent 通过 CLI 管理项目、截图和输入键鼠。远程交互查看下载的图片后继续操作；本机复杂交互可交给 Computer Use。Qt 管理与模板界面用于人工操作。
 常用入口：`mcpy --project <目录> --non-interactive <命令> --json`。
 
+## 视频录制与提帧
+
+Windows 游戏会话可录制无音频的固定帧率 H.264 MP4，录制期间继续发送键鼠输入。先用 `doctor --capabilities --json` 检查 `record/record-frames`；源码安装需重新编译原生组件。
+
+```powershell
+mcpy --local --project D:\mods\test record start --session <sid> --duration 10 --fps 30 --json
+mcpy --local --project D:\mods\test key --session <sid> W --hold-ms 1000 --json
+mcpy --local --project D:\mods\test record status --session <sid> --recording <rid> --json
+mcpy --local --project D:\mods\test record download --session <sid> --recording <rid> --output clip.mp4 --json
+mcpy --local --project D:\mods\test record frames --session <sid> --recording <rid> --at 1.0 --at 2.0 --output frames --json
+```
+
+`rid` 来自 start 的 `recording`；等待 `completed` 后下载。默认 10 秒／30 FPS，支持整数 1–300 秒、1–60 FPS。每个会话一次录制；`record stop` 只结束录像。远程把 `--local` 替换为 `--remote <地址>`，project/output 为调用端路径，视频仍在 Windows 采集、编码及临时落盘。
+
+视频分块写入和下载，执行端产物完成后保留 24 小时，`record delete` 可提前清理；游戏退出后仍可下载。提帧也支持重复的 `--frame <从0开始的帧号>`，单次最多 100 个，与 `--at` 互斥。客户区最小化、锁屏、尺寸变化或采集停滞会结束录像。固定帧率可能重复或跳过源画面，不能保证捕获游戏每一帧；清单记录时间映射，录像成功不代表游戏逻辑通过。完整 Agent 流程见 [Skill](skills/mcpywrap/SKILL.md#视频录制与逐帧分析)。
+
 ## macOS 与 Windows 局域网联调
 
 Windows 用户在测试桌面运行 `mcpy --local serve`，默认监听 `0.0.0.0:18765`；macOS 使用同一服务地址调用：

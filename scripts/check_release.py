@@ -42,6 +42,7 @@ with tarfile.open(sdist) as archive:
     assert 'native/mcs_auth/Bridge.cs' in sdist_names
     assert capture_files <= sdist_names, 'Sdist missing window capture helper'
     assert 'native/window_capture/window_capture.cpp' in sdist_names
+    assert 'native/window_capture/video_capture.h' in sdist_names
 
 for name in wheel_names | sdist_names:
     parts = Path(name).parts

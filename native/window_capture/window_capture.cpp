@@ -10,8 +10,21 @@
 #include <io.h>
 #include <wincodec.h>
 #include <wrl/client.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
+#include <mferror.h>
+#include <codecapi.h>
+#include <strmif.h>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <thread>
+#include <set>
+#include <iomanip>
 
 #include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Graphics.Capture.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
 #include <windows.graphics.capture.interop.h>
@@ -32,6 +45,9 @@
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "windowsapp.lib")
+#pragma comment(lib, "mfplat.lib")
+#pragma comment(lib, "mfreadwrite.lib")
+#pragma comment(lib, "mfuuid.lib")
 
 using Microsoft::WRL::ComPtr;
 using namespace winrt;
@@ -98,7 +114,8 @@ struct UnmapGuard {
 
 Pixels read_frame(HWND hwnd, const Direct3D11CaptureFrame& frame,
                   const ComPtr<ID3D11Device>& device,
-                  const ComPtr<ID3D11DeviceContext>& context) {
+                  const ComPtr<ID3D11DeviceContext>& context,
+                  bool reject_black = true, ComPtr<ID3D11Texture2D>* reusable = nullptr) {
     auto surface = frame.Surface();
     auto access = surface.as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
     ComPtr<ID3D11Texture2D> source;
@@ -116,7 +133,13 @@ Pixels read_frame(HWND hwnd, const Direct3D11CaptureFrame& frame,
     staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
     staging_desc.MiscFlags = 0;
     ComPtr<ID3D11Texture2D> staging;
-    check_hresult(device->CreateTexture2D(&staging_desc, nullptr, &staging));
+    if (reusable && *reusable) {
+        D3D11_TEXTURE2D_DESC previous{};
+        (*reusable)->GetDesc(&previous);
+        if (previous.Width == source_desc.Width && previous.Height == source_desc.Height) staging = *reusable;
+    }
+    if (!staging) check_hresult(device->CreateTexture2D(&staging_desc, nullptr, &staging));
+    if (reusable) *reusable = staging;
     context->CopyResource(staging.Get(), source.Get());
 
     D3D11_MAPPED_SUBRESOURCE mapped{};
@@ -165,7 +188,7 @@ Pixels read_frame(HWND hwnd, const Direct3D11CaptureFrame& frame,
             break;
         }
     }
-    if (!has_color) {
+    if (reject_black && !has_color) {
         unavailable("后台捕获返回全黑画面");
     }
     return result;
@@ -258,12 +281,17 @@ Pixels capture(HWND hwnd) {
     return read_frame(hwnd, frame, device, context);
 }
 
+#include "video_capture.h"
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
     try {
         init_apartment(apartment_type::multi_threaded);
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        if (option(argc, argv, L"--capabilities")) return media_capabilities();
+        if (option(argc, argv, L"--record")) return record_video(argc, argv);
+        if (option(argc, argv, L"--extract")) return extract_frames(argc, argv);
         const HWND hwnd = parse_hwnd(argc, argv);
         const Pixels pixels = capture(hwnd);
         const auto png = encode_png(pixels);

@@ -14,7 +14,7 @@ include scripts/check_mcs_auth_bridge.py
 recursive-include native/mcs_auth *.cs *.c *.cer *.json
 recursive-include mcpywrap/mcstudio/bridge_payload *.exe *.dll *.cer *.json
 recursive-include mcpywrap/mcstudio/window_capture *.exe *.json
-recursive-include native/window_capture *.cpp
+recursive-include native/window_capture *.cpp *.h
 prune test
 prune .git
 global-exclude __pycache__ *.py[cod] *.cppconfig *.log

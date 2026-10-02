@@ -134,6 +134,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_remote_scripts.py -v
       - run: python -m unittest discover -s tests -p test_git_projects.py -v
       - run: python -m unittest discover -s tests -p test_qumod_workflow.py -v
+      - run: python -m unittest discover -s tests -p test_recordings.py -v
       - name: Build a project using the public CLI
         run: |
           mkdir -p "$RUNNER_TEMP/中文 project"

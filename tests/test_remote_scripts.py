@@ -21,6 +21,34 @@ def script(name):
 
 
 class RemoteScripts(unittest.TestCase):
+    def test_window_wrapper_routes_record_subcommand_before_session(self):
+        module = script('game_window.py')
+        with patch.object(module.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"ok":true}', stderr='')) as run, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(module.main(['--project', '.', '--session', 'a'*32, '--remote', 'http://windows:18765',
+                'record', 'frames', '--recording', 'b'*32, '--frame', '30', '--output', 'frames']), 0)
+        command = run.call_args.args[0]
+        index = command.index('record')
+        self.assertEqual(command[index:index+4], ['record', 'frames', '--session', 'a'*32])
+        self.assertIn('--recording', command)
+
+    def test_bootstrap_requires_native_recording_capability_not_just_command_help(self):
+        module = script('bootstrap.py')
+        def invoke(args, **kwargs):
+            if '--capabilities' in args:
+                return Mock(returncode=0, stdout=json.dumps({'ok': True, 'execution': 'local',
+                    'capabilities': ['record', 'record-frames'], 'media': {'record_available': True}}))
+            if 'run' in args:
+                text = '--detach --no-gui'
+            else:
+                text = '--local --remote --project --non-interactive --json status logs stop package\n  record Video'
+            return Mock(returncode=0, stdout=text)
+        with patch.object(module, 'invoke', side_effect=invoke):
+            data = module.capabilities('mcpy', local=True)
+        if os.name == 'nt':
+            self.assertIn('record', data['local_capabilities'])
+        self.assertTrue(data['media']['record_available'])
+
     def test_bootstrap_detects_runtime_subcommands(self):
         module = script('bootstrap.py')
         def invoke(args, **kwargs):

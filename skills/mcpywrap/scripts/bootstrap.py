@@ -9,7 +9,7 @@ import subprocess
 import sys
 
 GAME_CAPABILITIES = {'network', 'network-sessions', 'mcs-auth', 'screenshot', 'key', 'mouse',
-                     'runtime', 'py', 'reload', 'watch'}
+                     'runtime', 'py', 'reload', 'watch', 'record', 'record-frames'}
 
 
 def invoke(command, timeout=30):
@@ -57,6 +57,7 @@ def capabilities(command, remote=None, local=False):
             except ValueError:
                 auth['hint'] = '组件诊断未返回有效 JSON，请运行 doctor --mcs-auth --json'
     remote_info = None
+    media = None
     if '--remote' in help_text:
         features.append('remote-client')
         # Honors environment and project configuration through the public CLI.
@@ -67,13 +68,25 @@ def capabilities(command, remote=None, local=False):
             result_data = json.loads(result.stdout)
             if result_data.get('execution') == 'remote' or not result_data.get('ok'):
                 remote_info = result_data
+            else:
+                media = result_data.get('media')
+                for feature in ('record', 'record-frames'):
+                    if feature in result_data.get('capabilities', []):
+                        features.append(feature)
+            if remote_info and os.name == 'nt':
+                local_probe = invoke([command, '--local', '--non-interactive', 'doctor', '--capabilities', '--json'])
+                local_data = json.loads(local_probe.stdout)
+                media = local_data.get('media')
+                for feature in ('record', 'record-frames'):
+                    if feature in local_data.get('capabilities', []):
+                        features.append(feature)
         except ValueError:
             remote_info = {'ok': False, 'error': '远端能力检查未返回有效 JSON'}
     elif not local and (remote or os.environ.get('MCPY_REMOTE')):
         remote_info = {'ok': False, 'error': '当前 CLI 缺少远程路由能力，请显式升级'}
     local_features = features if os.name == 'nt' else [f for f in features if f not in GAME_CAPABILITIES]
     return {'capabilities': features, 'local_capabilities': local_features, 'local_platform': sys.platform, 'mcs_auth': auth,
-            'remote': remote_info}
+            'remote': remote_info, 'media': media}
 
 
 def main(argv=None):

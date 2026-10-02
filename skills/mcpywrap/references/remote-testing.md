@@ -63,6 +63,21 @@ uv run --no-project --python 3.12 "<skill>/scripts/game_window.py" --project "/�
 本机世界只在 Windows 使用 `--local --project <Windows项目>`；远程不支持世界实例、实例删除、Qt 或编辑器。
 远程启动必须 --detach，不能套用本机的前台等待方式。Windows serve Ctrl+C 停止所属游戏；macOS 调用结束不会自动停止会话。
 
+## 视频录制
+
+两端使用包含 record 命令的 CLI，Windows 必须安装新版原生组件、具备 WGC 与系统 H.264 编解码器，并保持登录未锁屏。先运行 `doctor --capabilities --json`，检查 `record/record-frames` 和 `media`；组件文件存在不代表窗口已就绪。
+
+录制从首帧写入后返回任务 ID，在后台独立执行；期间可继续 key/mouse。按 Skill 主文档的 start → input → status → download → frames 流程操作，不需要读取源码。兼容入口支持：
+
+```bash
+uv run --no-project --python 3.12 "<skill>/scripts/game_window.py" --project "<调用端项目>" --remote <endpoint> --session <sid> --command "<bootstrap返回的command>" record start --duration 10 --fps 30
+uv run --no-project --python 3.12 "<skill>/scripts/game_window.py" --project "<调用端项目>" --remote <endpoint> --session <sid> --command "<bootstrap返回的command>" record frames --recording <rid> --at 1.0 --at 2.0 --output ./captures/frames
+```
+
+服务只接受归属该会话的录制 ID，客户端不能传 Windows 输出路径。MP4 和提帧 ZIP 分块下载，校验长度／哈希后才发布调用端文件；断线不会留下完整目标文件名，可重新下载，暂不支持断点续传。
+
+任务状态 `starting/recording/finalizing` 尚不可下载；`completed` 可下载。`failed/interrupted/cancelled` 没有可发布视频，`expired/deleted` 已无产物。窗口最小化、锁屏、关闭、尺寸变化或连续 3 秒没有新采集帧会结束录制，不自动回退桌面捕获。正常遮挡仍可能因游戏暂停渲染而提前结束。
+
 ## 鼠标与截图
 
 - 截图是可见游戏客户区的物理像素，不包含标题栏；点击、移动、滚轮和拖拽需 --x/--y/--width/--height，参考最近截图。

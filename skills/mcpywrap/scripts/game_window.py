@@ -13,7 +13,7 @@ def main(argv=None):
     parser.add_argument('--command', default='mcpy')
     parser.add_argument('--remote')
     parser.add_argument('--local', action='store_true')
-    parser.add_argument('action', choices=['screenshot', 'key', 'mouse'])
+    parser.add_argument('action', choices=['screenshot', 'key', 'mouse', 'record'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER,
                         help='透传 CLI 参数；mouse 的第一个参数为 click/drag/relative 等动作')
     args = parser.parse_args(argv)
@@ -22,10 +22,16 @@ def main(argv=None):
         command += ['--remote', args.remote]
     if args.local:
         command += ['--local']
-    command += [args.action, '--session', args.session, *args.arguments, '--json']
+    if args.action == 'record':
+        if not args.arguments:
+            parser.error('record requires start/status/stop/download/frames/delete')
+        command += ['record', args.arguments[0], '--session', args.session, *args.arguments[1:], '--json']
+    else:
+        command += [args.action, '--session', args.session, *args.arguments, '--json']
     try:
         result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True,
-                                encoding='utf-8-sig', errors='replace', timeout=120,
+                                encoding='utf-8-sig', errors='replace',
+                                timeout=360 if args.action == 'record' and args.arguments[0] == 'frames' else 120,
                                 env=dict(os.environ, PYTHONIOENCODING='utf-8'))
         if '--help' in args.arguments:
             print(result.stdout, end='')
@@ -38,8 +44,13 @@ def main(argv=None):
         print(json.dumps(data, ensure_ascii=True))
         return result.returncode
     except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        hint = '结果可能未知；请查询会话并截图，勿盲目重复输入。'
+        if args.action == 'record':
+            hint = ('检查调用端目标是否存在；未发布时可重试下载／提帧，不会重复录制。'
+                    if args.arguments[0] in ('download', 'frames') else
+                    '先用 record status --session <id> --list 找回任务，不重复创建录制。')
         print(json.dumps({'ok': False, 'error': str(exc), 'session': args.session,
-                          'hint': '结果可能未知；请查询会话并截图，勿盲目重复输入。'}, ensure_ascii=True))
+                          'hint': hint}, ensure_ascii=True))
         return 1
     except KeyboardInterrupt:
         return 130

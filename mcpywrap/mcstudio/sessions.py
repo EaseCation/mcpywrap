@@ -112,6 +112,8 @@ def handoff(data):
 
 def stop(project, session):
     data = read(project, session)
+    from .recordings import stop_session
+    stop_session(project, session)
     # 先核对身份，再发停止请求。worker 失效时也能准确清理自己创建的游戏。
     game = checked_process(data['game']) if data.get('game') else None
     worker = checked_process(data['worker']) if data.get('worker') else None

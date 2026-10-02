@@ -25,6 +25,18 @@ python skills/mcpywrap/scripts/smoke.py --project D:\mods\test --game --expect-l
 网络验证使用 `smoke.py --project <已有目录> --connect <地址> --expect-log <约定标记>`，不打包项目。单人与网络测试都可显式加 `--mcs-auth`；脚本停止自己创建的会话。
 历史验收记录仅用于追溯，不能代替当前版本测试。
 
+录制自动化测试使用模拟任务和真实回环 HTTP，覆盖超过 64 MiB 的分块下载、内存上限、输入并行、清理保护和归档校验。真实 WGC／Media Foundation 验证在已登录未锁屏的 Windows 桌面显式运行：
+
+```powershell
+$env:MCPY_NATIVE_TESTS = '1'
+python -X utf8 -m unittest discover -s tests -p test_native_recording.py -v
+Remove-Item Env:MCPY_NATIVE_TESTS
+```
+
+该测试创建并清理自己的彩色窗口，验证固定帧率、黑帧、奇数尺寸、提帧与最小化；存在 ffprobe/ffmpeg 时额外交叉检查视频帧数、颜色和方向。真实游戏仍需通过公开 CLI 单独验收录制期间的输入及画面变化，不能用窗口测试代替。
+
+`tests/manual_remote_recording.py --project <独立目录> --command <已安装mcpy路径>` 在本机回环启动带令牌的服务和自己的游戏，使用公开远程 CLI 验证录制、输入、游戏退出后的下载／提帧和删除，并清理游戏与服务。连接目标为本机 19132，不要求真实服务器，因此只验证捕获与传输，不声明进服成功；真实跨机器仍需分别在 Windows 和调用端验收。
+
 发布见 [发布流程](releasing.md)。
 
 局域网协议与路由测试使用 `tests/test_remote.py` 的真实回环 HTTP 和模拟游戏，不需要实际登录。

@@ -1,5 +1,11 @@
 # 更新记录
 
+## 0.3.16
+
+- 新增 `record start/status/stop/download/frames/delete`：会话绑定的固定帧率 H.264 MP4 录制，录制期间可同时输入键鼠；原生 WGC＋Media Foundation 无需 FFmpeg。
+- 视频持续写入执行端临时目录，完成后保留 24 小时；本机与远程分块传输、校验后发布，支持编码帧／时间点提取 PNG 及帧时间映射。
+- Skill、bootstrap 和兼容脚本提供录制、输入、下载及提帧分析流程，分别检查两端组件与系统媒体能力。
+
 ## 0.3.15
 
 - `serve --no-token` 可在可信网络显式关闭访问令牌认证，并忽略已有 `MCPY_REMOTE_TOKEN`；默认仍要求令牌，启动输出明确标识无认证模式。

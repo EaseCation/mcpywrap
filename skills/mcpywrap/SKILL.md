@@ -1,6 +1,6 @@
 ---
 name: mcpywrap
-description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、本地与 Git 依赖、QuMod 快捷接入，并在本机或局域网 Windows 端启动游戏、读取日志、截图和输入键鼠；支持 macOS 开发与 Windows 游戏联调。
+description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、依赖和 QuMod，并在本机或局域网 Windows 端启动游戏、读取日志、截图、录制视频、提帧和输入键鼠；支持 macOS 开发与 Windows 游戏联调。
 ---
 
 # mcpywrap
@@ -28,7 +28,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 | 操作 | 执行位置 |
 |---|---|
 | init/add/remove/mod/modsdk/sync/build/package/dev/publish | 调用端本机，配置远端后也不迁移项目文件 |
-| doctor/connect/status/logs/stop/screenshot/key/mouse、runtime py | 配置的 Windows 服务；没有远端配置则在本机 |
+| doctor/connect/status/logs/stop/screenshot/key/mouse、record、runtime py | 配置的 Windows 服务；没有远端配置则在本机 |
 | runtime reload、runtime watch | 仅 Windows 本地测试世界，显式使用 --local |
 | 配置服务器目标的 run | 本机校验项目与依赖，远端只连接服务器 |
 | 本地世界 run、实例管理 | Windows 本机，明确使用 `--local`；远端不支持 |
@@ -109,6 +109,30 @@ mcpy --remote <endpoint> mouse click --session <id> --x 400 --y 300 --width 1280
 [smoke.py](scripts/smoke.py) 默认检查并打包；Windows 本地世界用 `--local --game`，远端用 `--remote <地址> --connect <服务器>`，均可显式加 `--mcs-auth`。
 `--expect-log` 可重复，默认等 90 秒；未指定时只报告启动。脚本停止自己创建的会话，不用于需要保留游戏窗口的任务。
 远程交互由 Agent 查看下载的图，再调用远程键鼠；macOS Computer Use 不会自动看到 Windows。Windows 本机复杂操作可按需使用环境已有的 Computer Use，Qt 页和编辑器仍留给人工。
+
+## 视频录制与逐帧分析
+
+录制任务先检查执行端 `record` 和 `record-frames` 能力；bootstrap 可重复传入 `--require-capability`。新版 Skill 不代表旧 CLI 或旧原生组件支持录制。视频文件在 Windows 临时目录持续写入，下载到调用端；无需安装 FFmpeg。
+
+```bash
+mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record start --session <sid> --duration 10 --fps 30 --json
+mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive key --session <sid> SHIFT+W --hold-ms 2000 --json
+mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record status --session <sid> --recording <rid> --json
+mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record download --session <sid> --recording <rid> --output ./captures/clip.mp4 --json
+mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record frames --session <sid> --recording <rid> --frame 0 --frame 30 --output ./captures/frames --json
+```
+
+保存 start 返回的 `recording` 作为 rid，保持同一 endpoint、project 和 session。start 在首帧写入后返回，随后可同时发送键鼠输入；查询至 `completed` 再下载／提帧。返回 `video/images/manifest` 是调用端路径。Windows 本机将全局路由替换为 `--local --project "<Windows项目>"`，其余参数相同。
+
+时长为整数 1–300 秒，帧率为整数 1–60 FPS，默认 10 秒／30 FPS，无音频。每个会话一次录制。固定视频帧可能重复源画面或跳过游戏呈现画面，不能据此保证完整捕获游戏每一帧；PNG 是编码后画面。检查清单中的 `frame/time/source_time/repeated`，查看下载的 PNG，再结合日志判断逻辑是否通过。
+
+`time` 是视频内的秒数；`source_time` 是 Windows 单调时钟秒数，不是 Unix 时间，原始值保留在 `source_time_100ns`。高分辨率／高帧率可能超过机器编码能力，`encoder_too_slow` 时降低帧率或使用较小游戏窗口，不通过隐藏丢帧将失败当作完成。
+
+提帧 `--frame` 从 0 开始，可重复，单次最多 100 个；也可改用重复的 `--at <秒>`，取 `floor(秒 × fps)`，两者互斥。输出目录及 MP4 路径必须不存在。需要连续分析时分批选择帧，避免一次提供全部图片。
+
+提前结束使用 `record stop`，不停止游戏；游戏结束也会结束录像。短片若成功封装仍可下载，检查 `truncated/end_reason`。start 超时先用 `record status --session <sid> --list` 找回，不盲目重录；显式 `--request-id <32位小写hex>` 可找回同一请求。下载中断可重试到尚不存在的目标路径。
+
+执行端产物完成后保留 24 小时，后续命令或服务启动清理过期文件；游戏退出后仍可下载。任务结束且文件已下载后可执行 `record delete --session <sid> --recording <rid>`，仅删除执行端产物。需要时读[远程录制与故障处理](references/remote-testing.md#视频录制)。
 
 ## 已启动会话的 Python 与热更
 

@@ -98,7 +98,43 @@ class Client:
         result.update(project=self.project, endpoint=self.endpoint, execution='remote')
         for record in result.get('sessions', []):
             self.normalize(record)
+        for record in result.get('recordings', []):
+            self.normalize(record)
         return result
+
+    def download(self, method, path, output, data=None, frames=False):
+        from ..recording_io import transfer
+        headers = {'Accept': 'application/zip' if frames else 'video/mp4'}
+        if self.token:
+            headers['Authorization'] = 'Bearer ' + self.token
+        body = None
+        if data is not None:
+            body = json.dumps(data, ensure_ascii=True, allow_nan=False).encode('utf-8')
+            headers['Content-Type'] = 'application/json'
+        request = Request(self.endpoint + '/v1' + path, data=body, headers=headers, method=method)
+        try:
+            try:
+                response = self.opener.open(request, timeout=330 if frames else 30)
+            except HTTPError as exc:
+                response = exc
+            with response:
+                if response.status != 200:
+                    raw = response.read(65537)
+                    try:
+                        error = json.loads(raw)
+                    except ValueError:
+                        raise RemoteError('Invalid artifact error response', 'invalid_response') from None
+                    raise RemoteError(error.get('error', 'Artifact download failed'), error.get('code', 'remote_error'), response.status)
+                if response.headers.get_content_type() != headers['Accept']:
+                    raise RemoteError('Unexpected artifact media type', 'invalid_response')
+                try:
+                    size = int(response.headers.get('Content-Length', ''))
+                except ValueError:
+                    raise RemoteError('Invalid artifact length', 'invalid_response') from None
+                transfer(response, output, size, response.headers.get('X-Mcpy-Artifact-SHA256'), publish=not frames)
+        except (URLError, TimeoutError, socket.timeout, HTTPException) as exc:
+            raise RemoteError('Artifact transfer interrupted', 'remote_timeout',
+                              hint='Download can be retried; no final output was published.') from exc
 
     def require(self, action):
         result = self.request('GET', '/capabilities', timeout=15)
@@ -178,3 +214,35 @@ def routed_command(name, parameters):
     if 'keys' in data:
         data['keys'] = list(data['keys'])
     return True, client.request('POST', path+'/'+name, data)
+
+
+def routed_recording(action, parameters):
+    from ..command_context import project_dir, remote_url
+    from ..recording_io import output_path, frame_result
+    p = dict(parameters)
+    client = Client(remote_url(), project_dir())
+    client.require('record-frames' if action == 'frames' else 'record')
+    session = identifier(p['session'])
+    path = '/sessions/' + session + '/recordings'
+    if action == 'start':
+        return client.request('POST', path, {'duration': p['duration'], 'fps': p['fps'],
+                                             'request_id': p.get('request_id') or uuid.uuid4().hex}, timeout=25)
+    if action == 'status':
+        if bool(p.get('recording')) == p['list_recordings']:
+            raise click.UsageError('Specify --recording or --list')
+        if p['list_recordings']:
+            return client.request('GET', path)
+    recording = identifier(p['recording'])
+    path += '/' + recording
+    if action == 'status':
+        return client.request('GET', path)
+    if action in ('stop', 'delete'):
+        return client.request('POST', path + '/' + action, {}, timeout=30)
+    output = output_path(p['output'], directory=action == 'frames')
+    if action == 'download':
+        data = client.request('GET', path)
+        client.download('GET', path + '/video', output)
+        return {**data, 'video': str(output)}
+    client.download('POST', path + '/frames', output,
+                    {'frames': list(p['frames']), 'times': list(p['times'])}, frames=True)
+    return client.normalize(frame_result(output))

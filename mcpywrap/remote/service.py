@@ -40,8 +40,12 @@ def capabilities():
     from ..mcstudio.window import desktop_state
     from ..mcstudio.bridge_assets import inspect_bridge
     windows = os.name == 'nt'
+    from ..mcstudio.recordings import inspect_media
+    media = inspect_media()
+    extra = (['record'] if media['record_available'] else []) + (['record-frames'] if media['frames_available'] else [])
     return {'protocol_version': PROTOCOL, 'version': __version__,
-            'capabilities': ACTIONS + ['mcs-auth'] if windows else ['project', 'package', 'remote-client'],
+            'capabilities': ACTIONS + ['mcs-auth'] + extra if windows else ['project', 'package', 'remote-client'],
+            'media': media,
             'desktop': desktop_state(),
             'mcs_auth': inspect_bridge() if windows else {'component_available': False},
             'execution': 'local', 'platform': os.name}
@@ -82,8 +86,11 @@ class GameService:
         self.closing = threading.Event()
         self.create_lock = threading.Lock()
         self.desktop_lock = threading.Lock()
+        self.recording_start_lock = threading.Lock()
         self.action_cancel = threading.Event()
         self.desktop_session = None
+        from ..mcstudio.recordings import cleanup
+        cleanup(self.root)
         # A request interrupted before any worker record exists cannot have launched a game.
         for path in self.requests.glob('*.json'):
             if not ID.fullmatch(path.stem):
@@ -96,6 +103,28 @@ class GameService:
     def context(self, data):
         return {**data, 'execution': 'remote', 'service_instance': self.instance,
                 'project': str(self.root)}
+
+    def recording_action(self, session, action, recording=None, data=None):
+        from ..mcstudio import recordings
+        self.record(session)
+        data = data or {}
+        if action == 'start':
+            fields(data, ('duration', 'fps', 'request_id'))
+            with self.recording_start_lock:
+                if self.closing.is_set():
+                    raise RemoteError('Service is stopping', 'service_stopping', 503)
+                result = recordings.start(self.root, session, data.get('duration', 10), data.get('fps', 30), data.get('request_id'))
+                if self.closing.is_set():
+                    recordings.stop(self.root, session, result['recording'])
+            return self.context(result)
+        fields(data, ())
+        if action == 'status':
+            return self.context(recordings.status(self.root, session, recording))
+        if action == 'stop':
+            return self.context(recordings.stop(self.root, session, recording))
+        if action == 'delete':
+            return self.context(recordings.delete(self.root, session, recording))
+        raise RemoteError('Unknown recording action', 'not_found', 404)
 
     def describe(self):
         return self.context(capabilities())
@@ -225,6 +254,8 @@ class GameService:
 
     def stop(self, session):
         data = self.record(session)
+        from ..mcstudio.recordings import stop_session
+        stop_session(self.root, session)
         if self.desktop_session == session or self.closing.is_set():
             self.action_cancel.set()
         with self.desktop_lock:
@@ -278,9 +309,16 @@ class GameService:
     def close(self):
         self.closing.set()
         self.action_cancel.set()
+        from ..mcstudio.recordings import stop_session
+        errors = []
+        with self.recording_start_lock:
+            for data in self.list_sessions()['sessions']:
+                try:
+                    stop_session(self.root, data['session'])
+                except (ValueError, OSError) as exc:
+                    errors.append(str(exc))
         # In-flight preparation finishes without launching, or its newly launched session is stopped.
         with self.create_lock:
-            errors = []
             for data in self.list_sessions()['sessions']:
                 if data['state'] == 'exited' or (data['state'] == 'failed' and not self.live_owned_process(data)):
                     continue

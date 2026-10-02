@@ -10,7 +10,11 @@ source = root / 'native/window_capture/window_capture.cpp'
 payload = root / 'mcpywrap/mcstudio/window_capture'
 executable = payload / 'mcpy-window-capture.exe'
 manifest = json.loads((payload / 'manifest.json').read_text(encoding='utf-8'))
-assert set(manifest) == {'executable_sha256', 'source_sha256'}
+assert set(manifest) == {'executable_sha256', 'source_sha256', 'sources', 'media_protocol'}
+assert manifest['media_protocol'] == 1
+assert set(manifest['sources']) == {'window_capture.cpp', 'video_capture.h'}
+for name, digest in manifest['sources'].items():
+    assert hashlib.sha256((source.parent / name).read_text(encoding='utf-8').encode('utf-8')).hexdigest() == digest
 assert hashlib.sha256(source.read_text(encoding='utf-8').encode('utf-8')).hexdigest() == manifest['source_sha256']
 data = executable.read_bytes()
 assert hashlib.sha256(data).hexdigest() == manifest['executable_sha256']
