@@ -1,5 +1,6 @@
 """Disk-backed recordings, task isolation, archive validation and real streaming HTTP."""
 from contextlib import contextmanager
+from email.message import Message
 import hashlib
 import io
 import json
@@ -239,6 +240,25 @@ class Jobs(RecordingFixture):
 
 
 class Transfers(RecordingFixture):
+    def test_small_rpc_does_not_preallocate_the_response_limit_on_python39(self):
+        class LegacyHTTPResponse(io.BytesIO):
+            status = 200
+            headers = Message()
+            def read(self, amount):
+                buffer = bytearray(amount)
+                content = super().read(amount)
+                buffer[:len(content)] = content
+                return bytes(memoryview(buffer)[:len(content)])
+        client = Client('http://example.test', self.root)
+        response = LegacyHTTPResponse(b'{"ok":true,"value":1}')
+        tracemalloc.start()
+        try:
+            with patch.object(client.opener, 'open', return_value=response):
+                self.assertEqual(client.request('GET', '/capabilities')['value'], 1)
+            self.assertLess(tracemalloc.get_traced_memory()[1], 4 * jobs.CHUNK)
+        finally:
+            tracemalloc.stop()
+
     def test_hash_length_disconnect_and_overwrite_leave_no_final_output(self):
         target = self.root / 'clip.mp4'
         data = b'contents'

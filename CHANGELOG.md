@@ -5,6 +5,7 @@
 - 新增 `record start/status/stop/download/frames/delete`：会话绑定的固定帧率 H.264 MP4 录制，录制期间可同时输入键鼠；原生 WGC＋Media Foundation 无需 FFmpeg。
 - 视频持续写入执行端临时目录，完成后保留 24 小时；本机与远程分块传输、校验后发布，支持编码帧／时间点提取 PNG 及帧时间映射。
 - Skill、bootstrap 和兼容脚本提供录制、输入、下载及提帧分析流程，分别检查两端组件与系统媒体能力。
+- 远程 JSON／截图响应按块读取，避免 Python 3.9 对小响应预分配完整的 64 MiB 上限；原响应大小限制保持不变。
 
 ## 0.3.15
 

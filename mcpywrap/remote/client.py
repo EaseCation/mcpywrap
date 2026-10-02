@@ -21,6 +21,19 @@ class NoRedirect(HTTPRedirectHandler):
         raise RemoteError('服务地址发生重定向，请配置最终地址', 'redirect_refused')
 
 
+def bounded_response(response, limit=64 * 1024 * 1024):
+    # Python 3.9 HTTPResponse.read(n) allocates n bytes even for a tiny JSON body.
+    chunks, size = [], 0
+    while True:
+        block = response.read(min(1024 * 1024, limit + 1 - size))
+        if not block:
+            return b''.join(chunks)
+        size += len(block)
+        if size > limit:
+            raise RemoteError('远端响应过大', 'invalid_response')
+        chunks.append(block)
+
+
 class Client:
     def __init__(self, endpoint, project, token=None):
         if not isinstance(endpoint, str):
@@ -58,11 +71,9 @@ class Client:
                               hint='确认地址与服务状态；没有切换到本机。'+uncertain) from exc
         with response:
             try:
-                raw = response.read(64*1024*1024+1)
+                raw = bounded_response(response)
             except (OSError, HTTPException) as exc:
                 raise RemoteError('读取远端结果中断', 'remote_timeout', hint=uncertain) from exc
-            if len(raw) > 64*1024*1024:
-                raise RemoteError('远端响应过大', 'invalid_response')
             if image and response.status == 200 and response.headers.get_content_type() == 'image/png':
                 if not raw.startswith(b'\x89PNG\r\n\x1a\n') or len(raw) < 24:
                     raise RemoteError('远端未返回有效 PNG', 'invalid_response')
