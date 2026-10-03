@@ -135,6 +135,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_git_projects.py -v
       - run: python -m unittest discover -s tests -p test_qumod_workflow.py -v
       - run: python -m unittest discover -s tests -p test_recordings.py -v
+      - run: python -m unittest discover -s tests -p 'test_runtime*.py' -v
       - name: Build a project using the public CLI
         run: |
           mkdir -p "$RUNNER_TEMP/中文 project"
@@ -189,6 +190,8 @@ jobs:
           wheel-smoke/bin/mcpy --help
           wheel-smoke/bin/mcpy add --help
           wheel-smoke/bin/mcpy connect --help
+          wheel-smoke/bin/mcpy runtime ui --help
+          wheel-smoke/bin/mcpy runtime player --help
           wheel-smoke/bin/python -m pip check
           mkdir wheel-cli-project
           cd wheel-cli-project

@@ -13,7 +13,7 @@ CLI 使用调用上下文传递项目目录；底层服务接受明确路径。�
 
 Addon完整构建先组装再替换；Windows临时锁仅做有限重试。若安装与回滚同时失败，错误会报告保留的`.mcpy-build-*/previous`旧构建及目标目录。检查并解除占用后人工恢复；工具不自动删除或重放这类恢复目录。新产物已安装后的临时目录清理失败只记警告。
 
-Skill 的 bootstrap、smoke 脚本只使用公开 CLI；Skill 的 game_window 脚本负责绑定会话的截图和键盘输入；复杂交互使用环境的 Computer Use。
+Skill 的辅助脚本只使用公开 CLI。游戏交互优先使用 runtime ui/player；game_window 提供绑定会话的截图与桌面输入，Computer Use 仅用于允许占用前台的任务。
 真实游戏验证请使用独立测试项目：
 
 ```powershell
@@ -42,3 +42,7 @@ Remove-Item Env:MCPY_NATIVE_TESTS
 局域网协议与路由测试使用 `tests/test_remote.py` 的真实回环 HTTP 和模拟游戏，不需要实际登录。
 桌面原生实现集中在 `mcstudio/window.py`，Skill 脚本只组合公开 CLI。鼠标逻辑通过模拟 Win32 测试释放与坐标，实机效果按截图验证。
 Windows CI 保留 3.9/3.12/3.14；macOS CI 验证无 Qt 安装、本机构建与远程客户端。真实跨机验收需另行准备 Windows 桌面和 macOS 客户端。
+
+游戏内 UI 的协议与有状态适配器测试见 `tests/test_runtime_ui.py`。在独立测试世界运行 `tests/manual_runtime_ui.py --project <目录> --session <会话> --output <新JSON> --require-background` 可通过公开 CLI 验证节点、后台滚动、点击音频页、主音量调整及恢复、旧快照拒绝与重复请求；运行前保持其他应用前台。脚本不停止传入会话，由创建者在结束后 stop。正式 UI 功能与内部引擎接口边界见 [runtime-ui.md](runtime-ui.md)。
+
+玩家操作与队列的状态机测试见 `tests/test_runtime_player.py`。`tests/manual_runtime_player.py` 使用已准备的独立生存世界验证进食、等待、选槽、朝向、蓄力射箭及重复请求；会消耗食物和箭，并恢复朝向、选槽。准备条件及参数见 [runtime-player.md](runtime-player.md)。

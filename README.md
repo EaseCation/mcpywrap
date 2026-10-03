@@ -186,7 +186,9 @@ mcpy --project D:\tests\server stop --session <id> --json
 - “启动这个项目，不弹日志界面，检查客户端和服务端的加载日志。”
 - “启动游戏并截图，模拟组合按键移动，检查 F11 输入模式和 F3 调试信息层。”
 
-Agent 通过 CLI 管理项目、截图和输入键鼠。远程交互查看下载的图片后继续操作；本机复杂交互可交给 Computer Use。Qt 管理与模板界面用于人工操作。
+Agent 通过 CLI 管理项目和操作游戏。连接后用 `runtime install` 一次注入 `mcpy.ui` / `mcpy.player` / `mcpy.api`：UI 支持文字节点观察与操作，玩家层封装移动、转向、攻击、物品使用、吃东西、射箭和带延迟的连续动作。实际支持能力以安装返回结果为准。详见[游戏内 UI 自动化](docs/runtime-ui.md)和[玩家动作与队列](docs/runtime-player.md)。需要补图且不能占用前台时使用 `screenshot --background-only`。Qt 管理与模板界面用于人工操作。
+
+严禁业务代码依赖 `mcpy.*`：这些方法仅存在于临时注入的调试会话，正常游戏运行环境不提供它们；业务实现须使用正式 ModSDK 或项目框架。
 常用入口：`mcpy --project <目录> --non-interactive <命令> --json`。
 
 ## 视频录制与提帧

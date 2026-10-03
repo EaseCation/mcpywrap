@@ -1,5 +1,9 @@
 # 游戏运行时 Python 与热更
 
+严禁业务代码依赖 `mcpy.*`：这些方法仅存在于临时注入的调试会话，正常游戏运行环境不提供它们；业务实现须使用正式 ModSDK 或项目框架。
+
+连接游戏后执行 `runtime install` 一次注入 `mcpy.ui` / `mcpy.player` / `mcpy.api`，再按文字节点或玩家状态操作。详见 [游戏内 UI 自动化](runtime-ui.md)和[玩家动作与连续队列](runtime-player.md)。
+
 `mcpy runtime` 控制已启动的游戏会话。其中 `runtime py` 通过 MC Studio 游戏内置的 Safaia 调试协议执行 Python 2。Windows 会话 worker 按游戏 PID 定向发现连接，并把返回日志关联到请求 ID。无需加载调试 Mod；普通游戏日志仍保留在会话的 `game.log`。
 
 ```powershell

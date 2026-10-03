@@ -27,11 +27,13 @@ class KeyCommand(OperationCommand):
 @click.command(cls=OperationCommand)
 @click.option('--session', required=True)
 @click.option('--output', required=True, help='本机 PNG 路径，不覆盖已有文件')
-def screenshot_cmd(session, output):
+@click.option('--background-only', is_flag=True, help='仅后台捕获；失败不激活游戏或回退到前台')
+def screenshot_cmd(session, output, background_only=False):
     """截图到调用端；远程模式会下载 Windows 游戏客户区 PNG。"""
     from ..mcstudio.window import operate
     path = output_path(output)
-    result = operate(project_dir(), session, 'screenshot')
+    result = operate(project_dir(), session, 'screenshot',
+                     {'background_only': True} if background_only else None)
     save_image(path, result.pop('content'))
     return {'image': str(path), **result}
 

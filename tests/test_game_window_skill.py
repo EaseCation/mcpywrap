@@ -191,6 +191,26 @@ class SkillWindowTests(unittest.TestCase):
         self.assertEqual(status['capture_fallback_reason'], '辅助程序不可用')
         target.screenshot.assert_called_once_with()
 
+    def test_background_only_failure_never_calls_visible_fallback(self):
+        target = Mock()
+        target.screenshot_background.side_effect = window.BackgroundCaptureUnavailable('WGC unavailable')
+        with patch.object(window, 'session_game', return_value={}), patch.object(window, 'GameWindow', return_value=target):
+            with self.assertRaises(window.BackgroundCaptureUnavailable):
+                window.operate('.', 'owned', 'screenshot', {'background_only': True})
+        target.screenshot_with_fallback.assert_not_called()
+        target.foreground.assert_not_called()
+        target.close.assert_called_once()
+
+    def test_background_only_success_reports_no_fallback(self):
+        target = Mock()
+        target.screenshot_background.return_value = (b'png', 10, 20)
+        target.details.return_value = {'pid': 123}
+        with patch.object(window, 'session_game', return_value={}), patch.object(window, 'GameWindow', return_value=target):
+            result = window.operate('.', 'owned', 'screenshot', {'background_only': True})
+        self.assertFalse(result['capture_fallback'])
+        self.assertEqual(result['capture'], 'background-window')
+        target.screenshot_with_fallback.assert_not_called()
+
     def test_background_capture_protocol_is_validated(self):
         target = window.GameWindow.__new__(window.GameWindow)
         target.game = {'pid': 123}

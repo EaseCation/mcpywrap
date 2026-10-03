@@ -17,6 +17,8 @@ expected = {p.relative_to(root).as_posix() for p in (root / 'mcpywrap').rglob('*
 with zipfile.ZipFile(wheel) as archive:
     wheel_names = set(archive.namelist())
     assert expected <= wheel_names, f'Wheel missing modules: {expected - wheel_names}'
+    for name in expected:
+        assert archive.read(name) == (root / name).read_bytes(), f'Wheel has stale module: {name}'
     assert all(name.startswith(('mcpywrap/', f'mcpywrap-{version}.dist-info/')) for name in wheel_names)
     metadata = BytesParser().parsebytes(archive.read(f'mcpywrap-{version}.dist-info/METADATA'))
     assert metadata['Version'] == version
@@ -36,6 +38,11 @@ with tarfile.open(sdist) as archive:
     assert expected <= sdist_names, f'Sdist missing modules: {expected - sdist_names}'
     assert 'tests/test_local_dependencies.py' in sdist_names
     assert {'docs/code-libraries.md', 'docs/git-dependencies.md', 'docs/qumod.md', 'docs/runtime-debug.md'} <= sdist_names
+    runtime_files = {'docs/runtime-ui.md', 'docs/runtime-player.md',
+                     'tests/test_runtime_ui.py', 'tests/test_runtime_ui_outline.py',
+                     'tests/test_runtime_player.py', 'tests/manual_runtime_ui.py', 'tests/manual_runtime_player.py'}
+    runtime_files.update(p.relative_to(root).as_posix() for p in (root / 'docs/validation').glob('*') if p.is_file())
+    assert runtime_files <= sdist_names, f'Sdist missing runtime documentation/tests: {runtime_files - sdist_names}'
     skill_files = {p.relative_to(root).as_posix() for p in (root / 'skills').rglob('*') if p.is_file() and '__pycache__' not in p.parts}
     assert skill_files <= sdist_names, f'Sdist missing skill files: {skill_files - sdist_names}'
     assert bridge_files <= sdist_names, 'Sdist missing signed bridge payload'

@@ -72,3 +72,10 @@ def watch_cmd(session):
 runtime_cmd.add_command(py_cmd)
 runtime_cmd.add_command(reload_cmd)
 runtime_cmd.add_command(watch_cmd)
+
+from .runtime_ui_cmd import ui_cmd
+runtime_cmd.add_command(ui_cmd)
+
+from .runtime_player_cmd import player_cmd, install_cmd as install_runtime_cmd
+runtime_cmd.add_command(player_cmd)
+runtime_cmd.add_command(install_runtime_cmd, 'install')

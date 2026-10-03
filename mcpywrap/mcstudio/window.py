@@ -633,7 +633,11 @@ def operate(project, session, action, parameters=None, cancel=None):
     window = GameWindow(session_game(project, session), cancel=cancel)
     try:
         if action == 'screenshot':
-            content, width, height, capture = window.screenshot_with_fallback()
+            if (parameters or {}).get('background_only', False):
+                content, width, height = window.screenshot_background()
+                capture = {'capture': 'background-window', 'capture_fallback': False}
+            else:
+                content, width, height, capture = window.screenshot_with_fallback()
             result = {'content': content, 'width': width, 'height': height, **capture}
         elif action == 'key':
             result = window.press(parameters['keys'], parameters.get('hold_ms', 80))

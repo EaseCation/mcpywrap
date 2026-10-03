@@ -47,6 +47,16 @@ def capabilities(command, remote=None, local=False):
         for name in ('py', 'reload', 'watch'):
             if re.search(r'^\s+'+name+r'\s', runtime_help, re.M):
                 features.append(name)
+        if re.search(r'^\s+ui\s', runtime_help, re.M):
+            ui_help = invoke([command, 'runtime', 'ui', '--help'])
+            if ui_help.returncode == 0 and all(re.search(r'^\s+'+name+r'\s', ui_help.stdout, re.M)
+                                              for name in ('install', 'snapshot', 'click', 'status')):
+                features.append('runtime-ui')
+        if re.search(r'^\s+player\s', runtime_help, re.M):
+            player_help = invoke([command, 'runtime', 'player', '--help'])
+            if player_help.returncode == 0 and all(re.search(r'^\s+'+name+r'\s', player_help.stdout, re.M)
+                                                  for name in ('snapshot','move','eat','shoot','sequence')):
+                features.append('runtime-player')
     auth = {'supported': '--mcs-auth' in run_help, 'component_available': None}
     if auth['supported']:
         features.append('mcs-auth')

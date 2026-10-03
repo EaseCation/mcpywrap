@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-03",
+  "engine": "3.10.0.420447",
+  "runtime_python": 2,
+  "source_sha256": "f83869e4f10ab5c66cb922520435d753e97cb79ea2a48d7dc66084b1214d5afe",
+  "install_bytes": 30671,
+  "settings": {
+    "tree_format": "semantic-v1",
+    "title": "设置",
+    "examined": 1222,
+    "matched": 29,
+    "elapsed_ms": 65
+  },
+  "max_node_depth": 3,
+  "filtered_page": {
+    "tree": "设置\n  导航\n    控制\n      [2] toggle 键盘和鼠标 [未选中]",
+    "groups": [
+      {
+        "name": "导航",
+        "parent": null,
+        "depth": 1,
+        "node_id": null,
+        "role": "region",
+        "context_only": true,
+        "id": "g1"
+      },
+      {
+        "name": "控制",
+        "parent": "g1",
+        "depth": 2,
+        "node_id": null,
+        "role": "section",
+        "context_only": true,
+        "id": "g4"
+      }
+    ],
+    "matched": 4,
+    "truncated": true,
+    "next_offset": 2
+  },
+  "live_regression": {
+    "ok": true,
+    "error": null,
+    "cli_calls": 20,
+    "foreground_and_cursor_changes": 0,
+    "scope": [
+      "install and reinstall",
+      "snapshot",
+      "scroll and restore",
+      "click audio tab",
+      "volume 25 then restore",
+      "stale snapshot rejected",
+      "idempotent request"
+    ]
+  },
+  "limitations": [
+    "Grouping inferred conservatively from ancestry, text and geometry; unfamiliar layouts may remain flat.",
+    "Foreground and cursor checks cover sampled observations in this local test, not every desktop scenario."
+  ],
+  "scope": "Historical live acceptance on 2026-10-03; source_sha256 identifies the tested injection. Release checks run separately.",
+  "release_regression": {
+    "version": "0.3.17",
+    "date": "2026-10-03",
+    "source_sha256": "cb10f5bd3b45f49afb65ff4d9a73a475e68e998474115151d20ec6f5f74b159c",
+    "install_bytes": 30503,
+    "ok": true,
+    "cli_calls": 26,
+    "foreground_and_cursor_changes": 0,
+    "unit_tests": {
+      "run": 378,
+      "skipped": 5,
+      "result": "OK"
+    },
+    "separate_native_tests": {
+      "run": 5,
+      "result": "OK"
+    }
+  }
+}

@@ -73,13 +73,13 @@ mixed-main
 
 - 可复现脚本：[tests/manual_integration.py](../tests/manual_integration.py)
 - 自动化用例：[tests/test_local_dependencies.py](../tests/test_local_dependencies.py)
-- 本机完整结果：[report.json](../test/acceptance-final/report.json)
-- 跨盘结果：[cross-drive-report.json](../test/acceptance-final/cross-drive-report.json)
-- 最终自动化输出：[unit-tests.log](../test/acceptance-final/unit-tests.log)
-- [纯本地日志](../test/acceptance-final/local-main-game.log)、[纯本地产物日志](../test/acceptance-final/local-main-assembled-game.log)
-- [混合依赖日志](../test/acceptance-final/mixed-main-game.log)、[混合产物日志](../test/acceptance-final/mixed-main-assembled-game.log)
-- [GUI 路径预览](../test/acceptance-final/gui-local-preview.png)
+- 本机完整结果：`report.json`
+- 跨盘结果：`cross-drive-report.json`
+- 最终自动化输出：`unit-tests.log`
+- `local-main-game.log`、`local-main-assembled-game.log`
+- `mixed-main-game.log`、`mixed-main-assembled-game.log`
+- `gui-local-preview.png`
 
 GUI 截图由 Qt 离屏渲染生成，显式加载本机微软雅黑字体以解决离屏平台缺少字体的问题。截图检查后将路径预览改成可滚动的只读文本框，避免长路径遮住保存形式和包结构信息。
 
-复现命令见 README“开发验证”；使用新的、尚不存在的 `--workspace`，测试前关闭正在运行的 Minecraft。以上 `test/` 证据是本机保留文件，不随源码分发。
+复现命令见 README“开发验证”；使用新的、尚不存在的 `--workspace`，测试前关闭正在运行的 Minecraft。以上 `test/` 文件名仅标识当时的本机证据，不随源码分发，也不保证仍然保留；请运行复现脚本生成新的结果。

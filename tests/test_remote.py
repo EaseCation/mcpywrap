@@ -208,6 +208,19 @@ class RemoteTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertEqual(action.call_args.args[1:4], ('a'*32, 'key', {'keys': ['SHIFT+W'], 'hold_ms': 500}))
 
+    def test_background_only_is_forwarded_and_failure_does_not_publish_image(self):
+        self.create()
+        with patch.object(window, 'operate', side_effect=window.BackgroundCaptureUnavailable('WGC unavailable')) as action:
+            output = self.local/'strict.png'
+            result = self.call('screenshot', '--background-only', '--session', 'a'*32, '--output', str(output))
+            self.assertNotEqual(result.exit_code, 0)
+            self.assertFalse(output.exists())
+            self.assertEqual(action.call_args.args[1:4], ('a'*32, 'screenshot', {'background_only': True}))
+            action.reset_mock()
+            with self.assertRaises(api.RemoteError):
+                self.client.request('POST', '/sessions/'+'a'*32+'/screenshot', {'background_only': 'true'})
+            action.assert_not_called()
+
     def test_window_actions_serialized_and_cancelled_at_shutdown(self):
         self.create()
         self.service.desktop_lock.acquire()

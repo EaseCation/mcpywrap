@@ -157,10 +157,12 @@ class Handler(BaseHTTPRequestHandler):
                     fields(data, ())
                     result = service.stop(session)
                 elif action in ('screenshot', 'key', 'mouse') and self.command == 'POST':
-                    allowed = {'screenshot': (), 'key': ('keys', 'hold_ms'),
+                    allowed = {'screenshot': ('background_only',), 'key': ('keys', 'hold_ms'),
                                'mouse': ('action', 'x', 'y', 'width', 'height', 'to_x', 'to_y', 'dx', 'dy',
                                          'delta', 'button', 'duration_ms', 'keys')}
                     fields(data, allowed[action])
+                    if action == 'screenshot' and type(data.get('background_only', False)) is not bool:
+                        raise RemoteError('background_only 必须为布尔值', 'invalid_request')
                     if action == 'key':
                         keys = data.get('keys')
                         if (not isinstance(keys, list) or not keys or not all(isinstance(k, str) for k in keys)

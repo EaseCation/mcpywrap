@@ -217,7 +217,8 @@ def routed_command(name, parameters):
     if name == 'screenshot':
         from ..commands.desktop_cmd import output_path, save_image
         output = output_path(p['output'])
-        result = client.request('POST', path+'/screenshot', {}, image=True)
+        data = {'background_only': True} if p.get('background_only') else {}
+        result = client.request('POST', path+'/screenshot', data, image=True)
         save_image(output, result.pop('content'))
         return True, client.normalize({'session': session, 'image': str(output), **result})
     data = {k: v for k, v in p.items() if k != 'session' and v is not None}
