@@ -9,7 +9,6 @@ except NameError:
     from .runtime_ui_payload import UIController, UIError, require, as_text, operation_view
 
 
-PLAYER_BUILDS = ('3.10.0.420447',)
 HUD_TOPS = ('hud_screen', 'ui://./hbui/gameplay.html')
 
 
@@ -28,22 +27,32 @@ class PlayerController(UIController):
         self._in_sequence = False
 
     def capabilities(self):
-        known = not self.closed and not self.ui.closed and self.engine in PLAYER_BUILDS
+        available = not self.closed and not self.ui.closed
         def has(*names):
-            return known and all(callable(getattr(self.native, n, None)) for n in names)
+            return available and all(callable(getattr(self.native, n, None)) for n in names)
+        def component_has(creator, *methods):
+            if not available:
+                return False
+            try:
+                component = getattr(self._factory(), creator)(self.api.GetLocalPlayerId())
+                return all(callable(getattr(component, name, None)) for name in methods)
+            except Exception:
+                return False
+        look = component_has('CreateRot', 'SetRot')
         return {'ok': True, 'installed': not self.closed and not self.ui.closed,
                 'engine': self.engine, 'backend': 'game-client', 'version': 1,
-                'capabilities': {'snapshot': True, 'look': known, 'look_at': known,
-                    'move': known, 'jump': known,
-                    'key': known and callable(getattr(self.gui, 'simulate_keyboard_event', None)),
-                    'sneak': known and callable(getattr(self.api,'ChangeSneakState',None)), 'select_slot': has('local_player_select_slot'),
+                'capabilities': {'snapshot': True, 'look': look, 'look_at': look,
+                    'move': component_has('CreateActorMotion', 'LockInputVector', 'UnlockInputVector'),
+                    'jump': available and callable(getattr(self.api, 'SimulateJump', None)),
+                    'key': available and callable(getattr(self.gui, 'simulate_keyboard_event', None)),
+                    'sneak': available and callable(getattr(self.api,'ChangeSneakState',None)), 'select_slot': has('local_player_select_slot'),
                     'attack': has('local_player_attack_entity'),
                     'dig': has('local_player_start_destroy_block', 'local_player_continue_destroy_block', 'local_player_stop_destroy_block'),
                     'use_block': has('local_player_build_block'),
                     'use_air': has('local_player_use_item', 'local_player_release_using_item', 'local_player_is_using_item'),
                     'eat': has('local_player_use_item', 'local_player_release_using_item', 'local_player_is_using_item'),
                     'shoot': has('local_player_use_item', 'local_player_release_using_item', 'local_player_is_using_item'),
-                    'sequence': known,
+                    'sequence': available,
                     'interact_entity': False},
                 'limits': {'duration_ms': [20, 10000], 'slot': [1, 9], 'snapshot_seconds': 30,
                            'sequence_steps':32, 'sequence_ms':120000},
@@ -61,7 +70,7 @@ class PlayerController(UIController):
         require(not self.sequence_busy() or self._in_sequence, 'busy', '连续动作正在执行，请查询 status 或 stop')
         require(self._hud(), 'menu_open', '请先关闭菜单并重新观察玩家状态')
         require(self.capabilities()['capabilities'].get(capability, False),
-                'unsupported_capability', '当前引擎没有已验证的玩家能力：' + capability)
+                'unsupported_capability', '当前引擎缺少所需玩家接口：' + capability)
         return pid
 
     def _hud(self):
@@ -400,6 +409,12 @@ class PlayerController(UIController):
                 current = self._read()
                 require(current['player_id']==before['player_id'] and current['dimension']==before['dimension']
                         and self._hud(), 'scene_changed', '玩家或界面已变化')
+                block = self._factory().CreateBlockInfo(self.api.GetLevelId()).GetBlock(tuple(args[:3]))
+                if block and block[0] in ('minecraft:air', 'minecraft:cave_air', 'minecraft:void_air'):
+                    op.update(block_removed_observed=True, end_reason='block_removed',
+                              verification='client_block_readback')
+                    self._release(op)
+                    return
                 require(self._target_id(current['target']) == self._target_id(target) and current['target']['in_reach'],
                         'target_changed', '挖掘目标已变化或超出距离')
                 progressing, destroyed = self.native.local_player_continue_destroy_block(*args)
@@ -595,6 +610,9 @@ class PlayerController(UIController):
         try:
             require(action in ('snapshot','look','look_at','select_slot','move','jump','sneak','key','attack','use_item','dig','eat','shoot','sequence','status','cancel','stop'),
                     'unknown_action','未知玩家动作')
-            return getattr(self,action)(**parameters)
+            result = getattr(self,action)(**parameters)
         except (UIError,TypeError,ValueError) as exc:
-            return {'ok':False,'code':getattr(exc,'code','invalid_argument'),'error':as_text(exc),'refresh_required':True}
+            result = {'ok':False,'code':getattr(exc,'code','runtime_api_error'),'error':as_text(exc),'refresh_required':True}
+        except Exception as exc:
+            result = {'ok':False,'code':'runtime_api_error','state':'unknown','error':as_text(exc),'refresh_required':True}
+        return self._diagnostic(result)

@@ -285,11 +285,39 @@ class RuntimeUITests(unittest.TestCase):
         with self.assertRaises(UIError): self.ui.set_control_value(node, 'false', snap)
         self.assertFalse(self.api.node.data[ROOT+'/toggle']['value'])
 
-    def test_unsupported_engine_never_falls_back_to_input(self):
-        self.ui.engine = 'unverified'
+    def test_engine_version_does_not_block_available_pointer_api(self):
+        for engine in ('3.9.0.350466', '3.9.0.401155', 'future-build'):
+            self.ui.engine = engine
+            node, snap = self.observe()
+            result = self.ui.dispatch('click', node=node, snapshot=snap)
+            self.assertTrue(result['ok'])
+            self.assertEqual(result['engine'], engine)
+            self.api.tick()
+
+    def test_missing_pointer_api_has_version_hint_without_input(self):
+        self.gui.simulate_button_event = None
         node, snap = self.observe()
-        with self.assertRaises(UIError): self.ui.click(node, snap)
+        result = self.ui.dispatch('click', node=node, snapshot=snap)
+        self.assertEqual(result['code'], 'unsupported_capability')
+        self.assertIn(self.ui.engine, result['compatibility_hint'])
         self.assertEqual(self.gui.inputs, [])
+
+    def test_web_screen_does_not_expose_or_operate_native_screen_beneath_it(self):
+        node, snap = self.observe()
+        self.api.node.top = 'ui://./hbui/index.html'
+        result = self.ui.dispatch('snapshot')
+        self.assertEqual(result['code'], 'unsupported_ui')
+        self.assertNotIn('nodes', result)
+        result = self.ui.dispatch('click', node=node, snapshot=snap)
+        self.assertEqual(result['code'], 'unsupported_ui')
+        self.assertEqual(self.gui.inputs, [])
+
+    def test_runtime_api_exception_preserves_error_and_version_hint(self):
+        self.gui.get_client_ui_screen_size = Mock(side_effect=AttributeError('changed API'))
+        result = self.ui.dispatch('snapshot')
+        self.assertEqual(result['code'], 'runtime_api_error')
+        self.assertIn('changed API', result['error'])
+        self.assertIn(self.ui.engine, result['compatibility_hint'])
 
     def test_offscreen_and_invalid_numeric_arguments(self):
         state = self.ui.snapshot(query='/clip/button', include_offscreen=True)

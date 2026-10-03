@@ -60,7 +60,7 @@ mcpy.ui.click(node_id, snapshot=s['snapshot'])
 
 `mcpy.api` 是原始客户端 `mod.client.extraClientApi` 简写。例如当前为 HUD、任务需要暂停菜单时可执行 `mcpy.api.OpenPauseGui()`，然后再 snapshot 确认。原始 API 不经过节点守卫，依然要核对方法的语义和端侧。
 
-推荐 `runtime ui` CLI 获取结构化错误和远程路由；直接 Python 方法的异常会由原有运行时协议返回。不要直接修改注入对象的内部字段、复用原生控件对象或绕过 unsupported_engine。
+推荐 `runtime ui` CLI 获取结构化错误和远程路由；直接 Python 方法的异常会由原有运行时协议返回。不要直接修改注入对象的内部字段、复用原生控件对象或绕过快照与输入释放守卫。
 
 ## 失败与生命周期
 
@@ -69,7 +69,9 @@ mcpy.ui.click(node_id, snapshot=s['snapshot'])
 - 输入 pending：用 status 检查；要取消则 `cancel --operation <id>`。释放失败时阻止新动作，先取消/处理当前动作，不能卸载后绕过状态。
 - 界面创建、关闭、尺寸变化会使快照失效。游戏重启后必须 install；当前会话升级脚本可再次 install。正在运行的动作会先尝试释放，再更新控制层。
 - Safaia unavailable：检查加载和已有 MC Studio/Safaia 调试连接竞争，不停止其他任务的游戏或日志服务，也不通过任意 PID 绕过会话校验。
-- 当前内部触控只对 `3.10.0.420447` 开启；其他构建以 install 返回能力为准。未支持的引擎、同名路径、无法识别的滚动结构不回退到桌面输入。
+- 0.3.18 起没有引擎版本白名单；以 install 返回的实际 API 能力为准。接口缺失或异常时检查 `engine / compatibility_hint`，可能是引擎版本差异；不因此自动重复输入或切换引擎。
+- `unsupported_ui`：当前是 HBUI/HTML 页面（如 3.9 新版音频设置），尚无节点适配；不把底层 JSON UI 视为当前界面，不猜节点。可以补后台截图观察。
+- 同名路径、无法识别的滚动结构及接口缺失均不回退到桌面输入。
 - 需要补图时使用 `screenshot --background-only --session <sid> --output <新PNG>`，后台捕获失败就报告，不能省略该选项继续重试。
 
 工作结束可执行 `runtime ui uninstall --session <sid>`，它解绑控制层事件并同时停止玩家队列、释放两层输入。游戏的停止仍按主 Skill 的会话归属规则执行。

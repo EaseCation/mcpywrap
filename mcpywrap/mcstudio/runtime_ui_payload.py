@@ -14,7 +14,6 @@ except NameError:
     integer_types = (int,)
 
 VERSION = 1
-VERIFIED_POINTER_BUILDS = ('3.10.0.420447',)
 ROLES = {0: 'button', 4: 'edit', 9: 'label', 14: 'scroll', 16: 'slider', 19: 'toggle'}
 EVENTS = ('PushScreenEvent', 'PopScreenEvent', 'PopScreenAfterClientEvent',
           'ScreenSizeChangedClientEvent', 'UiInitFinished')
@@ -80,7 +79,7 @@ class UIController(object):
         self.closed = False
 
     def capabilities(self):
-        pointer = not self.closed and self.engine in VERIFIED_POINTER_BUILDS and callable(
+        pointer = not self.closed and callable(
             getattr(self.gui, 'simulate_button_event', None)) and self.events is not None
         return {'ok': True, 'version': VERSION, 'engine': self.engine,
                 'backend': 'game-runtime', 'installed': not self.closed,
@@ -107,9 +106,12 @@ class UIController(object):
         require(player is None or not player.sequence_busy(), 'busy', '连续玩家动作正在执行，请查询 player status 或 stop')
 
     def _top(self):
+        top = self.api.GetTopUI()
+        require(not as_text(top).startswith('ui://'), 'unsupported_ui',
+                '当前为 HBUI/HTML 界面，无法读取其节点；请使用后台截图观察，不操作底层 JSON UI')
         node = self.api.GetTopUINode()
         require(node is not None, 'ui_unavailable', '当前没有可读取的 UI 节点')
-        return node, [node.GetScreenName(), self.api.GetTopUI(), self.generation]
+        return node, [node.GetScreenName(), top, self.generation]
 
     def _scan(self, root):
         node, identity = self._top()
@@ -325,8 +327,8 @@ class UIController(object):
         self.observation = None
 
     def _pointer(self, node, snapshot, fraction, request_id, action):
-        require(self.capabilities()['capabilities']['click'], 'unsupported_engine',
-                '当前引擎或生命周期适配未通过内部触控验证；不回退到桌面输入')
+        require(self.capabilities()['capabilities']['click'], 'unsupported_capability',
+                '当前引擎缺少内部触控接口或生命周期监听；不回退到桌面输入')
         op, repeated = self._operation(request_id, [action, node, snapshot, fraction])
         if repeated:
             return dict(operation_view(op), ok=op.get('state') not in ('failed', 'unknown'))
@@ -471,14 +473,26 @@ class UIController(object):
         self.observation = None
         return {'ok': True, 'installed': False, 'last_action': operation_view(self.last_action)}
 
+    def _diagnostic(self, result):
+        result['engine'] = self.engine
+        if (result.get('state') in ('failed', 'unknown') or
+                result.get('code') in ('unsupported_capability', 'unsupported_control', 'runtime_api_error')):
+            result['compatibility_hint'] = ('引擎 ' + as_text(self.engine) +
+                ' 的接口可能缺失或与当前封装不兼容；请核对版本和原始错误，结果未知时先查询状态，不自动重试输入')
+        return result
+
     def dispatch(self, action, **parameters):
         try:
             require(action in ('snapshot', 'click', 'slide', 'scroll', 'set_control_value',
                                'status', 'cancel', 'close'), 'unknown_action', '未知 UI 动作')
-            return getattr(self, action)(**parameters)
+            result = getattr(self, action)(**parameters)
         except (UIError, TypeError, ValueError) as exc:
-            return {'ok': False, 'code': getattr(exc, 'code', 'invalid_argument'),
-                    'error': as_text(exc), 'refresh_required': True}
+            result = {'ok': False, 'code': getattr(exc, 'code', 'runtime_api_error'),
+                      'error': as_text(exc), 'refresh_required': True}
+        except Exception as exc:
+            result = {'ok': False, 'code': 'runtime_api_error', 'state': 'unknown',
+                      'error': as_text(exc), 'refresh_required': True}
+        return self._diagnostic(result)
 
 
 def path_name(path):

@@ -102,7 +102,7 @@ Windows 用户在专用、已登录未锁屏的桌面设置 `MCPY_REMOTE_TOKEN` 
 
 ## 统一运行时与玩家操作
 
-游戏加载完成后执行 `runtime install --session <sid> --json`，一次注入 `mcpy.ui`、`mcpy.player` 和 `mcpy.api`。本地显式 `--local --project <项目>`，远程显式 `--remote <endpoint>`。bootstrap 可要求 `runtime-player`（调用端）和 `py`（执行端）。以返回的 `player_capabilities` 为准，普通操作优先使用下表，无需重新查询原版 SDK。
+游戏加载完成后执行 `runtime install --session <sid> --json`，一次注入 `mcpy.ui`、`mcpy.player` 和 `mcpy.api`。本地显式 `--local --project <项目>`，远程显式 `--remote <endpoint>`。bootstrap 可要求 `runtime-player`（调用端）和 `py`（执行端）。0.3.18 起不按引擎版本号限制，按实际 API 能力执行；接口错误中的 `engine / compatibility_hint` 提示可能的版本差异。以返回的 `player_capabilities` 为准，普通操作优先使用下表，无需重新查询原版 SDK。
 
 这些 Python 方法通过同一会话的 `runtime py --side client` 调用；也有 `runtime player <动作>` CLI。先 `snapshot()` 读取位置、朝向、快捷栏、手持物品、饥饿值、箭数和瞄准目标。
 

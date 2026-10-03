@@ -229,6 +229,45 @@ class PlayerTests(unittest.TestCase):
         self.assertTrue(self.p.status(result['id'])['block_destroyed_reported'])
         self.assertEqual(self.api.log[-1][0],'dig_stop')
 
+    def test_engine_version_does_not_block_available_player_apis(self):
+        for engine in ('3.9.0.350466', '3.9.0.401155', 'future-build'):
+            self.p.engine = self.ui.engine = engine
+            result = self.p.dispatch('look', pitch=0, yaw=90)
+            self.assertTrue(result['ok'])
+            self.assertTrue(self.p.capabilities()['capabilities']['eat'])
+
+    def test_missing_native_and_sdk_methods_report_compatibility(self):
+        self.native.local_player_attack_entity = None
+        result = self.p.dispatch('attack', snapshot=self.snap())
+        self.assertEqual(result['code'], 'unsupported_capability')
+        self.assertIn(self.p.engine, result['compatibility_hint'])
+        self.api.SetRot = None
+        self.assertFalse(self.p.capabilities()['capabilities']['look'])
+        self.assertEqual(self.p.dispatch('look', pitch=0, yaw=0)['code'], 'unsupported_capability')
+
+    def test_dig_observes_removed_original_block_and_continues_sequence(self):
+        self.api.target={'type':'Block','x':0,'y':101,'z':3,'face':2,'hitPosX':0.,'hitPosY':101.,'hitPosZ':3.}
+        job=self.p.sequence([{'action':'dig'},{'action':'jump'}])
+        self.api.advance(.02)
+        self.api.block=('minecraft:air',0)
+        self.api.target={'type':'None'}
+        self.api.advance(1)
+        result=self.p.status(job['id'])
+        self.assertEqual(result['state'],'completed')
+        child=self.p.status(result['results'][0]['operation'])
+        self.assertTrue(child['block_removed_observed'])
+        self.assertFalse(child['effect_verified'])
+        self.assertIn(('jump',),self.api.log)
+
+    def test_dig_target_change_with_original_block_intact_cancels(self):
+        self.api.target={'type':'Block','x':0,'y':101,'z':3,'face':2,'hitPosX':0.,'hitPosY':101.,'hitPosZ':3.}
+        op=self.p.dig(self.snap())
+        self.api.target={'type':'None'}
+        self.api.advance(.2)
+        result=self.p.status(op['id'])
+        self.assertEqual(result['state'],'cancelled')
+        self.assertNotIn('block_removed_observed',result)
+
     def test_sequence_wait_delay_eat_shoot_and_progress(self):
         plan=[{'action':'select_slot','slot':1,'delay_ms':200},
               {'action':'eat','expect':{'item':'minecraft:apple'}},

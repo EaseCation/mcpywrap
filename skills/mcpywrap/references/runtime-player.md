@@ -2,7 +2,7 @@
 
 **仅限临时调试：严禁在任何业务代码中使用或依赖本页的 `mcpy.*`。** 它们只存在于已注入的调试会话，正常游戏运行时不存在；以下 Python 示例仅通过 `runtime py` 执行，不可复制到随游戏发布的脚本。业务实现须使用正式 ModSDK 或项目框架，完整边界见 [主 Skill](../SKILL.md#强制边界mcpy-仅限临时调试)。
 
-统一安装：`mcpy --local --project <项目> runtime install --session <sid> --json`。远程换成 `--remote <endpoint>`。安装只在游戏内注入客户端函数，不要求控制服务器；UI、玩家层共享会话与输入互斥。当前内部客户端动作只对实测的 `3.10.0.420447` 开启，还会检查实际原生函数是否存在。
+统一安装：`mcpy --local --project <项目> runtime install --session <sid> --json`。远程换成 `--remote <endpoint>`。安装只在游戏内注入客户端函数，不要求控制服务器；UI、玩家层共享会话与输入互斥。0.3.18 起不按引擎版本号限制，按实际原生函数及 SDK 方法是否存在报告能力；存在接口仍需核对实际效果。
 
 主 Skill 的方法表足以完成常规操作。CLI 名称把下划线换成连字符，例如 `runtime player select-slot 3`、`look-at 10.5 65.5 20.5`；所有 CLI 都带 `--session`，需要时加 `--json`。
 
@@ -61,7 +61,7 @@ _result = s
 | select_slot | 槽位 1–9，直接切换快捷栏，不依赖数字键绑定。读 selected_slot/carried 确认。 |
 | jump / sneak | 跳跃执行一次；潜行维持指定时间，结束恢复原状态。菜单打开时会释放持续动作。 |
 | attack | 攻击准星瞄准、距离范围内的实体一次，走客户端真实攻击路径。方块使用 dig，不以挥手动画冒充造成伤害。 |
-| dig | 使用当前工具挖掘准星方块，分步推进直到破坏、失去目标或达到时限；结束发送停止挖掘。`block_destroyed_reported` 是客户端报告，仍应核对服务器/后续快照。 |
+| dig | 使用当前工具挖掘准星方块，分步推进直到破坏、失去目标或达到时限；结束发送停止挖掘。`block_destroyed_reported` 是原生接口报告，`block_removed_observed` 是原坐标已变为空气的客户端读回；仍应核对服务器/后续快照。 |
 | use_item | auto 在准星为方块时执行一次交互/放置，为空时对空使用。mode=air 强制对空使用，可用于食物、弓或穿戴等；hold_ms 只控制对空使用的持续时间，方块交互执行一次。实体喂食/交易尚未适配。 |
 | eat | 必须是引擎识别的食物，默认 2000ms；读 hunger 和 carried.count 确认。已饱食、冷却、特殊食物或服务器规则可能阻止实际食用。 |
 | shoot | 当前支持 `minecraft:bow`，默认蓄力 1200ms 再释放；应先确认箭和方向。读箭数及目标状态，必要时补后台画面。弩的装填/发射需要不同流程，目前明确拒绝。 |
@@ -69,6 +69,8 @@ _result = s
 食物/弓的原生开始接口可能返回 False 但已进入使用状态，封装已处理，Agent 不应自行重复调用原生 useItem。动作结束、取消或 UI 切换时会释放；游戏自身不执行 tick 时定时器不能及时推进，应查询状态并在需要时 stop。
 
 ## 失败处理
+
+接口缺失或调用异常时，读取 `engine / compatibility_hint` 与原始错误：引擎版本不同可能导致接口不兼容，但版本号本身不阻止调用。不自动切换版本；未知结果先查询 status。
 
 `stale_snapshot / out_of_reach / menu_open / wrong_item / unsupported_target` 表示条件不满足，先修正场景并重新观察。不要切前台或退回系统键鼠绕过错误。
 
