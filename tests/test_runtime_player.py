@@ -251,7 +251,7 @@ class PlayerTests(unittest.TestCase):
         self.api.advance(.02)
         self.api.block=('minecraft:air',0)
         self.api.target={'type':'None'}
-        self.api.advance(1)
+        self.api.advance(2)
         result=self.p.status(job['id'])
         self.assertEqual(result['state'],'completed')
         child=self.p.status(result['results'][0]['operation'])
@@ -308,13 +308,47 @@ class PlayerTests(unittest.TestCase):
 
     def test_external_rotation_override_stops_plan_before_next_action(self):
         job=self.p.sequence([{'action':'look','pitch':0,'yaw':90},{'action':'jump'}])
-        self.api.advance(.02)
+        self.api.advance(.015)
         self.api.rotation=(0.,0.)
         self.api.advance(1)
         result=self.p.status(job['id'])
         self.assertEqual(result['state'],'failed')
         self.assertEqual(result['code'],'rotation_changed')
         self.assertNotIn(('jump',),self.api.log)
+
+    def test_sequences_compile_default_times_and_honor_explicit_timing(self):
+        plan=[{'action':'select_slot','slot':2}, {'action':'wait','duration_ms':20},
+              {'action':'look','pitch':0,'yaw':90,'delay_ms':5}, {'action':'jump','at_ms':100}]
+        job=self.p.sequence(plan)
+        self.assertEqual([s['at_ms'] for s in job['plan']],[0,0,25,100])
+        self.api.advance(.099)
+        self.assertNotIn(('jump',),self.api.log)
+        self.api.advance(.03)
+        result=self.p.status(job['id'])
+        self.assertEqual(result['state'],'completed')
+        self.assertLess(result['results'][2]['started_ms'],100)
+        self.assertGreaterEqual(result['results'][3]['started_ms'],100)
+        self.assertNotIn('at_ms',plan[0])
+
+    def test_timeline_overlap_rejected_before_any_action(self):
+        with self.assertRaises(UIError):
+            self.p.sequence([{'action':'move','forward':1,'duration_ms':500},
+                             {'action':'jump','at_ms':20}])
+        self.assertFalse(self.api.log)
+
+    def test_maximum_planned_time_can_finish_with_bounded_scheduling_slack(self):
+        job=self.p.sequence([{'action':'jump','at_ms':120000}])
+        self.api.advance(120.1)
+        self.assertEqual(self.p.status(job['id'])['state'],'completed')
+        self.assertEqual(self.api.log,[('jump',)])
+        self.assertEqual(self.p.capabilities()['limits']['sequence_timeout_ms'],125000)
+
+    def test_timeline_slack_does_not_allow_unbounded_late_execution(self):
+        job=self.p.sequence([{'action':'jump','at_ms':120000}])
+        self.api.now=126
+        self.p._sequence_tick(self.p.sequence_job)
+        self.assertEqual(self.p.status(job['id'])['code'],'sequence_timeout')
+        self.assertFalse(self.api.log)
 
     def test_plan_preflight_rejects_bad_later_step_without_partial_effect(self):
         for plan in ([{'action':'jump'},{'action':'look','pitch':100,'yaw':0}],
@@ -328,6 +362,7 @@ class PlayerTests(unittest.TestCase):
         plan=[{'action':'select_slot','slot':2}]
         job=self.p.sequence(plan,request_id='c'*32)
         plan[0]['slot']=1
+        job['plan'][0]['slot']=1
         with self.assertRaises(UIError):self.p.sequence(plan,request_id='c'*32)
         self.api.advance(1)
         self.assertEqual(self.api.selected,1)

@@ -44,6 +44,8 @@ bootstrap 的 --remote 只检查，不保存设置；上述每条命令显式携
 init/add/build/package 仍操作 macOS 项目；只有配置 `[tool.mcpywrap.server] host/port` 的 run 可以远程执行，不上传或装配本地 Mod。
 远程联机会话可用 `mcpy --remote <地址> runtime py --session <id> --code "1+1" --json` 执行客户端 Python；不支持服务端执行或远程热更。超时是结果未知，不自动重发。
 
+Windows 毫秒键鼠编排使用两端 0.3.19+ 的 `input-sequence`，只向执行端发送调用端 JSON 文件的内容。能力与 [编排说明](input-sequence.md) 一致；返回的计时属于 Windows 执行端，不能拿 macOS 的本地时钟相减。它会占用游戏前台，不与后台运行时动作混用来测同一段输入。
+
 ## 返回字段与脚本参数
 
 | 字段 | 应如何使用 |

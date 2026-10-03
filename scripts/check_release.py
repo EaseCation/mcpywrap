@@ -38,9 +38,11 @@ with tarfile.open(sdist) as archive:
     assert expected <= sdist_names, f'Sdist missing modules: {expected - sdist_names}'
     assert 'tests/test_local_dependencies.py' in sdist_names
     assert {'docs/code-libraries.md', 'docs/git-dependencies.md', 'docs/qumod.md', 'docs/runtime-debug.md'} <= sdist_names
-    runtime_files = {'docs/runtime-ui.md', 'docs/runtime-player.md',
+    runtime_files = {'docs/runtime-ui.md', 'docs/runtime-player.md', 'docs/input-sequence.md',
                      'tests/test_runtime_ui.py', 'tests/test_runtime_ui_outline.py',
-                     'tests/test_runtime_player.py', 'tests/manual_runtime_ui.py', 'tests/manual_runtime_player.py'}
+                     'tests/test_runtime_player.py', 'tests/manual_runtime_ui.py', 'tests/manual_runtime_player.py',
+                     'tests/test_input_sequence.py', 'tests/test_native_input_sequence.py',
+                     'tests/manual_input_window.py', 'tests/manual_runtime_input.py'}
     runtime_files.update(p.relative_to(root).as_posix() for p in (root / 'docs/validation').glob('*') if p.is_file())
     assert runtime_files <= sdist_names, f'Sdist missing runtime documentation/tests: {runtime_files - sdist_names}'
     skill_files = {p.relative_to(root).as_posix() for p in (root / 'skills').rglob('*') if p.is_file() and '__pycache__' not in p.parts}

@@ -34,12 +34,14 @@ mcpy --local --project <项目> runtime player status --session <sid> --operatio
 
 ## 计划格式
 
+0.3.19+ 的所有队列统一先编译时间表：`at_ms` 可省略，自动取前一步计划结束加本步 `delay_ms`；显式 `at_ms` 不能早于上一步计划结束，同一步不同时填 `delay_ms`。返回 `plan` 为补齐时间的计划；`started_ms` 是执行器开始调用时刻，`finished_ms` 是确认完成时刻。固定 100 ms 步骤间隔已移除，动作校验及游戏 tick 仍会造成迟到。完整规则与 Windows 快切后端见 [连续动作编排](input-sequence.md)。
+
 - `action` 使用 Python 方法名：`move / look / look_at / select_slot / key / jump / sneak / attack / use_item / dig / eat / shoot`，或 `wait`。
-- 参数同主 Skill 表。`wait` 只指定 `duration_ms`；每个步骤可加 `delay_ms`，表示在该步骤**开始前**等待。
+- 参数同主 Skill 表。`wait` 的动作参数为 `duration_ms`，也可设置排时字段。`delay_ms` 相对前一步的**计划结束**，不是执行时再追加的一段固定 sleep。
 - 队列中的 `attack / use_item / dig / eat / shoot` **不用填 snapshot**。控制层在执行到该步时重新观察并绑定快照，而不是复用提交计划时的旧目标。
 - 可选 `expect` 支持 `selected_slot`、`item` 和 `target`。`target` 可指定 `type`、方块 `x/y/z` 或 `entityId`；例如 `{"target":{"type":"Block","x":10,"y":65,"z":20}}`。不符合断言时不执行该步，并停止后续步骤。
-- 最多 32 步，计划时间合计最多 120 秒；单次输入持续 20–10000ms，单次等待/步骤前延迟 0–10000ms。不能嵌套队列或插入任意 Python。
-- 操作之间有短暂的状态同步间隔。需要等待联机服务器或 Mod 的异步变化时显式加 wait/delay，不能假定低延迟环境的时间对所有服务器都适用。
+- 最多 32 步，计划截止最多 120 秒（包括显式排时空隙），总执行上限 125 秒，含 5 秒调度余量；单次输入持续 20–10000ms，单次等待/步骤前延迟 0–10000ms。不能嵌套队列或插入任意 Python。
+- 执行按列表顺序，前一步未完成或输入未释放时不会重叠执行下一步。若要求实际完成后再等待，插入 `wait`；服务器/Mod 的业务变化仍要检查新状态，不能把固定等待当作效果证明。
 - 队列执行期间拒绝新的玩家/UI 写操作；可查询状态和玩家快照。看向指定方向后会再次核对角度，若被其他控制逻辑改变则停止后续步骤，避免朝错误方向射箭。`runtime player stop` 停止本控制层的输入与队列，**不会退出游戏**；顶层 `mcpy stop` 才会结束游戏会话。
 
 ## 各动作的实际语义

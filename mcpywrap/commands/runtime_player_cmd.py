@@ -145,7 +145,7 @@ def shoot_cmd(session, **parameters):
 @click.option('--steps', help='JSON 步骤列表，与 --file 二选一')
 @click.option('--file', 'filename', type=click.Path(exists=True,dir_okay=False), help='调用端 UTF-8 JSON 文件')
 def sequence_cmd(session, request_id, steps, filename):
-    """一次提交最多 32 步；支持 delay_ms/wait、执行前断言、失败停止与取消。"""
+    """编排最多 32 步；省略 at_ms 自动排时，支持 delay_ms/wait、断言与取消。"""
     if (steps is None)==(filename is None):
         raise click.UsageError('必须且只能指定 --steps 或 --file')
     try:

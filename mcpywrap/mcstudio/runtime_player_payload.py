@@ -8,6 +8,11 @@ try:
 except NameError:
     from .runtime_ui_payload import UIController, UIError, require, as_text, operation_view
 
+try:
+    compile_timeline
+except NameError:
+    from ..timeline import compile_timeline
+
 
 HUD_TOPS = ('hud_screen', 'ui://./hbui/gameplay.html')
 
@@ -55,7 +60,7 @@ class PlayerController(UIController):
                     'sequence': available,
                     'interact_entity': False},
                 'limits': {'duration_ms': [20, 10000], 'slot': [1, 9], 'snapshot_seconds': 30,
-                           'sequence_steps':32, 'sequence_ms':120000},
+                           'sequence_steps':32, 'sequence_ms':120000, 'sequence_timeout_ms':125000},
                 'limitations': ['private_client_api', 'effect_requires_verification', 'hud_only']}
 
     def _alive(self):
@@ -488,19 +493,17 @@ class PlayerController(UIController):
                 'jump':(set(),set()),'sneak':({'duration_ms'},set()),'attack':(set(),set()),
                 'use_item':({'mode','hold_ms'},set()),'dig':({'duration_ms'},set()),
                 'eat':({'hold_ms'},set()),'shoot':({'hold_ms'},set()),'wait':({'duration_ms'},{'duration_ms'})}
-        total=0
+        durations=[]
         for step in steps:
             require(isinstance(step,dict) and step.get('action') in schema,'invalid_plan','步骤含未知动作')
             name=step['action']; allowed,required=schema[name]
-            require(set(step)<=allowed|{'action','delay_ms','expect'} and required<=set(step),'invalid_plan','步骤参数缺失或不支持：'+name)
+            require(set(step)<=allowed|{'action','delay_ms','at_ms','expect'} and required<=set(step),'invalid_plan','步骤参数缺失或不支持：'+name)
             caps=self.capabilities()['capabilities']
             if name=='use_item':
                 mode=step.get('mode','auto')
                 require(caps.get('use_air') if mode=='air' else caps.get('use_block') if mode=='block' else caps.get('use_air') or caps.get('use_block'),
                         'unsupported_capability','当前引擎不支持计划中的物品使用')
             elif name!='wait': require(caps.get(name,False),'unsupported_capability','当前引擎不支持步骤：'+name)
-            delay=step.get('delay_ms',0)
-            require(type(delay) is int and 0<=delay<=10000,'invalid_plan','delay_ms 必须是 0–10000')
             duration=step.get('duration_ms',step.get('hold_ms',{'move':500,'sneak':500,'key':80,'use_item':200,'dig':1500,'eat':2000,'shoot':1200}.get(name,0)))
             require(type(duration) is int and (0<=duration<=10000 if name=='wait' else duration==0 or 20<=duration<=10000),
                     'invalid_plan','步骤持续时间不合法')
@@ -526,11 +529,14 @@ class PlayerController(UIController):
                     if k in expect['target']:require(type(expect['target'][k]) is int,'invalid_plan','方块断言坐标必须是整数')
                 if 'type' in expect['target']:require(expect['target']['type'] in ('Block','Entity','None'),'invalid_plan','目标类型无效')
                 if 'entityId' in expect['target']:require(isinstance(expect['target']['entityId'],(str,type(u''))),'invalid_plan','实体 ID 必须为文本')
-            total+=delay+duration+100
-        require(total<=120000,'invalid_plan','连续动作的计划时间不能超过 120 秒')
+            durations.append(duration)
+        try:
+            return compile_timeline(steps,durations,120000)
+        except ValueError as exc:
+            raise UIError('invalid_plan',as_text(exc))
 
     def sequence(self,steps,request_id=None):
-        self._validate_steps(steps)
+        compiled=self._validate_steps(steps)
         import json
         plan=json.loads(json.dumps(steps))
         op,repeated=self._operation(request_id,['sequence',plan])
@@ -538,7 +544,9 @@ class PlayerController(UIController):
         self._ready('sequence')
         # JSON 克隆，调用者随后修改原列表不能改变已提交计划。
         op.update(action='sequence',state='pending',index=0,count=len(steps),results=[],effect_verified=False,
-                  _steps=plan,_deadline=self.clock()+120,_waiting=None,_delay_done=False,_wait_started=False)
+                  plan=json.loads(json.dumps(compiled)),
+                  _started=self.clock(),_deadline=self.clock()+125,
+                  _waiting=None,_wait_started=None,_step_started=None)
         self._save(op);self.sequence_job=op
         self._schedule_sequence(op,.01)
         return self._view(op)
@@ -554,47 +562,49 @@ class PlayerController(UIController):
     def _sequence_tick(self,job):
         if self.sequence_job is not job or job['state']!='pending':return
         try:
-            require(self.clock()<job['_deadline'],'sequence_timeout','连续动作超过 120 秒')
+            require(self.clock()<job['_deadline'],'sequence_timeout','连续动作超过 125 秒执行上限（含 5 秒调度余量）')
             require(self._hud(),'menu_open','界面已经切换')
             if job['_waiting']:
                 child=self.operations[job['_waiting']]
-                if child['state']=='pending':self._schedule_sequence(job,.05);return
+                if child['state']=='pending':self._schedule_sequence(job,.01);return
                 if child.get('expected_rotation') and child['state']=='completed':
                     current=self._read()['rotation'];expected=child['expected_rotation']
                     require(abs(current['pitch']-expected['pitch'])<=.2 and abs((current['yaw']-expected['yaw']+180)%360-180)<=.2,
                             'rotation_changed','朝向没有保持在指定方向，停止后续动作')
                 job['results'].append({'step':job['index']+1,'action':child['action'],'operation':child['id'],
                     'state':child['state'],'before':self._brief(child.get('before')),'after':self._brief(child.get('after')),
-                    'error':child.get('error'),'effect_verified':False})
+                    'error':child.get('error'),'effect_verified':False,
+                    'at_ms':job['plan'][job['index']]['at_ms'],
+                    'started_ms':job['_step_started'],'finished_ms':(self.clock()-job['_started'])*1000})
                 require(child['state']=='completed','step_failed','步骤未完成，后续动作已停止')
-                job['index']+=1;job['_waiting']=None;job['_delay_done']=False
-                self._schedule_sequence(job,.1);return
-            if job['index']>=len(job['_steps']):job['state']='completed';return
-            step=job['_steps'][job['index']]
-            if not job['_delay_done']:
-                job['_delay_done']=True
-                if step.get('delay_ms',0):self._schedule_sequence(job,step['delay_ms']/1000.);return
+                job['index']+=1;job['_waiting']=None
+            if job['index']>=len(job['plan']):job['state']='completed';return
+            step=job['plan'][job['index']]
+            remaining=job['_started']+step['at_ms']/1000.-self.clock()
+            if remaining>0:self._schedule_sequence(job,remaining);return
             if step['action']=='wait':
-                if not job['_wait_started']:
-                    job['_wait_started']=True
+                if job['_wait_started'] is None:
+                    job['_wait_started']=(self.clock()-job['_started'])*1000
                     self._schedule_sequence(job,max(.01,step['duration_ms']/1000.));return
-                job['results'].append({'step':job['index']+1,'action':'wait','state':'completed','duration_ms':step['duration_ms']})
-                job['index']+=1;job['_delay_done']=False
-                job['_wait_started']=False
+                job['results'].append({'step':job['index']+1,'action':'wait','state':'completed','duration_ms':step['duration_ms'],
+                    'at_ms':step['at_ms'],'started_ms':job['_wait_started'],'finished_ms':(self.clock()-job['_started'])*1000})
+                job['index']+=1
+                job['_wait_started']=None
                 self._schedule_sequence(job,.01);return
             before=self.snapshot()
             expected=step.get('expect',{})
             require('selected_slot' not in expected or before['selected_slot']==expected['selected_slot'],'expectation_failed','快捷栏槽位与计划不符')
             require('item' not in expected or (before['carried'] or {}).get('name')==expected['item'],'expectation_failed','手持物品与计划不符')
             require(all(before['target'].get(k)==v for k,v in expected.get('target',{}).items()),'expectation_failed','瞄准目标与计划不符')
-            parameters={k:v for k,v in step.items() if k not in ('action','delay_ms','expect')}
+            parameters={k:v for k,v in step.items() if k not in ('action','at_ms','expect')}
             if step['action'] in ('attack','use_item','dig','eat','shoot'):parameters['snapshot']=before['snapshot']
             self._in_sequence=True
+            job['_step_started']=(self.clock()-job['_started'])*1000
             try:result=getattr(self,step['action'])(**parameters)
             finally:self._in_sequence=False
             job['_waiting']=result['id']
             job['active_operation']=result['id']
-            self._schedule_sequence(job,.05)
+            self._schedule_sequence(job,.01)
         except Exception as exc:
             job.update(state='failed',error=as_text(exc),code=getattr(exc,'code','step_failed'))
             if self.active:self._release(self.active,'cancelled')

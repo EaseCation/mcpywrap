@@ -156,11 +156,15 @@ class Handler(BaseHTTPRequestHandler):
                 elif action == 'stop' and self.command == 'POST':
                     fields(data, ())
                     result = service.stop(session)
-                elif action in ('screenshot', 'key', 'mouse') and self.command == 'POST':
+                elif action in ('screenshot', 'key', 'mouse', 'input-sequence') and self.command == 'POST':
                     allowed = {'screenshot': ('background_only',), 'key': ('keys', 'hold_ms'),
                                'mouse': ('action', 'x', 'y', 'width', 'height', 'to_x', 'to_y', 'dx', 'dy',
-                                         'delta', 'button', 'duration_ms', 'keys')}
+                                         'delta', 'button', 'duration_ms', 'keys'),
+                               'input-sequence': ('events', 'width', 'height', 'max_lateness_ms')}
                     fields(data, allowed[action])
+                    if action == 'input-sequence':
+                        from ..mcstudio.input_sequence import validate_events
+                        validate_events(data.get('events'), data.get('width'), data.get('height'), data.get('max_lateness_ms'))
                     if action == 'screenshot' and type(data.get('background_only', False)) is not bool:
                         raise RemoteError('background_only 必须为布尔值', 'invalid_request')
                     if action == 'key':

@@ -1,5 +1,6 @@
 """Session-bound desktop operations; the CLI router can execute these remotely."""
 from pathlib import Path
+import json
 import click
 from ..command_context import OperationCommand, project_dir
 
@@ -67,3 +68,38 @@ def mouse_cmd(session, **parameters):
     """客户区鼠标操作；click-current 仅需宽高，relative 用于转向，其余需坐标与宽高。"""
     from ..mcstudio.window import operate
     return operate(project_dir(), session, 'mouse', parameters)
+
+
+def sequence_parameters(events, filename, width, height, max_lateness_ms):
+    if (events is None) == (filename is None):
+        raise click.UsageError('必须且只能指定 --events 或 --file')
+    if filename:
+        with Path(filename).open('rb') as stream:
+            raw = stream.read(65537)
+        if len(raw) > 65536:
+            raise click.UsageError('输入序列文件不能超过 64 KiB')
+        events = raw.decode('utf-8-sig')
+    elif len(events.encode('utf-8')) > 65536:
+        raise click.UsageError('输入序列不能超过 64 KiB')
+    try:
+        plan = json.loads(events)
+    except ValueError:
+        raise click.UsageError('events 必须是 UTF-8 JSON 事件列表') from None
+    from ..mcstudio.input_sequence import validate_events
+    parameters = dict(events=plan, width=width, height=height, max_lateness_ms=max_lateness_ms)
+    validate_events(**parameters)
+    return parameters
+
+
+@click.command(cls=OperationCommand, name='input-sequence')
+@click.option('--session', required=True)
+@click.option('--events', help='JSON 事件列表；与 --file 二选一')
+@click.option('--file', 'filename', type=click.Path(exists=True, dir_okay=False), help='调用端 UTF-8 JSON 事件文件')
+@click.option('--width', type=click.IntRange(1), help='含鼠标事件时必填，参考客户区宽度')
+@click.option('--height', type=click.IntRange(1), help='含鼠标事件时必填，参考客户区高度')
+@click.option('--max-lateness-ms', type=click.IntRange(0, 10000), help='可选迟到阈值；超过时停止并释放，不重放')
+def input_sequence_cmd(session, events, filename, width, height, max_lateness_ms):
+    """一次请求执行 Windows 输入时间表，返回逐事件 SendInput 时间；需要游戏前台。"""
+    from ..mcstudio.window import operate
+    return operate(project_dir(), session, 'input-sequence',
+                   sequence_parameters(events, filename, width, height, max_lateness_ms))

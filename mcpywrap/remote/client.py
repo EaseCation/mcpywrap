@@ -13,7 +13,7 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 import click
 from .service import RemoteError, PROTOCOL, identifier
 
-GAME_COMMANDS = {'doctor', 'connect', 'run', 'status', 'logs', 'stop', 'screenshot', 'key', 'mouse', 'py'}
+GAME_COMMANDS = {'doctor', 'connect', 'run', 'status', 'logs', 'stop', 'screenshot', 'key', 'mouse', 'py', 'input-sequence'}
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -200,6 +200,11 @@ def routed_command(name, parameters):
         return True, client.request('GET', '/sessions')
     session = identifier(p.get('session'))
     path = '/sessions/'+session
+    if name == 'input-sequence':
+        from ..commands.desktop_cmd import sequence_parameters
+        data = sequence_parameters(p.get('events'), p.get('filename'), p.get('width'),
+                                   p.get('height'), p.get('max_lateness_ms'))
+        return True, client.request('POST', path+'/input-sequence', data)
     if name == 'status':
         return True, client.request('GET', path)
     if name == 'logs':

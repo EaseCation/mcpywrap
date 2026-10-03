@@ -15,7 +15,7 @@ from ..mcstudio.network import ServerTarget, prepare_network
 from ..mcstudio.processes import checked_process
 
 PROTOCOL = 1
-ACTIONS = ['doctor', 'network-sessions', 'status', 'logs', 'stop', 'screenshot', 'key', 'mouse', 'py']
+ACTIONS = ['doctor', 'network-sessions', 'status', 'logs', 'stop', 'screenshot', 'key', 'mouse', 'py', 'input-sequence']
 ID = re.compile(r'^[0-9a-f]{32}$')
 
 

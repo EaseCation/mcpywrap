@@ -99,6 +99,32 @@ class RemoteTests(unittest.TestCase):
         self.client.request('POST', '/sessions/'+'a'*32+'/stop', {})
         self.assertFalse(self.live)
 
+    def test_input_sequence_file_is_local_and_partial_timestamps_survive_http(self):
+        self.create()
+        plan=[{'type':'key_down','key':'1'}, {'type':'key_up','key':'1','delay_ms':5}]
+        path=self.local/'events.json'
+        path.write_text(json.dumps(plan),encoding='utf-8-sig')
+        trace={'ok':False,'state':'unknown','released':True,'events':[{'send_started_ns':123,'send_finished_ns':124,'accepted':False}]}
+        with patch.object(window,'operate',return_value=trace) as execute:
+            result=self.call('input-sequence','--session','a'*32,'--file',str(path))
+        self.assertNotEqual(result.exit_code,0)
+        self.assertEqual(json.loads(result.output)['events'],trace['events'])
+        self.assertEqual(execute.call_args.args[2],'input-sequence')
+        self.assertEqual(execute.call_args.args[3]['events'],plan)
+        self.assertNotIn('filename',execute.call_args.args[3])
+
+    def test_input_sequence_rejects_invalid_http_plan_and_old_server_capability(self):
+        self.create()
+        with patch.object(window,'operate') as execute:
+            with self.assertRaises(api.RemoteError):
+                self.client.request('POST','/sessions/'+'a'*32+'/input-sequence',{'events':[{'type':'key_down','key':'1'}]})
+            self.info['capabilities']=[c for c in self.info['capabilities'] if c!='input-sequence']
+            plan=json.dumps([{'type':'key_down','key':'1'},{'type':'key_up','key':'1'}])
+            result=self.call('input-sequence','--session','a'*32,'--events',plan)
+            self.assertNotEqual(result.exit_code,0)
+            self.assertEqual(json.loads(result.output)['code'],'capability_missing')
+            execute.assert_not_called()
+
     def test_idempotency_conflict_and_busy(self):
         self.create()
         self.create()

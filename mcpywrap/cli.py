@@ -70,11 +70,12 @@ for old_command in (py_cmd, reload_cmd):
     alias.deprecated = True
     cli.add_command(alias)
 
-from .commands.desktop_cmd import screenshot_cmd, key_cmd, mouse_cmd
+from .commands.desktop_cmd import screenshot_cmd, key_cmd, mouse_cmd, input_sequence_cmd
 from .commands.serve_cmd import serve_cmd
 cli.add_command(screenshot_cmd, 'screenshot')
 cli.add_command(key_cmd, 'key')
 cli.add_command(mouse_cmd, 'mouse')
+cli.add_command(input_sequence_cmd)
 cli.add_command(serve_cmd, 'serve')
 from .commands.record_cmd import record_cmd
 cli.add_command(record_cmd)

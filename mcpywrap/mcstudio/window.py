@@ -1,6 +1,7 @@
 """Windows 游戏会话的键盘输入与客户区截图，仅依赖 Python 标准库。"""
 import ctypes as C
 from ctypes import wintypes as W
+from contextlib import contextmanager, nullcontext
 import hashlib
 import json
 import os
@@ -165,6 +166,111 @@ class Input(C.Structure):
     _fields_ = [('kind', W.DWORD), ('value', InputUnion)]
 
 
+def keyboard_input(key, release=False):
+    flags = int(key.extended) | (8 if key.scan else 0) | (2 if release else 0)
+    return Input(kind=1, keyboard=Keyboard(key.vk, key.scan, flags, 0, 0))
+
+
+class InputSender:
+    """One SendInput/release implementation shared by legacy actions and timelines."""
+    def __init__(self, user, trace=False):
+        self.user, self.trace = user, trace
+        self.held = {}
+        self.events, self.cleanup_events = [], []
+        self.batch = 0
+
+    def send(self, event, identity=None, release=None, metadata=None, cleanup=False):
+        self.send_batch([(event, identity, release, metadata)], cleanup=cleanup)
+
+    def send_batch(self, entries, cleanup=False):
+        records = []
+        self.batch += 1
+        for event, identity, release, metadata in entries:
+            if release is not None:
+                # An exception/partial batch may arrive after an accepted down.
+                self.held[identity] = (release, metadata)
+            if self.trace:
+                records.append(dict(metadata or {}, cleanup=cleanup, accepted=None,
+                                    batch=self.batch, batch_size=len(entries)))
+        if len(entries) == 1:
+            payload = entries[0][0]
+        else:
+            payload = (Input * len(entries))(*(entry[0] for entry in entries))
+        if self.trace:
+            (self.cleanup_events if cleanup else self.events).extend(records)
+            before = time.perf_counter_ns()
+            for record in records:
+                record['send_started_ns'] = before
+        try:
+            pointer = C.byref(payload) if len(entries) == 1 else payload
+            accepted = self.user.SendInput(len(entries), pointer, C.sizeof(Input))
+            for record in records:
+                record['batch_inserted_count'] = accepted
+                # Windows reports a count, not individual identities in a
+                # partial batch. Never invent which events were accepted.
+                record['accepted'] = True if accepted == len(entries) else False if accepted == 0 else None
+            if accepted != len(entries):
+                raise ValueError('输入未完整发送，可能被 Windows 权限限制')
+            for event, identity, release, metadata in entries:
+                if release is not None:
+                    self.held[identity] = (release, metadata)
+                elif identity is not None:
+                    self.held.pop(identity, None)
+        finally:
+            if self.trace:
+                after = time.perf_counter_ns()
+                for record in records:
+                    record['send_finished_ns'] = after
+
+    def release_all(self):
+        failures = []
+        for identity, (event, metadata) in reversed(list(self.held.items())):
+            metadata = dict(metadata or {})
+            if 'type' in metadata:
+                metadata['type'] = metadata['type'].replace('_down', '_up')
+            if 'index' in metadata:
+                metadata['release_of_index'] = metadata.pop('index')
+            metadata.pop('at_ms', None)
+            metadata.pop('scheduled_ns', None)
+            try:
+                self.send(event, identity=identity, metadata=metadata, cleanup=True)
+            except BaseException as exc:
+                failures.append(str(exc) or type(exc).__name__)
+        return failures
+
+    def close(self):
+        if self.release_all():
+            raise ValueError('部分输入释放失败，请检查本次键盘和鼠标状态')
+
+
+@contextmanager
+def desktop_input_lock():
+    """Serialize local CLI and remote-service input on this Windows session."""
+    if os.name != 'nt':
+        yield
+        return
+    kernel = C.WinDLL('kernel32', use_last_error=True)
+    kernel.CreateMutexW.argtypes = [C.c_void_p, W.BOOL, W.LPCWSTR]
+    kernel.CreateMutexW.restype = W.HANDLE
+    kernel.WaitForSingleObject.argtypes = [W.HANDLE, W.DWORD]
+    kernel.WaitForSingleObject.restype = W.DWORD
+    kernel.ReleaseMutex.argtypes = [W.HANDLE]
+    kernel.CloseHandle.argtypes = [W.HANDLE]
+    handle = kernel.CreateMutexW(None, False, 'Local\\mcpywrap-desktop-input')
+    if not handle:
+        raise ValueError('无法建立桌面输入互斥')
+    acquired = False
+    try:
+        acquired = kernel.WaitForSingleObject(handle, 0) in (0, 0x80)
+        if not acquired:
+            raise ValueError('桌面正在执行另一个 mcpy 输入操作，请等待完成')
+        yield
+    finally:
+        if acquired:
+            kernel.ReleaseMutex(handle)
+        kernel.CloseHandle(handle)
+
+
 class BitmapHeader(C.Structure):
     _fields_ = [('size', W.DWORD), ('width', W.LONG), ('height', W.LONG),
                 ('planes', W.WORD), ('bits', W.WORD), ('compression', W.DWORD),
@@ -308,10 +414,18 @@ class GameWindow:
         self.check_foreground()
         time.sleep(0.15)
 
-    def check_foreground(self):
+    def check_foreground(self, validate_identity=True):
         if getattr(self, 'cancel', None) is not None and self.cancel.is_set():
             raise ValueError('桌面操作已取消')
-        self.validate_process()
+        if validate_identity:
+            self.validate_process()
+        else:
+            # Timelines already verified creation time/executable and hold the
+            # process handle. Check that very handle is alive without resolving
+            # filesystem paths on every sub-millisecond event.
+            code = W.DWORD()
+            if not self.kernel.GetExitCodeProcess(self.process, C.byref(code)) or code.value != 259:
+                raise ValueError('游戏进程已退出或无法核对')
         if self.owner(self.hwnd) != self.game['pid'] or self.user.GetForegroundWindow() != self.hwnd:
             raise ValueError('无法确认游戏为前台窗口；请手动激活游戏后重试')
 
@@ -325,31 +439,17 @@ class GameWindow:
         for modifier in MODIFIERS | set(virtual_keys):
             if self.user.GetAsyncKeyState(modifier) & 0x8000:
                 raise ValueError('目标键或修饰键当前被按住，请松开后重试')
-        pressed, release_failed = [], False
+        sender = InputSender(self.user)
         try:
             for item in keys:
                 self.check_foreground()
-                flags = (1 if item.extended else 0) | (8 if item.scan else 0)
-                event = Input(kind=1, keyboard=Keyboard(item.vk, item.scan, flags, 0, 0))
-                # 先记录再调用，保证 SendInput 返回期间中断也会尝试释放。
-                pressed.append(event)
-                if self.user.SendInput(1, C.byref(event), C.sizeof(event)) != 1:
-                    raise ValueError('按键未完整发送，可能被 Windows 权限限制')
+                sender.send(keyboard_input(item), identity=item, release=keyboard_input(item, True))
             deadline = time.monotonic() + hold_ms / 1000
             while time.monotonic() < deadline:
                 self.check_foreground()
                 time.sleep(min(0.02, max(0, deadline - time.monotonic())))
         finally:
-            # 逆序释放全部按键；单键释放失败也继续释放其他键。
-            for event in reversed(pressed):
-                event.keyboard.flags |= 2
-                try:
-                    if self.user.SendInput(1, C.byref(event), C.sizeof(event)) != 1:
-                        release_failed = True
-                except BaseException:
-                    release_failed = True
-            if release_failed:
-                raise ValueError('部分按键释放结果未知；请松开本次按键并检查游戏')
+            sender.close()
         self.check_foreground()
         names = [item.name for item in keys]
         return {'key': '+'.join(names), 'keys': names, 'hold_ms': hold_ms,
@@ -519,11 +619,8 @@ class GameWindow:
             if self.user.GetAsyncKeyState(vk) & 0x8000:
                 raise ValueError('鼠标按钮或修饰键已被按住，请松开后重试')
         down, up = {'left': (2, 4), 'right': (8, 16), 'middle': (32, 64)}[button]
-        pressed, release_failed = [], False
-
-        def send(event):
-            if self.user.SendInput(1, C.byref(event), C.sizeof(event)) != 1:
-                raise ValueError('鼠标或修饰键未完整发送')
+        sender = InputSender(self.user)
+        send = sender.send
 
         def guard():
             self.check_foreground()
@@ -550,9 +647,7 @@ class GameWindow:
         try:
             for key in modifiers:
                 guard()
-                event = Input(kind=1, keyboard=Keyboard(key.vk, 0, int(key.extended), 0, 0))
-                pressed.append(Input(kind=1, keyboard=Keyboard(key.vk, 0, int(key.extended) | 2, 0, 0)))
-                send(event)
+                send(keyboard_input(key), identity=key, release=keyboard_input(key, True))
             if action not in ('relative','click-current'):
                 absolute(x, y)
             if modifiers:
@@ -572,8 +667,8 @@ class GameWindow:
                             raise ValueError('当前鼠标不在游戏客户区内')
                         if self.owner(self.user.WindowFromPoint(point))!=self.game['pid']:
                             raise ValueError('当前鼠标位置被其他窗口遮挡')
-                    pressed.append(Input(kind=0, mouse=Mouse(0, 0, 0, up, 0, 0)))
-                    send(Input(kind=0, mouse=Mouse(0, 0, 0, down, 0, 0)))
+                    release = Input(kind=0, mouse=Mouse(0, 0, 0, up, 0, 0))
+                    send(Input(kind=0, mouse=Mouse(0, 0, 0, down, 0, 0)), identity=button, release=release)
                     if action == 'drag':
                         started = time.monotonic()
                         while True:
@@ -584,8 +679,7 @@ class GameWindow:
                             time.sleep(.02)
                     else:
                         pause(duration_ms/1000/repeats/2)
-                    send(pressed[-1])
-                    pressed.pop()
+                    send(release, identity=button)
                     if repeat+1 < repeats:
                         pause(min(.1, duration_ms/1000/4))
             elif action == 'relative':
@@ -604,13 +698,7 @@ class GameWindow:
                 guard()
                 send(Input(kind=0, mouse=Mouse(0, 0, delta & 0xFFFFFFFF, 0x800, 0, 0)))
         finally:
-            for event in reversed(pressed):
-                try:
-                    send(event)
-                except BaseException:
-                    release_failed = True
-            if release_failed:
-                raise ValueError('输入释放失败，请检查鼠标和键盘状态')
+            sender.close()
         self.check_foreground()
         return {'action': action, 'sent': True, 'released': True, 'effect_verified': False}
 
@@ -630,6 +718,14 @@ class GameWindow:
 
 
 def operate(project, session, action, parameters=None, cancel=None):
+    if action == 'input-sequence':
+        from .input_sequence import validate_events
+        validate_events(**(parameters or {}))
+    with desktop_input_lock() if action in ('key', 'mouse', 'input-sequence') else nullcontext():
+        return _operate(project, session, action, parameters, cancel)
+
+
+def _operate(project, session, action, parameters=None, cancel=None):
     window = GameWindow(session_game(project, session), cancel=cancel)
     try:
         if action == 'screenshot':
@@ -643,6 +739,9 @@ def operate(project, session, action, parameters=None, cancel=None):
             result = window.press(parameters['keys'], parameters.get('hold_ms', 80))
         elif action == 'mouse':
             result = window.mouse(**parameters)
+        elif action == 'input-sequence':
+            from .input_sequence import run_sequence
+            result = run_sequence(window, **parameters)
         else:
             raise ValueError('未知桌面操作')
         return {'session': session, **window.details(), **result}

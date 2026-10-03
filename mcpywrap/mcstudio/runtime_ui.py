@@ -24,6 +24,7 @@ def compact_source(source):
 def install_source(engine):
     source = (Path(__file__).with_name('runtime_ui_payload.py').read_bytes() + b'\n' +
               Path(__file__).with_name('runtime_ui_outline.py').read_bytes() + b'\n' +
+              Path(__file__).parent.parent.joinpath('timeline.py').read_bytes() + b'\n' +
               Path(__file__).with_name('runtime_player_payload.py').read_bytes())
     digest = hashlib.sha256(source).hexdigest()
     encoded = base64.b64encode(zlib.compress(compact_source(source), 9)).decode('ascii')

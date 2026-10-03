@@ -5,6 +5,8 @@ python -X utf8 -m unittest discover -s tests -v
 ```
 
 自动化测试使用临时目录、模拟安装/发布、Qt 离屏界面和模拟游戏进程，不启动真实游戏。
+
+Windows 输入编排与游戏内队列共用 `timeline.py`，单次 key/mouse 与编排共用 `window.InputSender`。改动这些公共层时运行旧输入、编排及玩家队列回归；真实接收窗口和游戏 CLI 的时序验收见 [输入编排开发说明](input-sequence.md#验证)。
 测试进程使用UTF-8以保持文件读取和直接调用内部函数时的诊断输出一致；独立子进程另外验证真实CLI在GBK和UTF-8管道中的行为，不通过强制用户修改系统编码来掩盖兼容问题。
 CLI 使用调用上下文传递项目目录；底层服务接受明确路径。不要为 GUI 切换全局工作目录。
 
