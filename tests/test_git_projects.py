@@ -1,6 +1,7 @@
 """通用远程依赖合同：测试仓库没有QuMod预设，全部使用真实本地Git。"""
 import concurrent.futures
 import json
+import inspect
 import os
 from pathlib import Path
 import shutil
@@ -155,7 +156,8 @@ class GitProjects(unittest.TestCase):
         path = self.main/LOCK_FILE
         lock = json.loads(path.read_text()); lock['version'] = 1
         path.write_text(json.dumps(lock))
-        runner = CliRunner()
+        options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
+        runner = CliRunner(**options)
         result = runner.invoke(cli, ['--project', str(self.main), 'sync'])
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn('1 个源码依赖已就绪', result.output)
