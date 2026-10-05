@@ -134,10 +134,13 @@ def prepare_graph(root, config=None, migrate_windows_lock=False):
             return key
         active.append(key)
         source_hash = digest(source)
-        migrating = (migrate_windows_lock and key in expected and
-                     expected[key]['source_sha256'] != source_hash and
-                     windows_checkout_digest(source) == expected[key]['source_sha256'])
+        legacy_match = (key in expected and expected[key]['source_sha256'] != source_hash and
+                        expected[key]['source_sha256'] in (windows_checkout_digest(source),
+                                                          windows_checkout_digest(source, crlf=False)))
+        migrating = migrate_windows_lock and legacy_match
         if key in expected and expected[key]['source_sha256'] != source_hash and not migrating:
+            if legacy_match:
+                raise DependencyError('Git锁文件使用旧 Windows 摘要；执行 mcpy sync --migrate-windows-lock 显式备份并迁移')
             raise DependencyError('Git源码缓存摘要不符；请移走损坏缓存后重新同步')
         children = []
         for child in declarations(project, project_config):

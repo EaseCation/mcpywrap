@@ -59,6 +59,26 @@ class GitProjects(unittest.TestCase):
         sync_projects(self.main)  # migrated locks resume strict normal checks
         resolve_projects(self.main)
 
+    def test_windows_case_order_lock_with_lf_can_be_explicitly_migrated(self):
+        from mcpywrap.git_projects import sync_projects
+        from mcpywrap.source_files import windows_checkout_digest, digest
+        repo, _ = self.repository('case-legacy', 'code')
+        (repo/'src/B.py').write_bytes(b'B = 1\n')
+        (repo/'src/a.py').write_bytes(b'a = 2\n')
+        rev = self.commit(repo)
+        self.service.add(repo.as_uri())
+        source, _ = fetch_snapshot(repo.as_uri(), rev)
+        old_digest = windows_checkout_digest(source, crlf=False)
+        self.assertNotEqual(old_digest, digest(source))
+        path = self.main/LOCK_FILE
+        lock = json.loads(path.read_text())
+        lock['nodes'][0]['source_sha256'] = old_digest
+        path.write_text(json.dumps(lock))
+        with self.assertRaisesRegex(DependencyError, '--migrate-windows-lock'):
+            sync_projects(self.main)
+        sync_projects(self.main, migrate_windows_lock=True)
+        resolve_projects(self.main)
+
     def test_migration_rejects_unexplained_source_and_registration_changes(self):
         from mcpywrap.git_projects import sync_projects
         repo, _ = self.repository('changed', 'code')

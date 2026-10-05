@@ -41,8 +41,8 @@ def digest(directory):
     return h.hexdigest()
 
 
-def windows_checkout_digest(directory):
-    """Reproduce a legacy Windows/CRLF source lock without changing its files."""
+def windows_checkout_digest(directory, crlf=True):
+    """只重算旧 Windows 排序/可选 CRLF 摘要，不改写任何源码。"""
     root = Path(directory)
     h = hashlib.sha256()
     for path in sorted(root.rglob('*'), key=lambda p: tuple(part.lower() for part in p.relative_to(root).parts)):
@@ -51,7 +51,7 @@ def windows_checkout_digest(directory):
         if path.is_file():
             rel = path.relative_to(root).as_posix().encode('utf-8')
             data = path.read_bytes()
-            if b'\0' not in data:
+            if crlf and b'\0' not in data:
                 data = data.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
             h.update(len(rel).to_bytes(8, 'big') + rel + len(data).to_bytes(8, 'big') + data)
     return h.hexdigest()
