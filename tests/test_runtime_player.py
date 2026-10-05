@@ -65,6 +65,7 @@ class PlayerAPI(API):
     def GetPlayerAllItems(self,kind):return self.inventory
     def GetItemBasicInfo(self,name,aux):return {'itemType':'food' if name=='minecraft:apple' else ''}
     def SimulateJump(self):self.log.append(('jump',))
+    def Swing(self):self.log.append(('swing',));return True
     def ChangeSneakState(self):self.sneaking=not self.sneaking
     def AddTimer(self,seconds,callback):
         self.serial+=1
@@ -212,6 +213,10 @@ class PlayerTests(unittest.TestCase):
     def test_attack_and_slot_have_observed_effect_without_duplicate(self):
         snap=self.snap()
         result=self.p.attack(snap,request_id='a'*32)
+        self.assertEqual(result['state'], 'pending')
+        self.assertEqual(self.api.health, 10)
+        self.api.advance(.01)
+        result=self.p.status(result['id'], details=True)
         self.assertEqual(result['after']['target']['health'],5)
         again=self.p.attack(snap,request_id='a'*32)
         self.assertEqual(again['id'],result['id'])
@@ -221,12 +226,54 @@ class PlayerTests(unittest.TestCase):
 
     def test_false_use_return_does_not_cancel_real_food_use(self):
         result=self.p.eat(self.snap())
+        self.assertEqual(result['state'], 'pending')
+        self.assertFalse(self.native.using)
+        self.api.advance(.01)
+        result=self.p.status(result['id'])
         self.assertFalse(result['native_return'])
         self.assertTrue(result['using_item'])
         self.api.advance(2.1)
         self.assertEqual(self.api.hunger,14)
         self.assertEqual(self.api.inventory[0]['count'],2)
         self.assertFalse(self.native.using)
+
+    def test_deferred_use_cancel_and_target_change_never_send_input(self):
+        op = self.p.eat(self.snap())
+        self.p.stop()
+        self.api.advance(.1)
+        self.assertNotIn(('use_air',), self.api.log)
+        self.assertEqual(self.p.status(op['id'])['state'], 'cancelled')
+        op = self.p.eat(self.snap())
+        self.api.selected = 1
+        self.api.advance(.1)
+        self.assertNotIn(('use_air',), self.api.log)
+        self.assertEqual(self.p.status(op['id'])['code'], 'stale_snapshot')
+        self.assertIsNone(self.p.active)
+
+    def test_block_use_is_tick_bound_and_rechecks_reach(self):
+        self.api.target = {'type': 'Block', 'x': 0, 'y': 101, 'z': 3, 'face': 2,
+                           'hitPosX': 0., 'hitPosY': 101., 'hitPosZ': 3.}
+        snapshot = self.snap()
+        op = self.p.use_item(snapshot, mode='block', request_id='d'*32)
+        self.assertEqual(self.api.log, [])
+        self.assertEqual(self.p.use_item(snapshot, mode='block', request_id='d'*32)['id'], op['id'])
+        self.api.target['hitPosZ'] = 60.
+        self.api.advance(.01)
+        self.assertEqual(self.p.status(op['id'])['code'], 'out_of_reach')
+        self.assertEqual(self.api.log, [])
+        self.api.target['hitPosZ'] = 3.
+        op = self.p.use_item(self.snap(), mode='block')
+        self.api.advance(.01)
+        self.assertEqual(self.api.log, [('use_block', (0, 101, 3, 2))])
+        self.assertEqual(self.p.status(op['id'])['state'], 'completed')
+        self.assertIsNone(self.p.active)
+
+    def test_attack_cancelled_before_tick_does_not_damage_target(self):
+        op = self.p.attack(self.snap())
+        self.p.stop()
+        self.api.advance(.1)
+        self.assertEqual(self.api.health, 10)
+        self.assertEqual(self.p.status(op['id'])['state'], 'cancelled')
 
     def test_bow_charges_then_releases_and_wrong_item_is_rejected(self):
         with self.assertRaises(UIError):self.p.shoot(self.snap())
@@ -247,6 +294,20 @@ class PlayerTests(unittest.TestCase):
         self.assertFalse(self.p.stop()['ok'])
         self.native.release_error=False
         self.assertTrue(self.p.stop()['ok'])
+
+    def test_dig_swings_only_while_an_accepted_dig_is_active(self):
+        self.api.target = {'type': 'Block', 'x': 0, 'y': 101, 'z': 3, 'face': 2,
+                           'hitPosX': 0., 'hitPosY': 101., 'hitPosZ': 3.}
+        op = self.p.dig(self.snap())
+        self.assertNotIn(('swing',), self.api.log)
+        self.api.advance(.01)
+        self.assertTrue(self.p.status(op['id'])['swing_requested'])
+        self.assertEqual(self.api.log.count(('swing',)), 1)
+        self.api.advance(.05)
+        self.assertEqual(self.api.log.count(('swing',)), 2)
+        self.p.stop()
+        self.api.advance(2.)
+        self.assertEqual(self.api.log.count(('swing',)), 2)
 
     def test_dig_ticks_until_done_and_stops(self):
         self.api.target={'type':'Block','x':0,'y':101,'z':3,'face':2,'hitPosX':0.,'hitPosY':101.,'hitPosZ':3.}
@@ -288,6 +349,7 @@ class PlayerTests(unittest.TestCase):
     def test_dig_target_change_with_original_block_intact_cancels(self):
         self.api.target={'type':'Block','x':0,'y':101,'z':3,'face':2,'hitPosX':0.,'hitPosY':101.,'hitPosZ':3.}
         op=self.p.dig(self.snap())
+        self.api.advance(.01)
         self.api.target={'type':'None'}
         self.api.advance(.2)
         result=self.p.status(op['id'])

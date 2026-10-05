@@ -33,3 +33,7 @@
 实机验收脚本为 `tests/manual_runtime_player.py`。先准备独立生存世界、未满的饥饿值、快捷栏食物/普通弓及箭，再运行 `--project <项目> --session <sid> --food-slot 3 --bow-slot 4 --output <新JSON> --require-background`。脚本通过公开 CLI 提交并验证队列，消耗一份食物和一支箭，恢复原朝向和选槽；不会创建物品、改变游戏模式或停止传入会话。
 
 完整客户端动作与服务端配套夹具见 [可选运行时手动测试](../tests/manual/runtime_controls/README.md)。服务端准备会修改独立测试世界，必须显式开启；服务端读回饥饿、物品、伤害事件和方块变化，不把客户端 completed 作为效果证明。
+
+攻击、放置及物品使用的开始阶段统一交给游戏脚本 tick 执行，避免 JNI 客户端回调发生在引擎交互阶段之外时只出现动画或被拒绝。首次返回 pending 后仍查询原 operation；等待期间取消不会补发动作，开始前重新核对目标、物品、端侧场景和交互距离。completed/accepted 仍只表示动作调用完成，真实伤害、消耗和方块变化需另行观察。
+
+挖掘期间复用客户端 Player.Swing 播放原版挥手，动画请求与挖掘进度共用定时器，结束或取消后不再请求。缺少该 API 的引擎保留挖掘能力并报告 swing_supported=false；动画请求成功不代替方块状态验证。
