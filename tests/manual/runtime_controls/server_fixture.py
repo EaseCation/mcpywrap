@@ -83,26 +83,40 @@ class Fixture(_manual_server_api.GetServerSystemCls()):
     def health(self):
         return self.factory.CreateAttr(self.cow).GetAttrValue(self.api.GetMinecraftEnum().AttrType.HEALTH)
 
-    def spawn_target(self):
+    def target_geometry(self):
+        position = self.factory.CreatePos(self.cow).GetFootPos()
+        size = self.factory.CreateCollisionBox(self.cow).GetSize()
+        if not position or not size or len(size) != 2 or size[1] <= 0:
+            raise ValueError('Target collision box is not available')
+        return {'ok': True, 'entity': self.cow, 'health': self.health(), 'collision_size': list(size),
+                'aim': [position[0], position[1]+size[1]*.5, position[2]]}
+
+    def spawn_target(self, age=None):
+        if self.cow:
+            self.DestroyEntity(self.cow)
+            if self.cow in self.entities: self.entities.remove(self.cow)
         self.reset_player()
         x, y, z = self.origin
         self.cow = self.CreateEngineEntityByTypeStr('minecraft:cow', (x+.5, y+1., z+3.5), (0, 0), 0)
         if not self.cow:
             raise ValueError('Engine did not create the test target')
         self.entities.append(self.cow)
+        if age is not None:
+            event = {'adult': 'minecraft:ageable_grow_up', 'baby': 'minecraft:entity_born'}[age]
+            if not self.factory.CreateEntityEvent(self.cow).TriggerCustomEvent(self.cow, event):
+                raise ValueError('Could not select fixture age: '+age)
         self.factory.CreateControlAi(self.cow).SetBlockControlAi(False, True)
         health = self.factory.CreateAttr(self.cow)
         kind = self.api.GetMinecraftEnum().AttrType.HEALTH
         health.SetAttrMaxValue(kind, 100.)
         health.SetAttrValue(kind, 100.)
-        return {'ok': True, 'entity': self.cow, 'health': self.health(),
-                'aim': [x+.5, y+2., z+3.5]}
+        return self.target_geometry()
 
     def aim_for_bow(self):
         x, y, z = self.origin
         self.factory.CreatePos(self.cow).SetFootPos((x+.5, y+1., z+4.5))
         self.events = []
-        return {'ok': True, 'aim': [x+.5, y+2., z+4.5]}
+        return self.target_geometry()
 
     def prepare_block(self):
         for entity in self.entities:

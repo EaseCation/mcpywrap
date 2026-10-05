@@ -66,8 +66,8 @@ class LiveTests:
         require(result.get('state') == 'completed', 'Action did not complete: '+str(result))
         return result
 
-    def observe(self, predicate):
-        deadline = time.monotonic()+self.args.timeout
+    def observe(self, predicate, timeout=None):
+        deadline = time.monotonic()+(self.args.timeout if timeout is None else timeout)
         while True:
             state = self.player('snapshot')
             if predicate(state):
@@ -195,20 +195,38 @@ class LiveTests:
             time.sleep(.25)
 
     def attack_and_bow(self):
+        return {age: self.attack_and_bow_for_age(age) for age in ('adult', 'baby')}
+
+    def attack_and_bow_for_age(self, age):
         caps = self.probe_result['player']['capabilities']
         if not all(caps.get(key) for key in ('attack', 'shoot', 'select_slot', 'look_at')):
             raise UnsupportedCase('Target interaction methods unavailable: '+str(caps))
-        target = self.server('spawn_target()')
+        self.server('spawn_target('+repr(age)+')')
+        # Component-group age changes apply on the next engine frame.
+        time.sleep(.25)
+        target = self.server('target_geometry()')
+        require((target['collision_size'][1] < 1.) == (age == 'baby'), 'Fixture age did not take effect: '+str(target))
+        collision_size = target['collision_size']
         self.observe(lambda s: all(abs(s['position'][i]-self.position[i]) < .3 for i in range(3)))
         self.action('select-slot', '2')
         self.action('look-at', *map(str, target['aim']))
-        state = self.observe(lambda s: s['target'].get('entityId') == target['entity'])
+        state = self.observe(lambda s: s['target'].get('entityId') == target['entity'], timeout=8)
+        require((state.get('carried') or {}).get('name') == 'minecraft:wooden_sword', 'Expected wooden sword')
+        health_before = self.server('health()')
+        require(health_before == target['health'], 'Target was damaged before the automatic attack; discard this run')
+        self.py('manual_fixture.events = []\n_result = True', 'server')
+        started = time.monotonic()
         self.action('attack', '--snapshot', state['snapshot'])
-        deadline = time.monotonic()+self.args.timeout
-        while self.server('health()') >= target['health']:
-            require(time.monotonic() < deadline, 'Server did not observe attack damage')
+        while True:
+            attacked = self.server('health()')
+            melee_events = [event for event in self.server('readback()')['events']
+                            if event.get('cause') == 'entity_attack' and event.get('damage', 0) > 0
+                            and event.get('srcId') == state['player_id'] and event.get('entityId') == target['entity']]
+            if attacked < health_before and melee_events:
+                break
+            require(time.monotonic()-started < 5, 'No attributed automatic melee damage within 5 seconds')
             time.sleep(.25)
-        attacked = self.server('health()')
+        melee_seconds = time.monotonic()-started
         target = self.server('aim_for_bow()')
         time.sleep(.5)
         self.action('select-slot', '4')
@@ -221,7 +239,8 @@ class LiveTests:
             hits = [event for event in events if event.get('cause') == 'projectile'
                     and event.get('srcId') == state['player_id'] and event.get('projectileId')]
             if hits:
-                return {'health_after_attack': attacked, 'projectile_events': hits}
+                return {'age': age, 'collision_size': collision_size, 'health_before_attack': health_before, 'health_after_attack': attacked,
+                        'melee_events': melee_events, 'melee_seconds': melee_seconds, 'projectile_events': hits}
             require(time.monotonic() < deadline, 'Server did not observe projectile damage: '+str(events))
             time.sleep(.25)
 
