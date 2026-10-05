@@ -423,7 +423,7 @@ def take_world_options(arguments, cppconfig=None):
 @click.command(cls=OperationCommand)
 @world_options
 @engine_options
-@click.option("--no-gui", is_flag=True, hidden=True, help="兼容参数；run 始终使用 CLI")
+@click.option("--no-gui", is_flag=True, help="不显示调试小窗；适用于 AI、脚本或纯终端操作")
 @click.option("--detach", is_flag=True, help="后台运行并返回游戏会话")
 @click.option('--mcs-auth', is_flag=True, help='本次单人测试或网络连接使用已登录的 MC Studio 身份')
 @click.option('--cppconfig', type=click.Path(exists=True, dir_okay=False, resolve_path=True),
@@ -458,17 +458,30 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
     from ..engines.backend import get_backend
     from ..engines.host import EngineError
     backend = get_backend()
+    from ..command_context import human_interaction
+    from ..dependencies import read_project
+    show_debug = (human_interaction() and not (no_gui or detach or list or delete or clean_all)
+                  and 'project-ui' in backend.capabilities
+                  and not read_project(base_dir).get('tool', {}).get('mcpywrap', {}).get('server'))
+    if show_debug:
+        # Import before launching, so missing Qt cannot leave an unmanaged game.
+        from ..ui.run_session import show_session_window
     options = dict(new=new, listing=list, delete=delete, force=force, clean_all=clean_all,
-                   instance_prefix=instance_prefix, no_gui=True, detach=detach,
+                   instance_prefix=instance_prefix, no_gui=True, detach=detach or show_debug,
                    mcs_auth=mcs_auth, overrides=engine_overrides, world_config=world_config)
     try:
-        return backend.run(base_dir, **options)
+        result = backend.run(base_dir, **options)
     except EngineError as error:
         if error.code != 'setup_required' or not backend.managed_install: raise
         from .engine_cmd import perform_install
         click.echo('首次运行：自动下载并准备本地游戏环境…', err=True)
         perform_install()
-        return backend.run(base_dir, **options)
+        result = backend.run(base_dir, **options)
+    if show_debug and isinstance(result, dict) and result.get('session'):
+        from ..mcstudio.sessions import show_configuration
+        show_configuration(result)
+        return show_session_window(base_dir, backend, result)
+    return result
 
 
 def _run_windows(base_dir, *, new=False, listing=False, delete=None, force=False,

@@ -17,7 +17,7 @@ WindowsBackend 调用原有 MC Studio 发现、cppconfig 和 Safaia 流程，保
 
 调用端通常只需要 run/status/logs/stop/runtime py。启动器位置、游戏库路径和底层 socket 是后端细节；`backend` 字段供诊断，业务代码应按 capability 和公共状态判断。`running` 表示进程启动，macOS 的 `world_ready` 才表示已观察到 HUD；Mod 是否正常还要核对实际游戏日志和玩法效果。
 
-macOS 首次 mcpy run 自动从内置发布源安装原生运行包和官方 APK，进度在 stderr；也可提前执行 mcpy engine install。--catalog / --apk 是高级覆盖选项。run 始终是 CLI，ui 才打开 Qt；Windows 保持手动安装 MC Studio。默认资源目录 ~/Library/Application Support/mcpy，可设置 MCPY_ENGINE_HOME、MCPY_RUNTIME_CATALOG。
+macOS 首次 mcpy run 自动从内置发布源安装原生运行包和官方 APK，进度在 stderr；也可提前执行 mcpy engine install。--catalog / --apk 是高级覆盖选项。交互式 run 显示共用调试小窗，ui 打开完整管理页；--no-gui / --detach / --json / --non-interactive 抑制调试小窗；Windows 保持手动安装 MC Studio。默认资源目录 ~/Library/Application Support/mcpy，可设置 MCPY_ENGINE_HOME、MCPY_RUNTIME_CATALOG。
 
 macOS 当前只支持离线 Addon 世界，不支持 Map、服务器连接、MCS 登录或 Windows 桌面截图/键鼠/录像；需要这些能力时显式使用 Windows 远程端。编译目标 macOS 11.0，实际游戏只在 26.6.2 验证。运行包尚为 ad-hoc 签名、公证待完成。
 

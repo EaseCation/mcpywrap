@@ -50,13 +50,13 @@ mcpy --local --project <项目目录> logs --session <id> --source game --tail 2
 mcpy --local --project <项目目录> stop --session <id> --json
 ```
 
-run 始终是纯 CLI，包括首次安装进度、默认世界创建和配置文件提示；--no-gui 保留为兼容参数。只有 mcpy ui 打开 Qt 管理页、折叠的新建确认框及安装子窗口。纯命令模式不弹窗或询问来源。高级用户可覆盖 --catalog 或通过 --apk 导入匹配资源。已有世界固定运行包版本，不自动迁移。
+run 在终端完成首次安装、默认世界创建和配置路径提示；交互式本地启动默认显示共用调试小窗。--no-gui、--detach、--json 或 --non-interactive 抑制小窗。mcpy ui 才打开完整管理页、新建确认框及安装子窗口。AI 使用 --non-interactive run --no-gui --detach --json。高级用户可覆盖 --catalog 或通过 --apk 导入匹配资源。已有世界固定运行包版本，不自动迁移。
 
 ### 2026-10-06 macOS CLI 验收
 
 在 Apple Silicon / macOS 26.6.2 上，清空相关环境变量，使用默认资源目录和独立 Addon 项目执行裸 `mcpy run`。公开 catalog 和原生运行包下载成功；网易 APK 的下载、重试、取消和续传路径已实际触发，但当天 CDN 出现 TLS 中断且速度偏低，未完成本轮全量联网下载。后续复用此前从官方下载且 SHA-256 一致的 3.10.100.299889 APK 缓存，完成校验、提取、自动兼容检查、默认世界创建和启动。此结果不等同于干净网络环境下的完整下载验收。
 
-前台打印真实 cppconfig 路径和修改提示，无 Qt 辅助窗口；游戏进入 `hud_screen`，客户端和服务端 Python 返回相同世界 ID。Ctrl+C 保存退出后可重新启动；`run --detach --json` 的 stdout 可解析为单个 JSON，并携带 config_path/config_hint。测试结束后关闭本轮游戏会话。自动测试共运行 518 项，24 项按平台条件跳过，其余通过；覆盖默认来源、CLI 自动安装、终端模板生成、Qt 自动安装完成继续、分段续传和空间估算。Skill 校验通过。
+早期纯 CLI 验收中，前台打印真实 cppconfig 路径和修改提示，无 Qt 辅助窗口（后续已调整为交互启动默认带调试小窗）；游戏进入 `hud_screen`，客户端和服务端 Python 返回相同世界 ID。Ctrl+C 保存退出后可重新启动；`run --detach --json` 的 stdout 可解析为单个 JSON，并携带 config_path/config_hint。测试结束后关闭本轮游戏会话。自动测试共运行 518 项，24 项按平台条件跳过，其余通过；覆盖默认来源、CLI 自动安装、终端模板生成、Qt 自动安装完成继续、分段续传和空间估算。Skill 校验通过。
 
 ## Windows 复测清单
 

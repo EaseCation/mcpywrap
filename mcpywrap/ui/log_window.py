@@ -1,8 +1,7 @@
 """共用的紧凑悬浮窗；默认只呈现一行状态，日志与操作按需展开。"""
-from PySide6.QtCore import Qt, QSettings, Slot, QSize, QEvent
-from PySide6.QtGui import QIcon, QPainter, QPainterPath, QPixmap, QPen, QPalette
+from PySide6.QtCore import Qt, QSettings, Slot, QSize
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-                              QLabel, QTabWidget, QMenu, QWidgetAction, QSizePolicy, QToolButton)
+                              QLabel, QTabWidget, QMenu, QWidgetAction, QSizePolicy, QCheckBox)
 from .log_view import LogView
 from .session_views import SessionControls, PythonConsole
 
@@ -50,11 +49,7 @@ class LogWindow(QMainWindow):
         action = QWidgetAction(self.actions_menu); action.setDefaultWidget(controls)
         self.actions_menu.addAction(action)
         self.actions_btn.setMenu(self.actions_menu)
-        self.top = QToolButton(); self.top.setCheckable(True)
-        self.top.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.top.setAccessibleName('置顶')
-        self.top.setIconSize(QSize(16, 16))
-        self.top.setIcon(self.pin_icon())
+        self.top = QCheckBox('置顶')
         self.top.setToolTip('取消置顶' if self.top.isChecked() else '保持小窗在游戏上方')
         self.top.toggled.connect(self.set_always_on_top)
         for button in (self.toggle_btn, self.actions_btn, self.top):
@@ -78,34 +73,9 @@ class LogWindow(QMainWindow):
         self.move(max(area.left(), min(frame.left(), area.right()-frame.width()+1)),
                   max(area.top(), min(frame.top(), area.bottom()-frame.height()+1)))
 
-    def pin_icon(self):
-        """DPI-aware pin glyph; the native Qt tool button draws every control state."""
-        icon = QIcon()
-        for size in (16, 32):
-            pixmap = QPixmap(size, size); pixmap.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(pixmap)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.scale(size/20, size/20)
-            color = self.top.palette().color(QPalette.ColorRole.ButtonText)
-            painter.setPen(QPen(color, 1.5))
-            painter.setBrush(color)
-            path = QPainterPath(); path.moveTo(6, 3)
-            for x, y in ((14, 3), (14, 5), (12, 5), (12, 10), (15, 13),
-                         (5, 13), (8, 10), (8, 5), (6, 5)):
-                path.lineTo(x, y)
-            path.closeSubpath(); painter.drawPath(path)
-            painter.drawLine(10, 13, 10, 18); painter.end()
-            icon.addPixmap(pixmap)
-        return icon
-
     def showEvent(self, event):
         super().showEvent(event)
         self.fit_on_screen()
-
-    def changeEvent(self, event):
-        super().changeEvent(event)
-        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange) and hasattr(self, 'top'):
-            self.top.setIcon(self.pin_icon())
 
     @Slot()
     def toggle_log_view(self):

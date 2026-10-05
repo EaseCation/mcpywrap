@@ -189,6 +189,37 @@ class GuiTests(unittest.TestCase):
         self.assertIn('资源已就绪',dialog.status.text())
         dialog.close()
 
+    def test_run_view_close_keeps_game_and_exit_disposes_controller(self):
+        from mcpywrap.ui.run_session import RunSessionView
+        state = {'session': 'b'*32, 'state': 'running', 'game': None}
+        with patch('mcpywrap.ui.session_controller.sessions.read', return_value=state), \
+                patch.object(self.app, 'quit') as quit_app:
+            view = RunSessionView(self.app, str(self.root), self.backend, {'session': 'b'*32})
+            self.assertTrue(view.window.isVisible())
+            self.assertIs(view.window.controls.controller, view.controller)
+            self.assertIs(view.window.log_view.model, view.controller.logs)
+            view.window.close()
+            view.update()
+            self.assertEqual(view.controller.session, 'b'*32)
+            quit_app.assert_not_called()
+            state['state'] = 'exited'
+            view.controller.poll()
+            quit_app.assert_called()
+            view.dispose()
+
+    def test_run_view_terminal_interrupt_uses_existing_stop_action(self):
+        from mcpywrap.ui.run_session import RunSessionView
+        state = {'session': 'b'*32, 'state': 'running', 'game': None}
+        with patch('mcpywrap.ui.session_controller.sessions.read', return_value=state), \
+                patch('mcpywrap.ui.session_controller.sessions.stop', return_value={'state': 'exited'}) as stop, \
+                patch.object(self.app, 'quit'):
+            view = RunSessionView(self.app, str(self.root), self.backend, {'session': 'b'*32})
+            view.request_stop()
+            view.update()
+            self.wait(lambda: not view.controller.busy)
+            stop.assert_called_once_with(str(self.root), 'b'*32)
+            view.dispose()
+
     def test_ui_setup_defaults_are_hidden_and_auto_setup_continues(self):
         backend = Mock(spec=GameBackend, setup_description='fixture')
         backend.install.return_value = {'ok': True}

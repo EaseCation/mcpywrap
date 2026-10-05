@@ -4,8 +4,10 @@
 
 ```sh
 mcpy --local --project /path/to/addon ui
-# run 始终使用 CLI，不打开 Qt
+# run 在终端准备资源，游戏启动后只打开紧凑调试小窗
 mcpy --local --project /path/to/addon run
+# AI 或纯终端操作
+mcpy --local --project /path/to/addon --non-interactive run --no-gui --detach --json
 ```
 
 mcpy ui 内首次启动会自动准备 macOS 资源并显示进度，完成后继续启动。高级来源和本地 APK 导入默认折叠；与 CLI 复用同一个安装服务。
@@ -48,3 +50,5 @@ mcpy 自身继续使用 MIT；GUI 改为 PySide6-Essentials 和 Shiboken6，选�
 发行时保留 Qt/PySide 的版权、许可及第三方声明，并提供适用 LGPL 组件的对应源码获取方式。若以后改为冻结桌面应用、直接捆绑 Qt 或使用其他 Qt 模块，需要重新核对实际模块及重新链接/替换要求。切换 PySide6 消除的是 PyQt GPL 绑定依赖，不是免除所有第三方许可义务。上游许可信息见 https://doc.qt.io/qtforpython-6/licenses.html 。
 
 后台结果通过显式 Slot 更新主线程界面，发行声明随 wheel 携带于 THIRD_PARTY_NOTICES.md。
+
+交互式 run 的调试小窗复用 SessionController/SessionLogWindow，不启动第二套日志服务。置顶使用原生 QCheckBox，随系统主题显示；关闭小窗只隐藏视图，游戏退出后清理控制器和监控。Ctrl+C 与“保存退出”调用同一停止接口。

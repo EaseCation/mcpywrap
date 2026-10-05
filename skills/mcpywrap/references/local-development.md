@@ -6,14 +6,14 @@
 
 统一前缀：`mcpy --local --project <绝对项目目录> --non-interactive`，以下每条有限命令最后添加 `--json`。全局参数在子命令前。stdout 是单个 JSON，stderr 可含构建诊断；同时检查退出码、ok、state、error、hint，不从退出码零推断游戏业务效果。
 
-这里“无头”是 mcpy 控制端无需 Qt 管理页、日志小窗、TUI 或人工点击。Minecraft 仍有原生窗口并需要图形会话/GPU。不要承诺 SSH 无显示服务运行或游戏无渲染模式。run 始终使用 CLI，--no-gui 是兼容参数，不能用于隐藏游戏窗口。
+这里“无头”是 mcpy 控制端无需 Qt 管理页、日志小窗、TUI 或人工点击。Minecraft 仍有原生窗口并需要图形会话/GPU。不要承诺 SSH 无显示服务运行或游戏无渲染模式。人工 run 默认带调试小窗，AI 必须显式使用 run --no-gui --detach --json；--no-gui 不能用于隐藏游戏窗口。
 
 | 步骤 | 公共命令 | 结果检查 |
 |---|---|---|
 | 安装能力 | `doctor --capabilities` | CLI/宿主具备需要的能力 |
 | 运行资源 | `doctor` | Windows 按 hint 手动安装 MC Studio；macOS 资源缺失由首次 run 自动安装，失败后检查实际错误 |
 | 构建 | `build` | 组装成功只证明文件构建，不证明 Mod 已运行 |
-| 启动/复用 | `run --detach` | 保存 session；需要独立验收世界才加 --new |
+| 启动/复用 | `run --no-gui --detach` | 保存 session；需要独立验收世界才加 --new |
 | 会话能力 | `runtime capabilities --session <sid>` | schema_version=1，control.available；reload 各项 state |
 | 状态/找回 | `status --session <sid>` / `status --list` | running 仅表示进程存活；丢失启动响应先找回 |
 | 日志 | `logs --session <sid> --source game --tail 200` | source 还可为 engine/worker；检查双端 Mod 标记 |

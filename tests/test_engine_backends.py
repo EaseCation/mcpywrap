@@ -85,18 +85,41 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(backend.install.call_args.args[:2], (None, None))
         self.assertTrue(backend.run.call_args.kwargs['no_gui'])
 
-    def test_human_run_is_cli_and_preserves_explicit_engine_selection(self):
+    def test_human_run_shows_only_shared_debug_window_on_both_backends(self):
+        for backend in (WindowsBackend(), MacOSBackend()):
+            with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
+                    patch.object(backend, 'run', return_value={'session': 'a'*32}) as run, \
+                    patch('mcpywrap.command_context.human_interaction', return_value=True), \
+                    patch('mcpywrap.ui.run_session.show_session_window', return_value={}) as debug, \
+                    patch('mcpywrap.ui.project_ui.show_run_ui') as main:
+                result = self.runner.invoke(cli, ['--local', '--project', str(self.root),
+                    'run', '--engine-version', '3.9.0.401155', '--new'])
+            self.assertEqual(result.exit_code, 0, result.output)
+            main.assert_not_called()
+            debug.assert_called_once_with(str(self.root), backend, {'session': 'a'*32})
+            self.assertEqual(run.call_args.kwargs['overrides']['engine_version'], '3.9.0.401155')
+            self.assertTrue(run.call_args.kwargs['no_gui'])
+            self.assertTrue(run.call_args.kwargs['detach'])
+
+    def test_explicit_terminal_detached_and_management_runs_do_not_show_debug(self):
+        backend = Mock(spec=GameBackend)
+        backend.run.return_value = {'session': 'a'*32}
+        for arguments in (['--no-gui'], ['--detach'], ['--list']):
+            with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
+                    patch('mcpywrap.command_context.human_interaction', return_value=True), \
+                    patch('mcpywrap.ui.run_session.show_session_window') as debug:
+                result = self.runner.invoke(cli, ['--local', '--project', str(self.root), 'run', *arguments])
+            self.assertEqual(result.exit_code, 0, result.output)
+            debug.assert_not_called()
+
+    def test_ai_run_never_opens_debug_window(self):
         backend = Mock(spec=GameBackend)
         backend.run.return_value = {'session': 'a'*32}
         with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
-                patch('mcpywrap.command_context.human_interaction', return_value=True), \
-                patch('mcpywrap.ui.project_ui.show_run_ui') as show:
-            result = self.runner.invoke(cli, ['--local', '--project', str(self.root),
-                'run', '--engine-version', '3.9.0.401155', '--new'])
+                patch('mcpywrap.ui.run_session.show_session_window') as debug:
+            result = self.call('run', '--no-gui', '--detach')
         self.assertEqual(result.exit_code, 0, result.output)
-        show.assert_not_called()
-        self.assertEqual(backend.run.call_args.kwargs['overrides']['engine_version'], '3.9.0.401155')
-        self.assertTrue(backend.run.call_args.kwargs['no_gui'])
+        debug.assert_not_called()
 
     def test_gui_backend_start_keeps_engine_overrides(self):
         backend = WindowsBackend()

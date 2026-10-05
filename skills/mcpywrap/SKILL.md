@@ -9,7 +9,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 
 ## Windows/macOS 共用的纯命令开发入口
 
-本地 Addon 开发默认采用同一套命令，不按平台编写两份启动/调试/热更流程。AI 使用 `--local --project <目录> --non-interactive`，启动为 `run --detach --json`。`run` 始终使用 CLI，macOS 首次运行自动安装资源并在 stderr 显示进度；Qt 界面只有 `mcpy ui` 才打开。无需操作 Qt/TUI 或原生窗口；游戏仍需要图形会话和 GPU，这不是无显示服务运行。
+本地 Addon 开发默认采用同一套命令，不按平台编写两份启动/调试/热更流程。AI 使用 `--local --project <目录> --non-interactive`，启动必须显式使用 `run --no-gui --detach --json`。人工交互式 `run` 默认显示日志和热更调试小窗；AI 使用 --no-gui 明确抑制小窗。macOS 首次运行自动安装资源并在 stderr 显示进度；`mcpy ui` 打开完整项目管理页。无需操作 Qt/TUI 或原生窗口；游戏仍需要图形会话和 GPU，这不是无显示服务运行。
 
 先读 [本地无交互开发与验收](references/local-development.md)：涵盖会话能力查询、就绪检查、双端 Python、JSON UI 重载、日志及保存退出。`runtime capabilities --session <sid> --json` 返回当前实例的能力，不能仅从宿主平台推断；旧实例固定旧运行包。优先公共 CLI，不直接调用 `_mcpy_launcher`、JNI、Safaia 或读取控制凭据。
 
@@ -124,7 +124,7 @@ Windows 用户在专用、已登录未锁屏的桌面设置 `MCPY_REMOTE_TOKEN` 
 4. 一次性测试结束 stop；用户要求保留时报告会话 ID。busy 时先列举，不停止不属于本任务的会话。
 
 启动响应丢失用相同 endpoint 的 `status --list --json` 找回；输入超时不盲目重试。
-本地 run 始终显示 CLI 状态，--no-gui 仅作为兼容参数。只有 ui 命令打开 Qt6 管理页及相关子窗口。只有本机运行可省略 detach/JSON 前台看状态：网络和 macOS 本地世界 Ctrl+C 保存退出，Windows 本地世界保留原有前台中断保留会话行为。远程始终用 detach。
+人工交互式本地 run 默认显示紧凑的彩色日志与热更小窗，Windows/macOS 共用同一控制器；不弹出项目管理页或世界设置确认框。AI 始终显式使用 --non-interactive run --no-gui --detach --json。--no-gui、--detach、--json 和非交互输入均抑制调试小窗；不隐藏游戏。小窗关闭只隐藏视图，游戏结束会清理小窗。带小窗的前台运行 Ctrl+C 调用同一 stop 流程；Windows 保存保证仍以平台能力为准。远程始终用 detach。
 
 ## 统一运行时与玩家操作
 
