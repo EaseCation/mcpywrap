@@ -61,6 +61,11 @@ def _version(value):
     return tuple((list(map(int, value.split('.'))) + [0, 0, 0])[:3])
 
 
+def _scheme(value):
+    # Windows 盘符路径不是 URL scheme；本地目录和下载文件共用判断。
+    return '' if os.path.isabs(str(value)) else urlsplit(str(value)).scheme
+
+
 def catalog(location=None):
     location = location or os.environ.get(CATALOG_ENV)
     if not location:
@@ -71,14 +76,14 @@ def catalog(location=None):
             return current['catalog'], current['catalog_base']
         raise EngineError('尚未配置 macOS 预构建发布源。', 'catalog_unconfigured',
                           '使用 mcpy engine install --catalog <catalog.json 的路径或 HTTPS 地址>；当前不假定上游发行包含网易适配。')
-    parts = urlsplit(str(location))
-    if parts.scheme == 'https':
+    scheme = _scheme(location)
+    if scheme == 'https':
         with urlopen(str(location), timeout=20) as response:
             raw = response.read(1024 * 1024 + 1)
             if len(raw) > 1024 * 1024:
                 raise EngineError('发布目录过大', 'invalid_catalog')
             data, base = json.loads(raw), str(location)
-    elif not parts.scheme:
+    elif not scheme:
         path = Path(location).expanduser().resolve()
         data, base = read_json(path), str(path)
     else:
@@ -119,11 +124,11 @@ def validate_catalog(data):
 
 
 def locate(base, value):
-    if urlsplit(value).scheme:
-        if urlsplit(value).scheme != 'https':
+    if _scheme(value):
+        if _scheme(value) != 'https':
             raise EngineError('下载地址须使用 HTTPS', 'invalid_catalog')
         return value
-    return urljoin(base, value) if urlsplit(base).scheme else str((Path(base).parent/value).resolve())
+    return urljoin(base, value) if _scheme(base) else str((Path(base).parent/value).resolve())
 
 
 def safe_member(name):
@@ -138,7 +143,7 @@ def fetch(source, target, expected, size, progress=None):
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.is_file() and target.stat().st_size == size and digest(target) == expected:
         return target
-    if not urlsplit(str(source)).scheme:
+    if not _scheme(source):
         path = Path(source)
         if path.stat().st_size != size or digest(path) != expected:
             raise EngineError('本地发行文件摘要不匹配', 'integrity_error')

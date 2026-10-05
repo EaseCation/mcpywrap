@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -52,6 +53,7 @@ class LauncherPythonTests(unittest.TestCase):
             self.assertEqual(self.channel._remember(result), result)
         self.assertEqual(self.channel.finished[0], '0')
 
+    @unittest.skipUnless(os.name == 'posix', 'Unix socket ownership/mode checks require POSIX')
     def test_wrong_process_metadata_rejected_before_connect(self):
         self.channel.metadata.write_text(json.dumps({'protocol': 1, 'pid': 999, 'socket': '/tmp/unused'}))
         self.channel.metadata.chmod(0o600)

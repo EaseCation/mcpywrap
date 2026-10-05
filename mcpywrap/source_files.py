@@ -31,7 +31,7 @@ def _relative(value, label):
 
 def digest(directory):
     h = hashlib.sha256()
-    for path in sorted(Path(directory).rglob('*')):
+    for path in sorted(Path(directory).rglob('*'), key=lambda p: p.relative_to(directory).as_posix()):
         if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
             raise DependencyError(f'代码库不允许链接: {path}')
         if path.is_file():

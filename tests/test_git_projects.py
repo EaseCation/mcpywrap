@@ -21,10 +21,25 @@ from test_local_dependencies import addon
 
 
 class GitProjects(unittest.TestCase):
+    def test_source_digest_uses_the_same_case_order_on_all_hosts(self):
+        import hashlib
+        from mcpywrap.source_files import digest
+        root = self.root/'case-order'; root.mkdir()
+        expected = hashlib.sha256()
+        for name, content in [('B.txt', b'upper'), ('a.txt', b'lower')]:
+            (root/name).write_bytes(content)
+            relative = name.encode('utf-8')
+            expected.update(len(relative).to_bytes(8, 'big') + relative +
+                            len(content).to_bytes(8, 'big') + content)
+        self.assertEqual(digest(root), expected.hexdigest())
+
     def test_windows_lock_migration_is_explicit_and_preserves_old_lock(self):
         from mcpywrap.git_projects import sync_projects
         from mcpywrap.source_files import windows_checkout_digest
         repo, rev = self.repository('legacy', 'code')
+        # 固定 LF 字节，避免 Windows 文本写入让旧/新摘要在夹具中意外相同。
+        (repo/'src/legacy_marker.py').write_bytes(b'VALUE = 1\n')
+        rev = self.commit(repo)
         self.service.add(repo.as_uri())
         path = self.main / LOCK_FILE
         lock = json.loads(path.read_text())

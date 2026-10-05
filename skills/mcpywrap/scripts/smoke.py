@@ -54,6 +54,17 @@ def main(argv=None):
             raise ValueError(data.get('error') or proc.stderr[-2000:] or '命令失败')
         return data
 
+    def settle_client(result, deadline):
+        # 冷启动可能超过单次等待窗口；只查询原请求，不重复执行代码。
+        queued = report.get('capabilities', {}).get('python', {}).get('client_queue') is True
+        while result.get('state') in ('queued', 'running') and queued and result.get('request_id'):
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(.25)
+            result = invoke('runtime', 'py-result', result['request_id'], '--session', session,
+                            allow_failure=True)
+        return result
+
     try:
         # connect deliberately ignores project configuration; its own preflight diagnoses resources.
         if not args.connect:
@@ -93,6 +104,7 @@ except (ImportError, AttributeError):
                 while True:
                     probe = invoke('runtime', 'py', '--session', session, '--code', ready_code,
                                    allow_failure=True)
+                    probe = settle_client(probe, deadline)
                     if probe.get('state') == 'completed' and probe.get('value') is True:
                         break
                     if probe.get('state') not in ('completed', 'unavailable'):
@@ -108,6 +120,8 @@ except (ImportError, AttributeError):
                     if script:
                         result = invoke('runtime', 'py', '--session', session, '--side', side,
                                         '--file', str(script.resolve()), allow_failure=True)
+                        if side == 'client':
+                            result = settle_client(result, time.monotonic() + args.timeout)
                         report['probes'][side] = result
                         if not result.get('ok') or result.get('state') != 'completed' or result.get('side') != side:
                             raise ValueError(side + ' 验收脚本未成功完成；不会重试')

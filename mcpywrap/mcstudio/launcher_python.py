@@ -36,6 +36,8 @@ class LauncherPythonChannel:
         self.safaia.close()
 
     def _rpc(self, method, params=None):
+        if os.name != 'posix':
+            raise ValueError('原生客户端 Unix 通道不可用于此平台；Windows 使用 Safaia')
         st = self.metadata.lstat()
         if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o077 or st.st_size > 4096:
             raise ValueError('启动器 Python 控制记录的归属或权限无效')
