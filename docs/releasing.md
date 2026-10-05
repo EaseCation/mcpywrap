@@ -34,3 +34,5 @@ Windows CI 先用 MSVC 从 `native/mcs_auth` 编译 x86 登录桥接，再签名
 不要覆盖已有 PyPI 版本。发布动作开启 PyPI provenance attestations；各第三方 Action 固定到已核实的提交。GitHub `pypi` environment 与 PyPI publisher 的 environment 必须一致。
 
 0.4.0 新用户流程与 Windows 复测清单见 [候选版验收](release-0.4.0.md)。候选分支推送不会发布 PyPI；其 CI Windows 登录桥接未签名，不用于验证正式签名登录流程。
+
+0.4.0 的发行物清单、阻塞项和跨仓库合并顺序见 [正式发布核查](release-readiness-0.4.0.md)。
