@@ -42,7 +42,7 @@ class InstallerTests(unittest.TestCase):
         meta.write_text(json.dumps({'platform': 'darwin-arm64', 'minimum_macos': '11.0',
                                    'launch_protocol': 1, 'client_python_protocol': 1, 'game_profile': self.profile}))
         integrity = self.root/'McpyRuntime.integrity.json'
-        integrity.write_text(json.dumps({'files': {str(p.relative_to(app)): installer.digest(p) for p in (exe, meta)}}))
+        integrity.write_text(json.dumps({'files': {p.relative_to(app).as_posix(): installer.digest(p) for p in (exe, meta)}}))
         self.archive = self.root/'runtime.tar.gz'
         with tarfile.open(self.archive, 'w:gz') as archive:
             archive.add(app, arcname=app.name)

@@ -204,7 +204,7 @@ def verify_runtime(app, integrity, profile=None):
     files = read_json(integrity)['files']
     if not files:
         raise EngineError('运行包缺少文件清单', 'integrity_error')
-    actual = {str(p.relative_to(app)) for p in app.rglob('*') if p.is_file()}
+    actual = {p.relative_to(app).as_posix() for p in app.rglob('*') if p.is_file()}
     if actual != set(files):
         raise EngineError('运行包文件清单不匹配', 'integrity_error')
     for name, expected in files.items():
