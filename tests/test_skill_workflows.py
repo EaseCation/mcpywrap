@@ -31,7 +31,7 @@ class SmokeTests(unittest.TestCase):
         self.artifact.touch()
         self.calls = []
 
-    def run_script(self, *args, text='LOADED', state='running', fail_log=False, clock=None):
+    def run_script(self, *args, text='LOADED', state='running', fail_log=False, clock=None, probe_state='completed'):
         def invoke(command, **kwargs):
             self.calls.append(command)
             self.assertEqual(kwargs['stdin'], subprocess.DEVNULL)
@@ -43,6 +43,12 @@ class SmokeTests(unittest.TestCase):
                 result['artifact'] = str(self.artifact)
             elif operation in ('run', 'connect'):
                 result.update(session='owned-session', log_path='game.log', engine_log_path='engine.log')
+            elif operation == 'runtime':
+                if '--file' in command:
+                    result.update(ok=probe_state == 'completed', state=probe_state,
+                                  side=command[command.index('--side')+1], value='probe-ok')
+                else:
+                    result.update(state='completed', side='client', value=True)
             elif operation == 'logs':
                 if fail_log:
                     raise OSError('log failure')
@@ -100,6 +106,29 @@ class SmokeTests(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertTrue(data['stopped'])
                 self.assertEqual(self.calls[-1][4], 'stop')
+
+    def test_dual_side_headless_probes_execute_once_and_cleanup(self):
+        script = self.root/'probe.py'
+        script.write_text("assert True")
+        code, data = self.run_script('--game', '--client-file', str(script), '--server-file', str(script))
+        self.assertEqual(code, 0)
+        probes = [c for c in self.calls if '--file' in c]
+        self.assertEqual(len(probes), 2)
+        self.assertEqual([p[p.index('--side')+1] for p in probes], ['client', 'server'])
+        self.assertTrue(data['stopped'])
+        self.assertEqual(data['verified'], 'python-probes')
+        launch = next(c for c in self.calls if c[4] == 'run')
+        self.assertIn('--no-gui', launch)
+        self.assertIn('--detach', launch)
+
+    def test_unknown_probe_is_not_retried_and_game_is_closed(self):
+        script = self.root/'probe.py'
+        script.write_text("side_effect()")
+        code, data = self.run_script('--game', '--client-file', str(script), probe_state='unknown')
+        self.assertEqual(code, 1)
+        self.assertTrue(data['stopped'])
+        self.assertEqual(len([c for c in self.calls if '--file' in c]), 1)
+        self.assertEqual(data['probes']['client']['state'], 'unknown')
 
     def test_auth_without_launch_is_usage_error(self):
         with patch.object(smoke.subprocess, 'run') as invoke, self.assertRaises(SystemExit) as error:

@@ -25,6 +25,9 @@ from mcpywrap.mcstudio.processes import checked_process
 
 class AutomationTests(unittest.TestCase):
     def setUp(self):
+        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host.start()
+        self.addCleanup(backend_host.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
@@ -191,7 +194,7 @@ class AutomationTests(unittest.TestCase):
 
     def test_qt_not_loaded_by_core_cli(self):
         proc = subprocess.run([sys.executable, '-B', '-c',
-                               'import sys; import mcpywrap.cli; assert not any(k.startswith("PyQt5") for k in sys.modules)'],
+                               'import sys; import mcpywrap.cli; assert not any(k.startswith("PySide6") for k in sys.modules)'],
                               capture_output=True, text=True, timeout=30)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 

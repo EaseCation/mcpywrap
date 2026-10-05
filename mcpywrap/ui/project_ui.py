@@ -6,28 +6,25 @@
 
 import os
 import sys
-import time
-import html
 from datetime import datetime
-from PyQt5.QtWidgets import (
+from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QHeaderView, 
-    QMessageBox, QSplitter, QTextEdit, QPlainTextEdit, QProgressBar, QFrame,
-    QStyleFactory, QStatusBar, QCheckBox, QFileDialog, QGroupBox,
-    QLineEdit, QListWidget, QListWidgetItem, QComboBox, QCompleter, QToolButton, QMenu, QInputDialog, QSizePolicy, QFormLayout
+    QMessageBox, QSplitter, QTextEdit, QPlainTextEdit, QFrame,
+    QStyleFactory, QCheckBox, QFileDialog, QGroupBox,
+    QTabWidget, QLineEdit, QListWidget, QListWidgetItem, QComboBox, QCompleter, QToolButton, QMenu, QInputDialog, QSizePolicy, QFormLayout
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QStringListModel
-from PyQt5.QtGui import QIcon, QFont, QTextCursor, QColor, QPalette
+from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer, QStringListModel
+from PySide6.QtGui import QIcon, QFont, QColor, QPalette
 
-# 导入项目模块
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from mcpywrap.commands.run_cmd import (
-    _get_all_instances, _generate_new_instance_config, _setup_dependencies, _run_game_with_instance,
-    _delete_instance, _clean_all_instances, get_project_name, config_exists
-)
+from ..commands.run_cmd import _setup_dependencies
 from ..commands.edit_cmd import open_edit
-from ..config import get_project_dependencies
-from ..dependencies import (DependencyService, DependencyDeclaration, DependencyError,
+from ..engines.backend import get_backend
+from .session_controller import SessionController
+from .session_views import SessionControls, PythonConsole
+from .log_view import LogView
+from .log_window import SessionLogWindow
+from ..dependencies import (DependencyService, DependencyError,
                             read_project, resolve_path, path_for_storage, addon_directories)
 from ..builders.dependency_manager import find_all_mcpywrap_packages
 
@@ -39,6 +36,10 @@ class GameInstanceManager(QMainWindow):
         super().__init__()
         self.base_dir = os.path.abspath(base_dir)
         self.mcs_auth = mcs_auth
+        self.backend = get_backend()
+        self.controller = SessionController(self.base_dir, self.backend, self)
+        self.closing = False
+        self.log_window = None
         self.dependency_service = DependencyService(self.base_dir)
         self.current_project = read_project(self.base_dir).get('project', {}).get('name', '未初始化项目')
         self.dependency_busy = False
@@ -46,15 +47,34 @@ class GameInstanceManager(QMainWindow):
         self.all_packs = None
         self.dependencies = []
         self.setup_ui()
+        self.controller.started.connect(self.on_game_started)
+        self.controller.changed.connect(self.update_session_state)
+        self.controller.stopped.connect(self.on_game_stopped)
+        self.controller.failed.connect(self.task_failed)
         self.init_data()
+        self.update_session_state()
 
     def closeEvent(self, event):
-        if any(getattr(self, name, None) and getattr(self, name).isRunning()
-               for name in ('install_thread', 'game_thread')):
-            self.log('请等待当前安装或启动操作完成后关闭窗口。', 'warning')
-            event.ignore()
-            return
+        if self.is_busy():
+            self.log('请等待当前操作完成后关闭窗口。', 'warning')
+            event.ignore(); return
+        if self.controller.session and self.controller.owns_session:
+            answer = QMessageBox.question(self, '保存退出', '关闭管理器并保存退出本窗口启动的游戏？',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes)
+            if answer != QMessageBox.StandardButton.Yes:
+                event.ignore(); return
+            self.closing = True; self.controller.stop()
+            event.ignore(); return
+        if self.controller.watcher:
+            self.closing = True
+            self.controller.set_watching(False)
+            event.ignore(); return
+        if self.log_window: self.log_window.close()
+        self.controller.dispose()
         super().closeEvent(event)
+
+    def is_busy(self):
+        return self.controller.busy or bool(getattr(self, 'install_thread', None) and self.install_thread.isRunning())
 
     def setup_global_font(self):
         """设置全局字体为现代化中文字体"""
@@ -78,12 +98,12 @@ class GameInstanceManager(QMainWindow):
         
         # 项目信息区域
         info_frame = QFrame()
-        info_frame.setFrameShape(QFrame.StyledPanel)
+        info_frame.setFrameShape(QFrame.Shape.StyledPanel)
         info_layout = QHBoxLayout(info_frame)
         
         # 设置固定高度策略
         size_policy = info_frame.sizePolicy()
-        size_policy.setVerticalPolicy(size_policy.Fixed)
+        size_policy.setVerticalPolicy(QSizePolicy.Policy.Fixed)
         info_frame.setSizePolicy(size_policy)
         
         # 项目名称和路径
@@ -97,16 +117,25 @@ class GameInstanceManager(QMainWindow):
         info_layout.addWidget(refresh_btn)
         
         # 添加编辑器按钮
-        edit_btn = QPushButton("使用MCEditor编辑")
+        edit_btn = QPushButton("使用 MCEditor 编辑" if "editor" in self.backend.capabilities else "MCEditor（不支持）")
         edit_btn.setToolTip("使用MC Studio Editor编辑项目")
         edit_btn.clicked.connect(self.open_mc_editor)
         info_layout.addWidget(edit_btn)
+        edit_btn.setToolTip('需要 Windows MC Studio Editor' if 'editor' not in self.backend.capabilities else '使用 MC Studio Editor 编辑项目')
         self.edit_btn = edit_btn  # 保存引用以便稍后启用/禁用
         
+        self.mod_btn = QPushButton('新建 Mod')
+        self.mod_btn.clicked.connect(self.create_mod)
+        info_layout.addWidget(self.mod_btn)
+        self.engine_btn = QPushButton('运行环境')
+        self.engine_btn.clicked.connect(self.prepare_engine)
+        info_layout.addWidget(self.engine_btn)
+        self.session_label = QLabel(self.backend.label)
+        main_layout.addWidget(self.session_label)
         main_layout.addWidget(info_frame)
         
         # 创建水平分割器用于左侧依赖管理和右侧实例管理
-        h_splitter = QSplitter(Qt.Horizontal)
+        h_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(h_splitter)
         
         # 左侧依赖管理区域
@@ -143,7 +172,7 @@ class GameInstanceManager(QMainWindow):
         add_dep_layout.addWidget(self.dependency_note)
         self.new_dep_input = QComboBox()
         self.new_dep_input.setEditable(True)
-        self.new_dep_input.setInsertPolicy(QComboBox.NoInsert)
+        self.new_dep_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.new_dep_input.lineEdit().setPlaceholderText("包名或版本约束")
         self.new_dep_input.lineEdit().returnPressed.connect(self.add_dependency)
         add_dep_layout.addWidget(self.new_dep_input)
@@ -168,9 +197,9 @@ class GameInstanceManager(QMainWindow):
             button = QToolButton()
             button.setText('一键添加 ' + preset['title'])
             button.setToolTip(preset['title'] + ' ' + preset['version'] + '：使用已验证的固定提交；新目录生成入口，已有代码不改写。')
-            button.setToolButtonStyle(Qt.ToolButtonTextOnly)
-            button.setPopupMode(QToolButton.MenuButtonPopup)
-            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             button.clicked.connect(lambda checked=False, name=name: self.add_preset_dependency(name))
             menu = QMenu(button)
             for source in preset['sources']:
@@ -217,7 +246,7 @@ class GameInstanceManager(QMainWindow):
         instance_layout = QVBoxLayout(instance_widget)
         
         # 创建垂直分割器用于实例列表和日志区域
-        v_splitter = QSplitter(Qt.Vertical)
+        v_splitter = QSplitter(Qt.Orientation.Vertical)
         instance_layout.addWidget(v_splitter)
         
         # 实例列表区域
@@ -232,12 +261,12 @@ class GameInstanceManager(QMainWindow):
         # 实例列表表格
         self.instance_table = QTableWidget(0, 4)
         self.instance_table.setHorizontalHeaderLabels(["默认", "实例ID", "创建时间", "世界名称"])
-        self.instance_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.instance_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.instance_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.instance_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        self.instance_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.instance_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.instance_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.instance_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.instance_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.instance_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.instance_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.instance_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.instance_table.setAlternatingRowColors(True)
         self.instance_table.itemDoubleClicked.connect(self.on_instance_double_clicked)
         self.instance_table.setStyleSheet("QTableView::item:selected { background-color: #e0f0ff; color: black; }")
@@ -265,7 +294,12 @@ class GameInstanceManager(QMainWindow):
         btn_layout.addWidget(self.clean_btn)
         
         instance_list_layout.addLayout(btn_layout)
-        
+        self.session_controls = SessionControls(self.controller)
+        instance_list_layout.addWidget(self.session_controls)
+        self.float_log_btn = QPushButton('打开日志小窗')
+        self.float_log_btn.clicked.connect(self.show_log_window)
+        instance_list_layout.addWidget(self.float_log_btn)
+
         # 添加实例管理区域到垂直分割器
         v_splitter.addWidget(instance_list_widget)
         
@@ -277,9 +311,15 @@ class GameInstanceManager(QMainWindow):
         log_title = QLabel("<h3>操作日志</h3>")
         log_layout.addWidget(log_title)
         
-        self.log_output = QTextEdit()
-        self.log_output.setReadOnly(True)
-        log_layout.addWidget(self.log_output)
+        self.operation_view = LogView(self.controller.logs, source='operations', toolbar=False)
+        self.log_output = self.operation_view.editor
+        self.log_tabs = QTabWidget()
+        self.log_tabs.addTab(self.operation_view, '操作')
+        self.debug_view = LogView(self.controller.logs)
+        self.log_tabs.addTab(self.debug_view, 'Debug 日志')
+        self.python_console = PythonConsole(self.controller)
+        self.log_tabs.addTab(self.python_console, 'Python / 热更')
+        log_layout.addWidget(self.log_tabs)
         
         # 添加日志区域到垂直分割器
         v_splitter.addWidget(log_frame)
@@ -331,7 +371,7 @@ class GameInstanceManager(QMainWindow):
                 
                 # 添加自动补全功能
                 completer = QCompleter(available_packages)
-                completer.setCaseSensitivity(Qt.CaseInsensitive)
+                completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                 self.new_dep_input.setCompleter(completer)
                 
                 # 设置当前索引为-1，表示不选择任何项
@@ -349,9 +389,10 @@ class GameInstanceManager(QMainWindow):
             # 可以在这里添加额外的处理逻辑
             pass
     
+    @Slot()
     def refresh_instances(self):
         """刷新实例列表"""
-        self.instances = _get_all_instances(self.base_dir)
+        self.instances = self.backend.instances(self.base_dir)
         self.instance_table.setRowCount(0)
         
         if not self.instances:
@@ -364,7 +405,7 @@ class GameInstanceManager(QMainWindow):
         for row, instance in enumerate(self.instances):
             # 状态图标
             status_item = QTableWidgetItem("📌" if row == 0 else "")
-            status_item.setTextAlignment(Qt.AlignCenter)
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
             # 实例ID(显示前8位)
             id_item = QTableWidgetItem(instance['level_id'][:8])
@@ -403,7 +444,7 @@ class GameInstanceManager(QMainWindow):
                           'inactive': '环境标记未启用', 'unavailable': '缺失／无效', 'code_library': '已同步', 'git_project': '已同步'}
                 text += ' — ' + labels[status.state]
                 item = QListWidgetItem(text)
-                item.setData(Qt.UserRole, dependency)
+                item.setData(Qt.ItemDataRole.UserRole, dependency)
                 tooltip = status.message or '可参与 Addon 组装；游戏兼容性需实际测试'
                 if dependency.kind == 'local':
                     tooltip = str(resolve_path(self.base_dir, dependency.value)) + "\n" + tooltip
@@ -422,7 +463,7 @@ class GameInstanceManager(QMainWindow):
             self.log(str(exc), 'error')
         ready = self.all_packs is not None and not self.dependency_busy
         self.new_btn.setEnabled(ready)
-        self.edit_btn.setEnabled(ready)
+        self.edit_btn.setEnabled(ready and 'editor' in self.backend.capabilities)
         self.run_btn.setEnabled(ready and bool(self.instance_table.selectedItems()))
         return self.all_packs is not None
 
@@ -489,6 +530,7 @@ class GameInstanceManager(QMainWindow):
 
     def set_dependency_busy(self, busy):
         self.dependency_busy = busy
+        self.controller.set_workspace_busy(busy)
         for widget in (self.dependency_kind, self.new_dep_input, self.local_path_input,
                        self.browse_dependency_btn, self.absolute_path_check, self.add_dep_btn,
                        self.sync_dependencies_btn, *self.git_shortcuts.values(),
@@ -496,7 +538,7 @@ class GameInstanceManager(QMainWindow):
             widget.setEnabled(not busy)
         self.remove_dep_btn.setEnabled(not busy and bool(self.dependency_list.selectedItems()))
         self.new_btn.setEnabled(not busy and self.all_packs is not None)
-        self.edit_btn.setEnabled(not busy and self.all_packs is not None)
+        self.edit_btn.setEnabled(not busy and self.all_packs is not None and 'editor' in self.backend.capabilities)
         self.run_btn.setEnabled(not busy and self.all_packs is not None and bool(self.instance_table.selectedItems()))
 
     def on_selection_changed(self):
@@ -522,16 +564,8 @@ class GameInstanceManager(QMainWindow):
         
         self.log("🆕 正在创建新的游戏实例...")
         
-        # 生成新的实例配置
-        level_id, config_path = _generate_new_instance_config(self.base_dir, self.current_project)
-        
-        # 运行游戏实例
-        self.log(f"📝 配置文件已生成: {os.path.basename(config_path)}")
-        self.log(f"🚀 正在启动游戏实例: {level_id[:8]}...")
-        
-        # 使用QThread启动游戏，避免UI卡死
-        self.start_game_thread(config_path, level_id)
-    
+        self.start_game_thread(None)
+
     def run_selected_instance(self):
         """运行选中的游戏实例"""
         if self.dependency_busy or not self.reload_runtime_dependencies():
@@ -545,27 +579,74 @@ class GameInstanceManager(QMainWindow):
         # 获取选中的行
         row = selected_rows[0].row()
         level_id = self.instances[row]['level_id']
-        config_path = self.instances[row]['config_path']
         
         self.log(f"🚀 正在启动游戏实例: {level_id[:8]}...")
         
         # 使用QThread启动游戏，避免UI卡死
-        self.start_game_thread(config_path, level_id)
+        self.start_game_thread(level_id)
 
-    def start_game_thread(self, config_path, level_id):
+    def start_game_thread(self, level_id=None):
+        if self.is_busy() or self.controller.session:
+            self.log('请先保存退出当前游戏，再启动其他实例。', 'warning'); return
+        if level_id is None and self.backend.managed_install and not self.backend.diagnose(self.base_dir).get('ok'):
+            self.prepare_engine()
+            if not self.backend.diagnose(self.base_dir).get('ok'):
+                self.log('运行资源尚未准备完成，可通过“运行环境”继续安装。', 'warning'); return
         identity = None
         if self.mcs_auth:
             from ..mcstudio.mcs_auth import acquire_identity, AuthError
             try:
                 identity = acquire_identity(interactive=True)
             except AuthError as exc:
-                self.log(str(exc), 'error')
-                return
-        self.game_thread = GameRunThread(config_path, level_id, self.all_packs, identity)
-        self.game_thread.log_message.connect(self.log)
-        self.game_thread.finished.connect(self.refresh_instances)
-        self.game_thread.start()
-    
+                self.log(str(exc), 'error'); return
+        self.controller.start(level_id, identity)
+
+    @Slot(object)
+    def on_game_started(self, result):
+        self.refresh_instances()
+        self.log_tabs.setCurrentIndex(1)
+        self.show_log_window()
+
+    @Slot()
+    def show_log_window(self):
+        if self.log_window is None:
+            self.log_window = SessionLogWindow(self.controller, self)
+        self.log_window.show()
+
+    @Slot()
+    def update_session_state(self):
+        self.session_label.setText(self.controller.status)
+        self.float_log_btn.setEnabled(bool(self.controller.session))
+        if not self.controller.session and self.log_window: self.log_window.close()
+        if self.closing and not self.is_busy() and not self.controller.watcher and (not self.controller.session or not self.controller.owns_session):
+            QTimer.singleShot(0, self.close)
+
+    @Slot(object)
+    def on_game_stopped(self, result):
+        if self.closing: QTimer.singleShot(0, self.close)
+
+    @Slot(str)
+    def task_failed(self, message):
+        self.closing = False
+
+    def create_mod(self):
+        from ..utils.project_setup import find_behavior_pack_dir
+        from ..minecraft.template.mod_template import open_ui_crate_mod
+        behavior = find_behavior_pack_dir(self.base_dir)
+        if not behavior:
+            self.log('未找到行为包，请先初始化 Addon。', 'error'); return
+        self.mod_window = open_ui_crate_mod(behavior, run_event_loop=False)
+        self.mod_window.setParent(self, Qt.WindowType.Window)
+        self.mod_window.show()
+
+    def prepare_engine(self):
+        if self.is_busy(): return
+        if self.backend.managed_install:
+            from .engine_setup import EngineSetupDialog
+            EngineSetupDialog(self.backend, self).exec()
+        else:
+            self.controller.run_task(lambda: self.backend.diagnose(self.base_dir))
+
     def delete_selected_instance(self):
         """删除选中的游戏实例"""
         selected_rows = self.instance_table.selectionModel().selectedRows()
@@ -582,14 +663,16 @@ class GameInstanceManager(QMainWindow):
             self, 
             "确认删除", 
             f"确定要删除实例 {level_id[:8]} ({instance['name']}) 吗？",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
         )
         
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             self.log(f"🗑️ 正在删除实例: {level_id[:8]}...")
             force = True  # 使用强制模式避免在函数内部显示确认对话框
-            _delete_instance(level_id[:8], force, self.base_dir)
+            try: self.backend.delete_instances(self.base_dir, level_id)
+            except Exception as error:
+                self.log(str(error), 'error'); return
             self.log(f"✅ 成功删除实例: {level_id[:8]}", "success")
             self.refresh_instances()
     
@@ -604,50 +687,31 @@ class GameInstanceManager(QMainWindow):
             self,
             "警告",
             f"确定要删除所有 {len(self.instances)} 个游戏实例吗？\n此操作将删除所有实例配置及对应的游戏存档，且不可恢复!",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
         )
         
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             # 最终确认
             reply = QMessageBox.critical(
                 self,
                 "最终确认",
                 "⚠️ 最后确认: 真的要删除所有实例吗？",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
             )
             
-            if reply == QMessageBox.Yes:
+            if reply == QMessageBox.StandardButton.Yes:
                 self.log("🗑️ 正在清空所有游戏实例...")
-                _clean_all_instances(True, self.base_dir)  # 使用强制模式
+                try: self.backend.delete_instances(self.base_dir)
+                except Exception as error:
+                    self.log(str(error), 'error'); return
                 self.log("✅ 已成功清空所有游戏实例", "success")
                 self.refresh_instances()
     
-    def log(self, message, level="normal"):
-        """添加日志消息"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        
-        # 根据日志级别设置颜色
-        if level == "error":
-            color = "#FF5555"
-        elif level == "success":
-            color = "#55AA55"
-        elif level == "info":
-            color = "#5555FF"
-        elif level == "warning":
-            color = "#FFAA00"
-        else:
-            color = "#000000"
-        
-        formatted_message = f'<span style="color:#888888">[{timestamp}]</span> <span style="color:{color}">{html.escape(str(message))}</span>'
-        self.log_output.append(formatted_message)
-        
-        # 滚动到底部
-        cursor = self.log_output.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        self.log_output.setTextCursor(cursor)
-    
+    def log(self, message, level='info'):
+        self.controller.log(message, level)
+
     def open_mc_editor(self):
         """打开MC Studio Editor编辑器"""
         if not os.path.isfile(os.path.join(self.base_dir, 'pyproject.toml')):
@@ -663,12 +727,12 @@ class GameInstanceManager(QMainWindow):
         selected = self.dependency_list.selectedItems()
         if not selected:
             return
-        entry = selected[0].data(Qt.UserRole)
+        entry = selected[0].data(Qt.ItemDataRole.UserRole)
         note = {'local': '仅移除引用，源目录保留。', 'package': '仅移除配置，不卸载 Python 包。',
                 'code': '仅移除代码库声明，缓存与入口保留。请检查业务代码中的框架导入。',
                 'git': '仅移除Git依赖声明，缓存与入口保留。请检查业务代码中的依赖导入。'}[entry.kind]
         if QMessageBox.question(self, '确认移除依赖', f'{entry.value}\n{note}',
-                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         try:
             self.dependency_service.remove(entry)
@@ -709,7 +773,7 @@ class GameInstanceManager(QMainWindow):
         self.install_thread = DependencyInstallThread(package, self.base_dir)
         self.install_thread.log_message.connect(self.log)
         self.install_thread.result.connect(self.on_dependency_installed)
-        self.install_thread.finished.connect(lambda: self.set_dependency_busy(False))
+        self.install_thread.finished.connect(self.on_dependency_finished)
         self.install_thread.start()
 
     def sync_dependencies(self):
@@ -723,9 +787,14 @@ class GameInstanceManager(QMainWindow):
             git_options={**{key: field.text().strip() or None for key, field in self.git_fields.items()}, 'kind': self.git_kind.currentData()})
         self.install_thread.log_message.connect(self.log)
         self.install_thread.result.connect(self.on_dependency_installed)
-        self.install_thread.finished.connect(lambda: self.set_dependency_busy(False))
+        self.install_thread.finished.connect(self.on_dependency_finished)
         self.install_thread.start()
 
+    @Slot()
+    def on_dependency_finished(self):
+        self.set_dependency_busy(False)
+
+    @Slot(bool, str)
     def on_dependency_installed(self, success, message):
         self.log(message, 'success' if success else 'error')
         if success:
@@ -735,59 +804,10 @@ class GameInstanceManager(QMainWindow):
         self.reload_runtime_dependencies()
 
 
-class GameRunThread(QThread):
-    """游戏运行线程"""
-    log_message = pyqtSignal(str, str)
-    game_started = pyqtSignal()  # 游戏成功启动信号
-    
-    def __init__(self, config_path, level_id, all_packs, auth_context=None):
-        super().__init__()
-        self.config_path = config_path
-        self.level_id = level_id
-        self.all_packs = all_packs
-        self.game_process = None
-        self.auth_context = auth_context
-        
-    def run(self):
-        """线程执行函数"""
-        try:
-            self.log_message.emit(f"🚀 正在启动游戏实例: {self.level_id[:8]}...", "info")
-            if self.auth_context is not None:
-                from pathlib import Path
-                from ..mcstudio import sessions
-                from ..mcstudio.processes import checked_process
-                data = sessions.start(str(Path(self.config_path).resolve().parent.parent),
-                                      self.config_path, self.level_id, auth_context=self.auth_context)
-                self.game_process = checked_process(data['game'])
-                self.log_message.emit('游戏已启动；日志保存在 '+data['log_path'], 'success')
-                self.game_started.emit()
-                return
-            
-            # 使用run_cmd.py中的函数启动游戏，传递日志回调函数
-            success, self.game_process = _run_game_with_instance(
-                self.config_path, 
-                self.level_id, 
-                self.all_packs,
-                wait=False,  # 不阻塞等待
-                log_callback=lambda msg, level: self.log_message.emit(msg, level)
-            )
-            
-            if success and self.game_process:
-                self.game_started.emit()  # 发送游戏已启动信号
-            
-        except Exception as e:
-            self.log_message.emit(f"❌ 运行游戏时出错: {str(e)}", "error")
-            import traceback
-            error_details = traceback.format_exc()
-            self.log_message.emit(f"错误详情:\n{error_details}", "error")
-        finally:
-            self.auth_context = None
-
-
 class DependencyTaskThread(QThread):
     """网络同步在后台；与CLI共用同一个框架/依赖服务。"""
-    log_message = pyqtSignal(str, str)
-    result = pyqtSignal(bool, str)
+    log_message = Signal(str, str)
+    result = Signal(bool, str)
 
     def __init__(self, project_dir, operation='framework', script_dir=None, source=None, preset=None, git_options=None):
         super().__init__()
@@ -824,8 +844,8 @@ class DependencyTaskThread(QThread):
 
 class DependencyInstallThread(QThread):
     """后台安装成功后才保存声明，并显式报告结果。"""
-    log_message = pyqtSignal(str, str)
-    result = pyqtSignal(bool, str)
+    log_message = Signal(str, str)
+    result = Signal(bool, str)
 
     def __init__(self, package, project_dir):
         super().__init__()
@@ -843,27 +863,36 @@ class DependencyInstallThread(QThread):
             self.result.emit(False, f'依赖安装失败: {exc}')
 
 
-def show_run_ui(base_dir=None, mcs_auth=False):
+def show_run_ui(base_dir=None, mcs_auth=False, autorun=False, new=False, instance=None):
     """显示游戏实例管理UI"""
     app = QApplication.instance() or QApplication(sys.argv)
     app.setStyle(QStyleFactory.create("Fusion"))
     
     # 设置应用主题
     palette = QPalette()
-    palette.setColor(QPalette.Window, QColor(240, 240, 240))
-    palette.setColor(QPalette.WindowText, QColor(0, 0, 0))
-    palette.setColor(QPalette.Base, QColor(255, 255, 255))
-    palette.setColor(QPalette.AlternateBase, QColor(245, 245, 245))
-    palette.setColor(QPalette.Text, QColor(0, 0, 0))
-    palette.setColor(QPalette.Button, QColor(240, 240, 240))
-    palette.setColor(QPalette.ButtonText, QColor(0, 0, 0))
-    palette.setColor(QPalette.Highlight, QColor(42, 130, 218, 70))
-    palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+    palette.setColor(QPalette.ColorRole.Window, QColor(240, 240, 240))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0))
+    palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(245, 245, 245))
+    palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
+    palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(0, 0, 0))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218, 70))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
     app.setPalette(palette)
     
     window = GameInstanceManager(base_dir or os.getcwd(), mcs_auth=mcs_auth)
     window.show()
-    return app.exec_()
+    if autorun:
+        identity = instance or (window.instances[0]['level_id'] if window.instances and not new else None)
+        QTimer.singleShot(0, lambda: window.start_game_thread(identity))
+    import signal
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        for sig in previous: signal.signal(sig, lambda *_: window.close())
+        return app.exec()
+    finally:
+        for sig, handler in previous.items(): signal.signal(sig, handler)
 
 
 if __name__ == "__main__":

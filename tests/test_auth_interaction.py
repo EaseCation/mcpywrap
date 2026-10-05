@@ -13,6 +13,9 @@ from mcpywrap.mcstudio import mcs_auth as auth, auth_interaction as ui, bridge_a
 
 class InteractionTests(unittest.TestCase):
     def setUp(self):
+        host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        host.start()
+        self.addCleanup(host.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -84,7 +87,8 @@ class InteractionTests(unittest.TestCase):
 
     def test_skill_cli_missing_mcs_returns_json_without_qt(self):
         self.recovery([auth.AuthError('请先打开并登录 MC Studio', 'studio_unavailable')])
-        with patch('mcpywrap.mcstudio.network.discover_engines', return_value=Mock(require_engine=lambda: Mock())), \
+        with patch('mcpywrap.mcstudio.network.is_windows', return_value=True), \
+                patch('mcpywrap.mcstudio.network.discover_engines', return_value=Mock(require_engine=lambda: Mock())), \
                 patch('mcpywrap.mcstudio.network.require_resources'):
             # Route directly to identity acquisition without a native engine fixture.
             with patch('mcpywrap.mcstudio.network.unauthenticated_config', return_value={}):
@@ -126,11 +130,11 @@ class InteractionTests(unittest.TestCase):
 class ConsentDialogTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from PyQt5.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
         cls.app = QApplication.instance() or QApplication([])
 
     def test_default_is_cancel_and_explicit_accept_is_required(self):
-        from PyQt5.QtWidgets import QMessageBox
+        from PySide6.QtWidgets import QMessageBox
         certificate = {'subject': 'Test publisher', 'thumbprint': 'TEST', 'expires': '2030'}
         for accept in (False, True):
             observed = []
@@ -140,7 +144,7 @@ class ConsentDialogTests(unittest.TestCase):
                 next(b for b in dialog.buttons() if b.text() == target).click()
                 return 0
             # Inspect real Qt widgets without a platform-native modal loop in offscreen CI.
-            with patch.object(QMessageBox, 'exec_', choose):
+            with patch.object(QMessageBox, 'exec', choose):
                 self.assertEqual(ui.confirm_certificate(certificate), accept)
             self.assertEqual(observed, ['暂不启用'])
 
@@ -148,23 +152,21 @@ class ConsentDialogTests(unittest.TestCase):
         from types import SimpleNamespace
         from mcpywrap.ui.project_ui import GameInstanceManager
         identity = object()
-        view = SimpleNamespace(mcs_auth=True, all_packs=[], log=Mock(), refresh_instances=Mock())
-        with patch.object(auth, 'acquire_identity', return_value=identity) as capture, \
-                patch('mcpywrap.ui.project_ui.GameRunThread') as thread:
-            GameInstanceManager.start_game_thread(view, 'config', 'world')
-            capture.assert_called_once_with(interactive=True)
-            self.assertIs(thread.call_args.args[-1], identity)
-            thread.return_value.start.assert_called_once()
+        controller = Mock(session=None)
+        view = SimpleNamespace(mcs_auth=True, controller=controller, is_busy=lambda: False, log=Mock())
+        with patch.object(auth, 'acquire_identity', return_value=identity) as capture:
+            GameInstanceManager.start_game_thread(view, 'world')
+        capture.assert_called_once_with(interactive=True)
+        controller.start.assert_called_once_with('world', identity)
 
     def test_gui_missing_identity_does_not_launch_thread(self):
         from types import SimpleNamespace
         from mcpywrap.ui.project_ui import GameInstanceManager
-        view = SimpleNamespace(mcs_auth=True, all_packs=[], log=Mock())
-        with patch.object(auth, 'acquire_identity', side_effect=auth.AuthError('请先打开并登录 MC Studio')), \
-                patch('mcpywrap.ui.project_ui.GameRunThread') as thread:
-            GameInstanceManager.start_game_thread(view, 'config', 'world')
-            thread.assert_not_called()
-            view.log.assert_called_once_with('请先打开并登录 MC Studio', 'error')
+        view = SimpleNamespace(mcs_auth=True, is_busy=lambda: False, controller=Mock(session=None), log=Mock())
+        with patch.object(auth, 'acquire_identity', side_effect=auth.AuthError('请先打开并登录 MC Studio')):
+            GameInstanceManager.start_game_thread(view, 'world')
+        view.controller.start.assert_not_called()
+        view.log.assert_called_once_with('请先打开并登录 MC Studio', 'error')
 
 
 if __name__ == '__main__':

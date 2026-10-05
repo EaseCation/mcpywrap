@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 import time
 
-from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QApplication, QWidget
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QWidget
 
 
 def main():
@@ -53,7 +53,7 @@ def main():
     timer.timeout.connect(flush)
     timer.start(20)
     QTimer.singleShot(30000, app.quit)
-    app.exec_()
+    app.exec()
     flush()
 
 

@@ -79,7 +79,7 @@ mcpy publish
   - `minecraft/` - Minecraft相关功能（addons, map, template）
   - `mcstudio/` - MC Studio 集成（game, symlinks, runtime配置）
   - `utils/` - 工具函数和项目设置
-  - `ui/` - PyQt5 用户界面组件
+  - `ui/` - PySide6 用户界面组件
 
 ### 关键组件详解
 
@@ -158,7 +158,7 @@ mcpy publish
 ##### 日志服务器 (studio_server.py)
 
 - **StudioLogServer**: 多线程日志接收服务器
-  - 支持命令行和 PyQt5 UI 模式
+  - 支持命令行和 PySide6 UI 模式
   - 智能日志着色（ANSI 终端色彩 + Qt 富文本）
   - 命令历史记录和客户端管理
   - JSON 命令消息解析和处理

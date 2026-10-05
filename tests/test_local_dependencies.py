@@ -395,11 +395,11 @@ class Projects(ProjectFixture):
 class GuiProjects(ProjectFixture):
     # GUI 测试只复用临时目录准备，不重复运行父类用例。
     def test_gui_local_add_preview_remove_and_refresh(self):
-        from PyQt5.QtWidgets import QApplication, QMessageBox
-        from PyQt5.QtCore import Qt
+        from PySide6.QtWidgets import QApplication, QMessageBox
+        from PySide6.QtCore import Qt
         from mcpywrap.ui import project_ui as ui
         app = QApplication.instance() or QApplication([])
-        with patch.object(ui, 'find_all_mcpywrap_packages', return_value=[]), patch.object(ui, '_get_all_instances', return_value=[]):
+        with patch.object(ui, 'find_all_mcpywrap_packages', return_value=[]), patch('mcpywrap.engines.macos.MacOSBackend.instances', return_value=[]):
             window = ui.GameInstanceManager(str(self.main))
         try:
             window.dependency_kind.setCurrentIndex(1)
@@ -410,12 +410,12 @@ class GuiProjects(ProjectFixture):
                 install.assert_not_called()
             self.assertEqual(window.dependency_list.count(), 1)
             self.assertEqual(len(window.all_packs), 2)
-            self.assertEqual(window.dependency_list.item(0).data(Qt.UserRole).kind, 'local')
+            self.assertEqual(window.dependency_list.item(0).data(Qt.ItemDataRole.UserRole).kind, 'local')
             window.local_path_input.setText('../missing')
             window.add_dependency()
             self.assertEqual(window.local_path_input.text(), '../missing')
             window.dependency_list.setCurrentRow(0)
-            with patch.object(QMessageBox, 'question', return_value=QMessageBox.Yes):
+            with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes):
                 window.remove_selected_dependency()
             self.assertEqual(window.dependency_list.count(), 0)
             self.assertEqual(len(window.all_packs), 1)
@@ -437,7 +437,7 @@ class GuiProjects(ProjectFixture):
         self.assertEqual(outcomes, [False, True])
 
     def test_gui_browse_cancel_absolute_and_invalid_removal(self):
-        from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox
+        from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
         from mcpywrap.ui import project_ui as ui
         app = QApplication.instance() or QApplication([])
         window = ui.GameInstanceManager(str(self.main))
@@ -459,7 +459,7 @@ class GuiProjects(ProjectFixture):
             self.assertIn('目录不存在', window.log_output.toPlainText())
             self.assertFalse(window.new_btn.isEnabled())
             window.dependency_list.setCurrentRow(0)
-            with patch.object(QMessageBox, 'question', return_value=QMessageBox.Yes):
+            with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes):
                 window.remove_selected_dependency()
             self.assertEqual(self.service.list(), [])
             self.assertTrue(window.new_btn.isEnabled())
@@ -470,7 +470,7 @@ class GuiProjects(ProjectFixture):
     def test_gui_background_install_busy_failure_and_success(self):
         import time
         import threading
-        from PyQt5.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
         from mcpywrap.ui import project_ui as ui
         app = QApplication.instance() or QApplication([])
         window = ui.GameInstanceManager(str(self.main))

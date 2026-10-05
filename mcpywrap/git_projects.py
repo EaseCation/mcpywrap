@@ -13,7 +13,7 @@ import tempfile
 import uuid
 
 from .code_libraries import sync_libraries
-from .source_files import _relative, digest, long_path
+from .source_files import _relative, digest, long_path, windows_checkout_digest
 from .dependencies import DependencyError, addon_directories, read_project, write_project, resolve_path
 
 LOCK_FILE = 'mcpy-git.lock.json'
@@ -104,7 +104,7 @@ def _layout(source, entry):
     return project, payload, config, kind, target
 
 
-def prepare_graph(root, config=None):
+def prepare_graph(root, config=None, migrate_windows_lock=False):
     root = Path(root).resolve()
     config = read_project(root) if config is None else config
     roots = declarations(root, config)
@@ -117,7 +117,7 @@ def prepare_graph(root, config=None):
             raise DependencyError('Git锁文件损坏') from exc
     registered = long_path(root / '.mcpy/git-projects')
     registered.mkdir(parents=True, exist_ok=True)
-    nodes, active = {}, []
+    nodes, active, migrations = {}, [], []
     def visit(entry, supplied_source=None):
         source, commit = supplied_source or fetch_source(root, entry['git'], entry['rev'])
         project, payload, project_config, kind, target = _layout(source, entry)
@@ -134,7 +134,10 @@ def prepare_graph(root, config=None):
             return key
         active.append(key)
         source_hash = digest(source)
-        if key in expected and expected[key]['source_sha256'] != source_hash:
+        migrating = (migrate_windows_lock and key in expected and
+                     expected[key]['source_sha256'] != source_hash and
+                     windows_checkout_digest(source) == expected[key]['source_sha256'])
+        if key in expected and expected[key]['source_sha256'] != source_hash and not migrating:
             raise DependencyError('Git源码缓存摘要不符；请移走损坏缓存后重新同步')
         children = []
         for child in declarations(project, project_config):
@@ -198,21 +201,38 @@ def prepare_graph(root, config=None):
                 os.replace(stage, final)
         record = {'id': key, 'source': identity, 'source_sha256': source_hash, 'sha256': content_hash,
                   'kind': kind, 'target': target, 'children': list(dict.fromkeys(children))}
-        if key in expected and expected[key]['sha256'] != content_hash:
+        if key in expected and expected[key]['sha256'] != content_hash and not migrating:
             raise DependencyError('Git项目注册内容与锁文件不一致')
+        if migrating:
+            migrations.append({'node': key, 'git': entry['git'], 'rev': commit,
+                               'old_source_sha256': expected[key]['source_sha256'], 'source_sha256': source_hash,
+                               'old_registered_sha256': expected[key]['sha256'], 'registered_sha256': content_hash})
         nodes[key] = record
         active.pop()
         return key
     root_ids = [visit(entry) for entry in roots]
-    return {'version': 1, 'declarations': roots, 'roots': root_ids, 'nodes': list(nodes.values())}
+    lock = {'version': 1, 'declarations': roots, 'roots': root_ids, 'nodes': list(nodes.values())}
+    if migrations:
+        lock['_windows_lock_migrations'] = migrations
+    return lock
 
 
 def write_lock(root, lock):
     _write_json(Path(root) / LOCK_FILE, lock)
 
 
-def sync_projects(root, config=None):
-    lock = prepare_graph(root, config)
+def sync_projects(root, config=None, migrate_windows_lock=False, migration_report=None):
+    lock = prepare_graph(root, config, migrate_windows_lock=migrate_windows_lock)
+    migrations = lock.pop('_windows_lock_migrations', [])
+    if migrations:
+        old = (Path(root)/LOCK_FILE).read_bytes()
+        backup = Path(root)/'.mcpy/lock-backups'/(hashlib.sha256(old).hexdigest()+'.json')
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        if backup.exists() and backup.read_bytes() != old:
+            raise DependencyError('锁文件迁移备份内容不符')
+        backup.write_bytes(old)
+        if migration_report is not None:
+            migration_report.append({'project': str(root), 'backup': str(backup), 'nodes': migrations})
     write_lock(root, lock)
     return len(lock['nodes'])
 

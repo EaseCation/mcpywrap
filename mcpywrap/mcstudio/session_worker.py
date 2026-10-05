@@ -1,11 +1,11 @@
 """会话 worker：先启动日志接收，再启动游戏，最后关闭监听。"""
 import json
+import subprocess
 import uuid
 import sys
 import time
 from pathlib import Path
 
-from ..command_context import project_scope
 from . import sessions
 from .file_logs import FileLogServer
 from .processes import identity
@@ -15,6 +15,7 @@ def run(project, session):
     directory = sessions.session_path(project, session)
     path = directory / 'session.json'
     data = json.loads(path.read_text(encoding='utf-8'))
+    data.update(project=str(Path(project).resolve()), session=session)
     data['worker'] = identity(__import__('os').getpid())
     sessions.save(path, data)
     process = None
@@ -40,42 +41,34 @@ def run(project, session):
         receiver.start()
         if (directory / 'stop').exists():
             raise ValueError('启动已取消')
-        if data.get('mode') == 'network':
-            from .network import launch_network, ServerTarget
-            from .discovery import Engine
-            process = launch_network(Engine(**data['network']['engine']),
-                                     ServerTarget(**data['network']['target']),
-                                     directory/'runtime.cppconfig', receiver.port, auth_context)
-            success = bool(process)
-        else:
-            from ..commands.run_cmd import _run_game_with_instance
-            with project_scope(project):
-                success, process = _run_game_with_instance(
-                    data['config_path'], data['level_id'], [], wait=False,
-                    engine_overrides=data['engine_overrides'], no_gui=True, logging_port=receiver.port,
-                    output_path=str(directory / 'engine.log'), capture_output=True,
-                    **({'auth_context': auth_context, 'auth_config_path': str(auth_path)} if auth_context else {}))
-        if success and process:
+        from ..engines.backend import get_backend
+        backend = get_backend(data.get('backend', 'windows'))
+        launched = backend.launch(data, receiver, auth_context)
+        process = launched.process
+        if not process or process.poll() is not None:
+            raise ValueError('游戏进程未成功启动，详见 worker.log 和 engine.log')
+        if launched.capture_output:
             from .private_logs import EngineLogCapture
             engine_capture = EngineLogCapture(process.stdout, directory/'engine.log',
                                               auth_context.secrets() if auth_context else ())
-        if not success or not process or process.poll() is not None:
-            raise ValueError('游戏进程未成功启动，详见 worker.log 和 engine.log')
-        from .runtime_debug import SafaiaChannel, RuntimeControlServer
-        debug_channel = SafaiaChannel(receiver._write)
+        from .runtime_debug import RuntimeControlServer
+        debug_channel = backend.debug_channel(data, receiver._write)
         debug_channel.start(process.pid)
         token = uuid.uuid4().hex
         control_server = RuntimeControlServer(debug_channel, token)
         control_server.start()
         sessions.save(directory/'control.json', {'port': control_server.server_address[1],
                                                  'token': token,
-                                                 'python_reload_sides': ['client', 'server']})
+                                                 'python_reload_sides': ['client', 'server'],
+                                                 'client_python_queue': callable(getattr(debug_channel, 'submit', None))})
         data.update(state='running', game=identity(process.pid))
         sessions.save(path, data)
         while process.poll() is None:
             if (directory / 'stop').exists():
                 process.terminate()
                 break
+            if backend.refresh(data, debug_channel):
+                sessions.save(path, data)
             time.sleep(0.2)
         code = process.wait(timeout=10)
         data.update(state='exited', exit_code=code)
@@ -83,7 +76,10 @@ def run(project, session):
         data.update(state='failed', error=str(exc))
         if process and process.poll() is None:
             process.terminate()
-            process.wait(timeout=10)
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                data['error'] += '；保存退出尚未完成，进程保留，请查询状态并重试 stop'
     finally:
         if control_server:
             control_server.close()

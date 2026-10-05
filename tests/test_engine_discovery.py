@@ -16,6 +16,9 @@ from mcpywrap.mcstudio import discovery as d
 
 class EngineDiscoveryTests(unittest.TestCase):
     def setUp(self):
+        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host.start()
+        self.addCleanup(backend_host.stop)
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.root = Path(self.stack.enter_context(tempfile.TemporaryDirectory())).resolve()

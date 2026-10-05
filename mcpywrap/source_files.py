@@ -41,6 +41,22 @@ def digest(directory):
     return h.hexdigest()
 
 
+def windows_checkout_digest(directory):
+    """Reproduce a legacy Windows/CRLF source lock without changing its files."""
+    root = Path(directory)
+    h = hashlib.sha256()
+    for path in sorted(root.rglob('*'), key=lambda p: tuple(part.lower() for part in p.relative_to(root).parts)):
+        if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
+            raise DependencyError(f'代码库不允许链接: {path}')
+        if path.is_file():
+            rel = path.relative_to(root).as_posix().encode('utf-8')
+            data = path.read_bytes()
+            if b'\0' not in data:
+                data = data.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+            h.update(len(rel).to_bytes(8, 'big') + rel + len(data).to_bytes(8, 'big') + data)
+    return h.hexdigest()
+
+
 def _git(*args):
     def argument(value):
         value = str(value)

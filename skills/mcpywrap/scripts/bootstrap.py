@@ -68,6 +68,7 @@ def capabilities(command, remote=None, local=False):
                 auth['hint'] = '组件诊断未返回有效 JSON，请运行 doctor --mcs-auth --json'
     remote_info = None
     media = None
+    local_data = {}
     if '--remote' in help_text:
         features.append('remote-client')
         # Honors environment and project configuration through the public CLI.
@@ -79,11 +80,12 @@ def capabilities(command, remote=None, local=False):
             if result_data.get('execution') == 'remote' or not result_data.get('ok'):
                 remote_info = result_data
             else:
+                local_data = result_data
                 media = result_data.get('media')
                 for feature in ('record', 'record-frames'):
                     if feature in result_data.get('capabilities', []):
                         features.append(feature)
-            if remote_info and os.name == 'nt':
+            if remote_info:
                 local_probe = invoke([command, '--local', '--non-interactive', 'doctor', '--capabilities', '--json'])
                 local_data = json.loads(local_probe.stdout)
                 media = local_data.get('media')
@@ -95,8 +97,13 @@ def capabilities(command, remote=None, local=False):
     elif not local and (remote or os.environ.get('MCPY_REMOTE')):
         remote_info = {'ok': False, 'error': '当前 CLI 缺少远程路由能力，请显式升级'}
     local_features = features if os.name == 'nt' else [f for f in features if f not in GAME_CAPABILITIES]
+    if 'host' in local_data:
+        supported = set(local_data.get('capabilities', []))
+        local_features = [f for f in features if f not in GAME_CAPABILITIES or f in supported]
+        local_features = list(dict.fromkeys(local_features + list(local_data.get('capabilities', []))))
+        features = list(dict.fromkeys(features + local_features))
     return {'capabilities': features, 'local_capabilities': local_features, 'local_platform': sys.platform, 'mcs_auth': auth,
-            'remote': remote_info, 'media': media}
+            'remote': remote_info, 'media': media, 'local_runtime': local_data.get('runtime')}
 
 
 def main(argv=None):
@@ -160,7 +167,7 @@ def main(argv=None):
                 available, auth = report['local_capabilities'], report['mcs_auth']
             if required not in available:
                 if remote is None and game_capability and os.name != 'nt':
-                    raise ValueError('游戏能力需要 Windows 执行端；请用 --remote 配置服务地址，或先只完成本机项目安装')
+                    raise ValueError('本机后端不提供此游戏能力；请检查 doctor --capabilities，或用 --remote 配置 Windows 服务地址')
                 if required == 'serve' and os.name != 'nt':
                     raise ValueError('serve 仅能在 Windows 控制台启动；macOS 请检查 remote-client 和远端能力')
                 raise ValueError(location+'缺少所需能力: '+required+'；请显式更新该端 CLI')

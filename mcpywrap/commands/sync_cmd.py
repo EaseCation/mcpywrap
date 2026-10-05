@@ -9,13 +9,14 @@ from ..dependencies import read_project, write_project
 
 @click.command(cls=OperationCommand)
 @click.option('--install', is_flag=True, help='同时在当前工具环境中可编辑安装项目')
-def sync_cmd(install):
+@click.option('--migrate-windows-lock', is_flag=True, help='验证旧 Windows/CRLF 源码摘要后备份并迁移派生注册锁')
+def sync_cmd(install, migrate_windows_lock=False):
     """同步包配置；--install 安装到 mcpy 工具环境，不安装到游戏。"""
     require_project()
-    return sync_project(project_dir(), install)
+    return sync_project(project_dir(), install, migrate_windows_lock=migrate_windows_lock)
 
 
-def sync_project(path, install=False):
+def sync_project(path, install=False, migrate_windows_lock=False):
     from ..config import ensure_map_setuptools_sync
     from ..utils.project_setup import find_and_configure_behavior_pack
     with project_scope(path):
@@ -26,6 +27,7 @@ def sync_project(path, install=False):
         from ..builders.dependency_manager import DependencyManager
         visited, active = set(), set()
         git_count = 0
+        migrations = []
         def sync_sources(directory):
             nonlocal git_count
             key = canonical_path(directory)
@@ -44,7 +46,8 @@ def sync_project(path, install=False):
                     if target and 'mcpywrap' in read_project(target).get('tool', {}):
                         sync_sources(target)
             if git_declarations(directory, source_config) or Path(directory, GIT_LOCK_FILE).exists():
-                git_count += sync_projects(directory, source_config)
+                git_count += sync_projects(directory, source_config, migrate_windows_lock=migrate_windows_lock,
+                                           migration_report=migrations)
             active.remove(key)
             visited.add(key)
         sync_sources(path)
@@ -63,4 +66,5 @@ def sync_project(path, install=False):
                                   capture_output=True, text=True)
             if proc.returncode:
                 raise click.ClickException(proc.stderr or proc.stdout or '项目安装失败')
-    return {'project': str(path), 'installed': install, 'code_libraries': library_count, 'git_projects': git_count}
+    return {'project': str(path), 'installed': install, 'code_libraries': library_count,
+            'git_projects': git_count, 'git_lock_migrations': migrations}

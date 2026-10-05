@@ -3,7 +3,7 @@ import click
 
 from ..command_context import OperationCommand
 from ..mcstudio.discovery import engine_options
-from ..mcstudio.network import ServerTarget, run_network
+from ..mcstudio.network import ServerTarget
 
 
 @click.command(cls=OperationCommand)
@@ -21,5 +21,6 @@ def connect_cmd(host, port, mcs_auth=False, detach=False, request_id=None, **eng
     """
     if request_id:
         raise click.UsageError('--request-id 仅用于远程启动')
-    return run_network(ServerTarget(host, port, 'mcs' if mcs_auth else 'none'),
-                       engine_overrides=engine_overrides, detach=detach)
+    from ..engines.backend import get_backend
+    return get_backend().connect(ServerTarget(host, port, 'mcs' if mcs_auth else 'none'),
+                                 engine_overrides=engine_overrides, detach=detach)

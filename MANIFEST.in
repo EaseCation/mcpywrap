@@ -21,3 +21,8 @@ recursive-include native/window_capture *.cpp *.h
 prune test
 prune .git
 global-exclude __pycache__ *.py[cod] *.cppconfig *.log
+
+include THIRD_PARTY_NOTICES.md
+include docs/game-backends.md docs/launcher-client-python.md docs/macos-resource-reload.md
+include docs/qt6-development.md docs/shared-log-ui.md docs/release-0.4.0.md
+include scripts/check_release.py

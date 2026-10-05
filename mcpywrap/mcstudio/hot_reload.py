@@ -1,7 +1,5 @@
 """Local-world incremental reload targets and game-side scripts."""
 import base64
-import ctypes
-from ctypes import wintypes
 from pathlib import Path
 import re
 
@@ -136,40 +134,46 @@ def reload_ui(project, session):
     data = sessions.read(project, session)
     if data.get('mode') != 'local' or data['state'] != 'running':
         raise ValueError('JSON UI 热更只支持运行中的本地世界')
-    process = checked_process(data['game'])
-    if not process:
-        raise ValueError('游戏进程已退出')
-    from .window import GameWindow
-    window = GameWindow(data['game'])
-    hwnd = window.hwnd
-    window.close()
-    user32 = ctypes.windll.user32
-    user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
-    user32.PostMessageW.restype = wintypes.BOOL
-    user32.MapVirtualKeyW.argtypes = [wintypes.UINT, wintypes.UINT]
-    user32.MapVirtualKeyW.restype = wintypes.UINT
-    for message, key in ((0x100, 0x11), (0x100, 0x52), (0x101, 0x52), (0x101, 0x11)):
-        scan = user32.MapVirtualKeyW(key, 0)
-        lparam = 1 | (scan << 16) | ((1 << 30) | (1 << 31) if message == 0x101 else 0)
-        if not user32.PostMessageW(hwnd, message, key, lparam):
-            raise ValueError('JSON UI 重载快捷键投递失败')
-    return {'state': 'triggered', 'kind': 'ui', 'effect_verified': False}
+    from ..engines.backend import get_backend
+    backend = get_backend(data.get('backend', 'windows'))
+    reason = backend.reload_restriction(data, 'ui')
+    if reason:
+        return {'state': 'unsupported', 'kind': 'ui', 'error': reason, 'effect_verified': False}
+    if not checked_process(data['game']): raise ValueError('游戏进程已退出')
+    from .runtime_debug import control_request
+    code = backend.ui_reload_code()
+    result = control_request(project, session, 'execute', code=code, side='client')
+    if result.get('state') == 'completed':
+        value = result.get('value')
+        if isinstance(value, dict) and value.get('unsupported'):
+            result.update(state='unsupported', error='当前运行包没有可用的 JSON UI 重载接口，请安装支持的运行包并启动新实例。')
+        elif not isinstance(value, dict) or value.get('ok') is not True:
+            result.update(state='failed', error='引擎未接受 JSON UI 重载请求')
+        else:
+            result.update(state='triggered', hint='已请求异步重载 UI 定义；已有自定义控件可能失效，请重新打开界面并按 Mod 原有逻辑创建控件和绑定回调。')
+    result.update(kind='ui', effect_verified=False)
+    return result
 
 
 def reload_session(project, session, kind, target=None, source=None, side='client'):
     from . import sessions
     from .runtime_debug import control_request
+    if kind not in KINDS: raise ValueError('未知的热更类型')
     if side not in ('client', 'server') or (side == 'server' and kind != 'python'):
         raise ValueError('服务端热更仅支持 Python 模块')
     data = sessions.read(project, session)
     if data.get('mode') != 'local':
-        raise ValueError('热更只支持 Windows 本地测试世界')
-    engine_version = Path(data.get('game', {}).get('executable', '')).parent.name
-    if kind == 'shader' and engine_version in ('3.9.0.401155', '3.10.0.420447'):
+        raise ValueError('热更只支持运行中的本地测试世界')
+    if data['state'] != 'running': raise ValueError('游戏会话未运行')
+    from ..engines.backend import get_backend
+    backend = get_backend(data.get('backend', 'windows'))
+    reason = backend.reload_restriction(data, kind)
+    if reason:
         return {'state': 'unsupported', 'kind': kind, 'target': target,
-                'error': '此引擎版本的 Shader 重载未经安全验证或曾阻塞游戏线程'}
+                'error': reason, 'effect_verified': False}
+    backend.deploy(project, data)
     if kind == 'ui':
-        return reload_ui(project, session)
+        return backend.reload_ui(project, session)
     if not target:
         raise ValueError('此热更类型需要文件或模块目标')
     source = (source if source is not None else module_source(project, target)) if kind == 'python' else None
@@ -188,5 +192,95 @@ def reload_session(project, session, kind, target=None, source=None, side='clien
             result.update(state='unsupported', error='目标引擎未提供此重载接口')
         elif value.get('ok') is False:
             result.update(state='failed', error=value.get('reason', '游戏重载接口报告失败'))
+    if kind != 'python':
+        result['effect_verified'] = False
+        if result.get('state') == 'completed':
+            result.update(state='triggered', hint='已提交资源重载，请检查实际效果；新增资源未被识别时，请重新部署并重载世界。')
     result.update(kind=kind, target=target)
     return result
+
+
+class SessionWatcher:
+    """Shared CLI/Qt watch service: existing builder, debounced changes, explicit sides."""
+    def __init__(self, project, session, report=print, sides=('client',)):
+        import queue
+        import threading
+        if not sides or any(side not in ('client', 'server') for side in sides):
+            raise ValueError('无效的热更端侧')
+        self.sides = tuple(dict.fromkeys(sides))
+        self.project, self.session, self.report = Path(project).resolve(), session, report
+        self.pending = queue.Queue()
+        self.stopping = threading.Event()
+        self.thread = None
+        self.watcher = None
+
+    def start(self):
+        import threading
+        from . import sessions
+        from ..builders.project_builder import AddonProjectBuilder
+        from ..builders.watcher import ProjectWatcher
+        from ..dependencies import read_project
+        data = sessions.read(self.project, self.session)
+        if data.get('mode') != 'local' or data['state'] != 'running':
+            raise ValueError('自动热更需要运行中的本地世界')
+        config = read_project(self.project)
+        if config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
+            raise ValueError('自动热更仅支持 Addon 项目')
+        from ..engines.backend import get_backend
+        self.target = get_backend(data.get('backend', 'windows')).watch_directory(self.project, data)
+        success, error = AddonProjectBuilder(self.project, self.target).build()
+        if not success: raise ValueError(error)
+        self.watcher = ProjectWatcher(str(self.project), str(self.target), self.changed)
+        try:
+            self.watcher.setup_from_config(config.get('project', {}).get('name', 'project'), config.get('project', {}).get('dependencies', []))
+            self.watcher.start()
+        except Exception:
+            self.watcher.stop(); raise
+        self.thread = threading.Thread(target=self._loop, daemon=True)
+        self.thread.start()
+        self.report('自动热更已开启（' + ', '.join(self.sides) + '）：新增模块、注册逻辑和资源改动请重载世界。', 'info')
+
+    def changed(self, src, dest, success, output, is_python, is_dependency=False, dependency_name=None, event_type=None):
+        if not success: self.report('构建失败：' + output, 'error')
+        elif event_type == 'deleted': self.report('文件已删除，请重新部署并重载世界：' + src, 'warning')
+        elif dest: self.pending.put(dest)
+
+    def _loop(self):
+        import queue
+        from ..commands.dev_cmd import changed_reload_targets
+        from . import sessions
+        while not self.stopping.is_set():
+            try: first = self.pending.get(timeout=.2)
+            except queue.Empty: continue
+            if self.stopping.wait(.6): break
+            paths = {first}
+            while True:
+                try: paths.add(self.pending.get_nowait())
+                except queue.Empty: break
+            try:
+                if sessions.read(self.project, self.session)['state'] != 'running':
+                    self.report('会话已退出，停止热更。', 'info'); break
+                targets = changed_reload_targets(self.target, paths)
+                if not targets: self.report('资源已构建，请重新部署并重载世界。', 'info')
+                for (kind, target), path in targets.items():
+                    if kind != 'python':
+                        self.report('资源变更 ' + path + '；请手动热更或重载世界。', 'info'); continue
+                    source = Path(path).read_bytes()
+                    for side in self.sides:
+                        if self.stopping.is_set(): break
+                        result = reload_session(self.project, self.session, kind, target, source, side)
+                        value = result.get('value') or {}
+                        if value.get('reason') == 'module_not_loaded':
+                            self.report(side + ' 未加载 ' + target + '，跳过；新增入口请重载世界。', 'info')
+                        else:
+                            self.report(side + ' ' + target + ': ' + str(result.get('error') or result['state']),
+                                        'success' if result['state'] == 'completed' else 'error')
+            except Exception as error:
+                self.report('热更失败：' + str(error), 'error')
+
+    def stop(self):
+        self.stopping.set()
+        if self.watcher: self.watcher.stop()
+        if self.thread:
+            self.thread.join(timeout=30)
+            if self.thread.is_alive(): raise ValueError('热更调用尚未返回，请稍后再关闭')

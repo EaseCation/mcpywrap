@@ -28,8 +28,6 @@ def mod_cmd(name, version, script_dir, server_system, client_system, gui, framew
     if gui or (not name and not non_interactive()):
         if framework != 'native':
             raise click.UsageError('请使用 mcpy ui → 添加依赖 → Git 依赖中的快捷添加按钮')
-        if os.name != 'nt':
-            raise click.ClickException('Qt 模板向导仅支持 Windows，请使用 --name 等参数')
         from ..command_context import json_output
         if non_interactive() or json_output():
             raise click.UsageError('Qt 模板向导仅供人工使用；请提供 --name 等生成参数')

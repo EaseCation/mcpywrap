@@ -401,7 +401,32 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         require_project()
     if mcs_auth and (list or delete or clean_all):
         raise click.UsageError('--mcs-auth 仅用于网络连接，不用于存档管理')
+    from ..engines.backend import get_backend
+    from ..engines.host import EngineError
+    from ..command_context import human_interaction
+    backend = get_backend()
+    if human_interaction() and not (no_gui or detach or list or delete or clean_all):
+        from ..dependencies import read_project
+        if not read_project(base_dir).get('tool', {}).get('mcpywrap', {}).get('server'):
+            from ..ui.project_ui import show_run_ui
+            return show_run_ui(base_dir, mcs_auth, autorun=True, new=new, instance=instance_prefix)
+    options = dict(new=new, listing=list, delete=delete, force=force, clean_all=clean_all,
+                   instance_prefix=instance_prefix, no_gui=no_gui, detach=detach,
+                   mcs_auth=mcs_auth, overrides=engine_overrides)
+    try:
+        return backend.run(base_dir, **options)
+    except EngineError as error:
+        if error.code != 'setup_required' or not human_interaction(): raise
+        from .engine_cmd import setup_wizard
+        setup_wizard()
+        return backend.run(base_dir, **options)
 
+
+def _run_windows(base_dir, *, new=False, listing=False, delete=None, force=False,
+                 clean_all=False, instance_prefix=None, no_gui=False, detach=False,
+                 mcs_auth=False, overrides=None, auth_context=None):
+    # Preserve the established Windows instance/GUI implementation behind the backend.
+    list, engine_overrides = listing, overrides or {}
     # 在存档选择、配置同步和目录创建之前分流；管理选项仍只管理本地存档。
     if not (list or delete or clean_all):
         from ..dependencies import read_project
@@ -445,8 +470,7 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
     all_packs = _setup_dependencies(project_name, base_dir, raise_errors=True)
     if all_packs is None:
         raise click.ClickException('依赖校验失败')
-    auth_context = None
-    if mcs_auth:
+    if mcs_auth and auth_context is None:
         from ..mcstudio.mcs_auth import acquire_identity
         auth_context = acquire_identity()
 

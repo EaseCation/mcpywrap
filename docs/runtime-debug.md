@@ -35,4 +35,8 @@ worker启动时在现有control.json声明`python_reload_sides`。服务端热�
 | 3.9.0.401155 | 客户端/服务端通过 | 修改后游戏内读取到新值 | 快捷键已投递，效果无回执 | 未验证 | 不提供接口 | 禁用，未验证安全性 |
 | 3.10.0.420447 | 客户端/服务端通过 | 手动及 `dev` 监控均读到新值 | 快捷键已投递，效果无回执 | 接口返回成功 | 不提供接口 | 单文件接口使游戏失去响应，已禁用 |
 
-JSON UI 的 `triggered` 只代表向目标窗口投递原生 Ctrl+R；必须用画面或业务日志确认实际界面变化。Shader 在上述版本返回 `unsupported`，不会冒险自动调用。其他引擎版本仍需先用隔离测试世界验证资源重载接口。
+JSON UI 的 `triggered` 只代表重载请求已投递（Windows 按键路径，macOS 新运行包原生定义重载）；必须用画面或业务日志确认实际界面变化。Shader 在上述版本返回 `unsupported`，不会冒险自动调用。其他引擎版本仍需先用隔离测试世界验证资源重载接口。
+
+## macOS 资源验收补充（2026-10-05）
+
+当前 Android 开发包 3.9.100.297020 / ANGLE Metal：Python 已验证；已有微软粒子文件热更后新建发射器读到新值；JSON UI 的 Ctrl+R 不刷新定义，local6 起通过原生入口重载定义，需重新注册/创建自定义界面及绑定回调；旧运行包仍为 unsupported。材质入口待适配，Shader 未验证，两者仍返回 unsupported。资源加载接受回执为 triggered、effect_verified=false，不代表效果已验证。完整对照见 [macOS 资源热更验收](macos-resource-reload.md)。

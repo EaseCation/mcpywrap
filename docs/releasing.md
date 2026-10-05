@@ -1,6 +1,6 @@
 # 发布流程
 
-主分支和 PR 运行 Windows Python 3.9、3.12、3.14 的自动化测试，以及 macOS 的无 Qt 安装、项目构建与远程客户端测试。通过后构建 wheel/sdist、运行严格元数据检查、检查产物内容，并在独立环境安装 wheel 验证 CLI 和模块导入。
+主分支、0.4.0 候选分支（codex/0.4.0-*）和 PR 运行 Windows Python 3.9、3.12、3.14 的自动化测试，以及 macOS 的 Qt6、项目构建、资源安装器与远程客户端测试。通过后构建 wheel/sdist、运行严格元数据检查、检查产物内容，并在独立环境安装 wheel 验证 CLI 和模块导入。
 
 Windows CI 先用 MSVC 从 `native/mcs_auth` 编译 x86 登录桥接，再签名并通过构建产物交给测试和 Python 打包任务；编译后的 EXE/DLL 不提交到 Git。仓库只保留发布者公钥证书和指纹。
 同一 native job 还会从 `native/window_capture` 编译 x64 后台截图辅助程序，生成 SHA-256 清单；测试和打包阶段校验二进制、源码及 wheel/sdist 内容。辅助程序不可用时运行时回退到前台截图。
@@ -32,3 +32,5 @@ Windows CI 先用 MSVC 从 `native/mcs_auth` 编译 x86 登录桥接，再签名
 也可手动运行 `release.yml`：选择 `main` 并设置 `publish=true`。默认手动运行只验证，不发布。发布只允许标签推送或显式开启发布的 main 手动运行，PR 和普通 main 推送均不会上传 PyPI。
 
 不要覆盖已有 PyPI 版本。发布动作开启 PyPI provenance attestations；各第三方 Action 固定到已核实的提交。GitHub `pypi` environment 与 PyPI publisher 的 environment 必须一致。
+
+0.4.0 新用户流程与 Windows 复测清单见 [候选版验收](release-0.4.0.md)。候选分支推送不会发布 PyPI；其 CI Windows 登录桥接未签名，不用于验证正式签名登录流程。

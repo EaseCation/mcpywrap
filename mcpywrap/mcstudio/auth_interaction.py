@@ -49,11 +49,11 @@ ConvertTo-Json -InputObject $items -Compress
 
 
 def confirm_certificate(certificate):
-    from PyQt5.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtWidgets import QApplication, QMessageBox
     app = QApplication.instance() or QApplication([])
     dialog = QMessageBox()
     dialog.setWindowTitle('启用 MC Studio 登录身份')
-    dialog.setIcon(QMessageBox.Warning)
+    dialog.setIcon(QMessageBox.Icon.Warning)
     dialog.setText('Windows 尚未信任 mcpywrap 登录组件的发布者。')
     dialog.setInformativeText(
         '此组件会读取你在 MC Studio 中已登录的身份，用于启动本次游戏。\n\n'
@@ -64,10 +64,10 @@ def confirm_certificate(certificate):
     dialog.setDetailedText('发布者：'+certificate['subject']+'\n证书指纹：'+certificate['thumbprint']+
                            '\n有效期至：'+certificate['expires']+
                            '\n仅安装公钥证书，不安装私钥，不关闭 Windows 安全保护。')
-    accept = dialog.addButton('信任此发布者并重试', QMessageBox.AcceptRole)
-    cancel = dialog.addButton('暂不启用', QMessageBox.RejectRole)
+    accept = dialog.addButton('信任此发布者并重试', QMessageBox.ButtonRole.AcceptRole)
+    cancel = dialog.addButton('暂不启用', QMessageBox.ButtonRole.RejectRole)
     dialog.setDefaultButton(cancel)
-    dialog.exec_()
+    dialog.exec()
     return dialog.clickedButton() is accept
 
 
@@ -81,6 +81,6 @@ def install_certificate(certificate):
 
 
 def show_failure(message):
-    from PyQt5.QtWidgets import QApplication, QMessageBox
+    from PySide6.QtWidgets import QApplication, QMessageBox
     app = QApplication.instance() or QApplication([])
     QMessageBox.warning(None, '暂时无法使用 MC Studio 登录身份', message)

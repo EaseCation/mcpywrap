@@ -2,12 +2,12 @@
 
 import os
 import sys
-from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
+from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                             QLabel, QLineEdit, QPushButton, QFormLayout, 
                             QGroupBox, QMessageBox, QTreeWidget, QTreeWidgetItem,
                             QSplitter, QFrame)
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QIcon, QPalette, QColor, QFontDatabase
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QIcon, QPalette, QColor, QFontDatabase
 from .generate_mod_files import generate_mod_framework
 
 class FileStructurePreview(QFrame):
@@ -31,8 +31,8 @@ class FileStructurePreview(QFrame):
         self.tree_widget = QTreeWidget()
         self.tree_widget.setHeaderHidden(True)
         self.tree_widget.setIndentation(20)
-        self.tree_widget.setSelectionMode(QTreeWidget.NoSelection)  # 禁用选择
-        self.tree_widget.setFocusPolicy(Qt.NoFocus)  # 防止获得焦点
+        self.tree_widget.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)  # 禁用选择
+        self.tree_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # 防止获得焦点
         
         layout.addWidget(self.tree_widget)
     
@@ -101,27 +101,14 @@ class FileStructurePreview(QFrame):
         client_init = QTreeWidgetItem(client_dir, ["__init__.py"])
         client_init.setForeground(0, QColor(self.file_color))
 
-def open_ui_crate_mod(behavior_pack_path):
+def open_ui_crate_mod(behavior_pack_path, run_event_loop=True):
     """创建一个交互式UI，用于生成Minecraft Mod基础框架
     
     Args:
         behavior_pack_path: 行为包目录的路径
     """
-    # 在创建 QApplication 之前启用高 DPI 缩放
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    
-    app = QApplication(sys.argv) if not QApplication.instance() else QApplication.instance()
-    
-    # 为已存在的应用程序实例启用自动缩放
-    if QApplication.instance():
-        if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-            QApplication.instance().setAttribute(Qt.AA_EnableHighDpiScaling, True)
-        if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-            QApplication.instance().setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    
+    app = QApplication.instance() or QApplication(sys.argv)
+
     # 设置优先使用的中文字体列表
     preferred_fonts = [
         "Microsoft YaHei UI", "微软雅黑",  # 微软雅黑UI/微软雅黑
@@ -134,7 +121,7 @@ def open_ui_crate_mod(behavior_pack_path):
     ]
     
     # 获取系统中可用的字体
-    font_db = QFontDatabase()
+    font_db = QFontDatabase
     available_fonts = font_db.families()
     
     # 查找第一个可用的首选字体
@@ -163,7 +150,7 @@ def open_ui_crate_mod(behavior_pack_path):
     
     # 检测是否为深色模式
     palette = app.palette()
-    is_dark_mode = palette.color(QPalette.Window).lightness() < 128
+    is_dark_mode = palette.color(QPalette.ColorRole.Window).lightness() < 128
     
     # 根据深色/浅色模式设置样式
     if is_dark_mode:
@@ -318,7 +305,7 @@ def open_ui_crate_mod(behavior_pack_path):
         """)
     
     # 创建分割器以放置左右两侧内容
-    splitter = QSplitter(Qt.Horizontal)
+    splitter = QSplitter(Qt.Orientation.Horizontal)
     
     # 左侧表单部分
     left_widget = QWidget()
@@ -327,9 +314,9 @@ def open_ui_crate_mod(behavior_pack_path):
     # 创建一个组框来包含所有输入字段
     group_box = QGroupBox()
     group_layout = QFormLayout()
-    group_layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)  # 允许字段扩展
-    group_layout.setLabelAlignment(Qt.AlignLeft)  # 标签左对齐
-    group_layout.setFormAlignment(Qt.AlignLeft | Qt.AlignTop)  # 表单左上对齐
+    group_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)  # 允许字段扩展
+    group_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)  # 标签左对齐
+    group_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)  # 表单左上对齐
     group_layout.setSpacing(10)  # 增加表单项间距
 
     # 添加顶级目录名称输入框
@@ -499,7 +486,6 @@ def open_ui_crate_mod(behavior_pack_path):
     # 显示窗口
     window.show()
     
-    if not QApplication.instance():
-        sys.exit(app.exec_())
-    else:
-        app.exec_()
+    if run_event_loop:
+        app.exec()
+    return window

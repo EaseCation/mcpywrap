@@ -21,6 +21,43 @@ from test_local_dependencies import addon
 
 
 class GitProjects(unittest.TestCase):
+    def test_windows_lock_migration_is_explicit_and_preserves_old_lock(self):
+        from mcpywrap.git_projects import sync_projects
+        from mcpywrap.source_files import windows_checkout_digest
+        repo, rev = self.repository('legacy', 'code')
+        self.service.add(repo.as_uri())
+        path = self.main / LOCK_FILE
+        lock = json.loads(path.read_text())
+        source, _ = fetch_snapshot(repo.as_uri(), rev)
+        lock['nodes'][0]['source_sha256'] = windows_checkout_digest(source)
+        lock['nodes'][0]['sha256'] = 'a' * 64  # legacy tool/platform registration
+        path.write_text(json.dumps(lock))
+        previous = path.read_bytes()
+        with self.assertRaises(DependencyError):
+            sync_projects(self.main)
+        self.assertEqual(path.read_bytes(), previous)
+        report = []
+        sync_projects(self.main, migrate_windows_lock=True, migration_report=report)
+        self.assertEqual(len(report), 1)
+        self.assertEqual(Path(report[0]['backup']).read_bytes(), previous)
+        self.assertNotEqual(path.read_bytes(), previous)
+        sync_projects(self.main)  # migrated locks resume strict normal checks
+        resolve_projects(self.main)
+
+    def test_migration_rejects_unexplained_source_and_registration_changes(self):
+        from mcpywrap.git_projects import sync_projects
+        repo, _ = self.repository('changed', 'code')
+        self.service.add(repo.as_uri())
+        path = self.main / LOCK_FILE
+        original = json.loads(path.read_text())
+        for field in ('source_sha256', 'sha256'):
+            lock = json.loads(json.dumps(original))
+            lock['nodes'][0][field] = '0' * 64
+            path.write_text(json.dumps(lock))
+            with self.subTest(field=field), self.assertRaises(DependencyError):
+                sync_projects(self.main, migrate_windows_lock=True)
+            self.assertEqual(json.loads(path.read_text()), lock)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='mcpy-git-test-')
         self.root = Path(self.temp.name)
@@ -244,7 +281,7 @@ class GitProjects(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'Qt is Windows-only')
     def test_gui_raw_git_project_uses_same_service(self):
-        from PyQt5.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
         from mcpywrap.ui import project_ui as ui
         import time
         repo, rev = self.repository('gui-code', 'code')
