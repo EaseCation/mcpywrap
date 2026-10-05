@@ -53,3 +53,19 @@ macOS 当前不支持启用 cppconfig 中的 `experimental_holiday`、`experimen
 自动测试覆盖配置持久性、只刷新派生路径、导入隔离、CLI 覆盖优先级、GUI 确认与
 取消，以及两端后端调用。macOS 实机还需核对生成器/种子/模式/难度/规则、保存后
 重开和双实例隔离；Windows 实机回归需在 Windows 上执行。
+
+## 用户偏好与世界配置的区别
+
+FPS 显示、启动器 VSync、游戏画质、GUI 缩放、音量、键位等属于用户偏好，
+不属于 cppconfig 或单个世界。Windows 沿用游戏的用户级配置目录；macOS 的
+mcpy worker 将原生配置中的偏好字段保存在
+`~/Library/Application Support/mcpy/preferences/macos/`（设置 MCPY_ENGINE_HOME 时跟随该目录）。
+
+继续使用 `mcpelauncher-client-settings.txt` 和 `options.txt` 原生格式。启动时带入
+共享值，运行期间同步游戏已经写入的改动，正常退出后再刷新一次。只合并本会话
+实际改变的字段，避免同时运行的旧实例用整份旧文件覆盖新偏好。运行中的另一个
+实例不会被强行实时改变；下次启动读取最新共享值。
+
+首次启用时优先导入所选实例的已有偏好；没有时从当前项目最近保存的实例导入。
+已有共享偏好优先。账号、身份、调试凭据、世界难度及存档等不共享。不同项目和
+同一资源根目录下的不同运行包共用偏好，删除实例不会删除这些用户偏好。

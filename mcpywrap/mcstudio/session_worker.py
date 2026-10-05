@@ -19,6 +19,8 @@ def run(project, session):
     data['worker'] = identity(__import__('os').getpid())
     sessions.save(path, data)
     process = None
+    backend = None
+    game_exited = False
     receiver = None
     engine_capture = None
     debug_channel = None
@@ -71,6 +73,7 @@ def run(project, session):
                 sessions.save(path, data)
             time.sleep(0.2)
         code = process.wait(timeout=10)
+        game_exited = True
         data.update(state='exited', exit_code=code)
     except Exception as exc:
         data.update(state='failed', error=str(exc))
@@ -78,9 +81,15 @@ def run(project, session):
             process.terminate()
             try:
                 process.wait(timeout=10)
+                game_exited = True
             except subprocess.TimeoutExpired:
                 data['error'] += '；保存退出尚未完成，进程保留，请查询状态并重试 stop'
     finally:
+        if backend and game_exited:
+            try:
+                backend.finish(data)
+            except Exception as exc:
+                data.update(state='failed', error='游戏已退出，但用户偏好保存失败：' + str(exc))
         if control_server:
             control_server.close()
         if debug_channel:

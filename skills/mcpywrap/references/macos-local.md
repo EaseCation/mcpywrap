@@ -38,3 +38,5 @@ Windows 与 macOS 共用 PySide6 界面：人工使用 `mcpy --local --project <
 当前开发包 3.9.100.297020 的资源热更范围：已有微软粒子 JSON 更新后新建发射器已实测生效，回执仍只为 triggered/effect_verified=false；新增粒子文件未被识别时需重载世界。JSON UI 使用声明 json_ui_reload_protocol=1 的新运行包（local6 起），通过同一个 runtime reload ui 命令更新定义；旧包的 Ctrl+R 仍无效，安装新版后需显式启动新实例。原生重载会使现有自定义控件失效，此 APK 不触发 UiInitFinished；需按 Mod 原有逻辑重新 RegisterUI/CreateUI 和绑定回调，不使用旧控件句柄，也不把调试模块 _mcpy_launcher 写入业务代码。只验证了现有文件中的定义变化；新文件/复杂继承需单独验收。材质和 Metal Shader 仍返回 unsupported，不使用 ForceReloadResourcePack 绕过提示。True/triggered 只是已投递，不证明解析成功或界面已更新；错误 JSON 也可能被接受，需核对实际画面和文字。
 
 日常开发和 AI 操作遵循 [Windows/macOS 公共无交互流程](local-development.md)，不需要编写平台专用脚本。上述安装与引擎限制是后端差异，run/status/logs/runtime/stop 的调用方式相同。
+
+FPS/VSync、画质、GUI 缩放、音量和输入偏好由 mcpy worker 按用户保存并在新会话导入，位置是引擎资源根目录下的 `preferences/macos`。这些不是 cppconfig 世界设置；不要为每个新实例重新配置。运行中的其他实例不会即时跟随，重开时读取最新值；先正常保存退出以确保游戏完成原生配置写入。

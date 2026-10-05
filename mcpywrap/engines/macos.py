@@ -340,13 +340,29 @@ else:
         return cat['runtime']['id'] + ' / ' + cat['profile']['apk']['version']
 
     def launch(self, data, receiver, auth_context=None):
+        from .preferences import NativePreferences
+        self.preferences = NativePreferences(data['project'], data['launch']['data'],
+                                             install.home()/'preferences/macos').prepare()
         return LaunchedGame(launch_session(data), capture_output=False)
+
+    def finish(self, data):
+        if getattr(self, 'preferences', None):
+            self.preferences.sync(force=True)
 
     def debug_channel(self, data, write_log):
         from ..mcstudio.launcher_python import LauncherPythonChannel
         return LauncherPythonChannel(super().debug_channel(data, write_log), data['launch']['data'])
 
     def refresh(self, data, channel):
+        if getattr(self, 'preferences', None):
+            try:
+                self.preferences.sync()
+            except (OSError, ValueError) as error:
+                # A transient preferences error must not terminate the world.
+                message = str(error)
+                if message != getattr(self, '_preference_error', None):
+                    print('偏好同步失败，将在保存退出时重试：' + message, file=sys.stderr, flush=True)
+                self._preference_error = message
         if data.get('world_ready'): return False
         now = time.monotonic()
         if now < getattr(self, '_next_probe', 0): return False

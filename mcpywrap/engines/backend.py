@@ -97,6 +97,9 @@ _result = {'ok': True}
         """Return True only when session metadata changed; may raise on startup failure."""
         return False
 
+    def finish(self, data):
+        """Flush backend state after the owned game process has stopped."""
+
     def handoff(self, data):
         return {'backend': self.id}
 
