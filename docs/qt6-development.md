@@ -4,13 +4,11 @@
 
 ```sh
 mcpy --local --project /path/to/addon ui
-# 人工终端 run 默认打开同一个界面并启动实例
+# run 始终使用 CLI，不打开 Qt
 mcpy --local --project /path/to/addon run
-# 终端模式
-mcpy --local --project /path/to/addon run --no-gui
 ```
 
-首次 macOS 使用“运行环境”安装资源（与 CLI 共用 catalog/APK 安装服务）；没有公开默认源时，需要提供发行方 catalog。
+mcpy ui 内首次启动会自动准备 macOS 资源并显示进度，完成后继续启动。高级来源和本地 APK 导入默认折叠；与 CLI 复用同一个安装服务。
 
 界面复用原有项目/依赖布局，支持本地、包、Git 依赖与框架快捷添加，Mod 模板、实例创建/选择/删除、运行环境安装、保存退出和重新部署重载世界。macOS 明确显示并禁用“MCEditor（不支持）”；Windows 继续使用其 MC Studio Editor。
 

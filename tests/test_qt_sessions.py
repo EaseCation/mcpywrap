@@ -97,7 +97,7 @@ class GuiTests(unittest.TestCase):
         with patch.object(self.window, 'prepare_engine') as setup:
             self.window.start_game_thread()
             self.wait(lambda: self.window.controller.session is not None and not self.window.is_busy())
-        setup.assert_called_once()
+        setup.assert_called_once_with(auto_install=True)
 
     def test_explicit_engine_is_kept_when_starting_and_reloading_world(self):
         overrides = {'engine_version': '3.9.0.401155'}
@@ -187,6 +187,16 @@ class GuiTests(unittest.TestCase):
         self.wait(lambda: not dialog.task.isRunning())
         self.assertEqual(dialog.progress.value(),100)
         self.assertIn('资源已就绪',dialog.status.text())
+        dialog.close()
+
+    def test_ui_setup_defaults_are_hidden_and_auto_setup_continues(self):
+        backend = Mock(spec=GameBackend, setup_description='fixture')
+        backend.install.return_value = {'ok': True}
+        dialog = EngineSetupDialog(backend, auto_install=True)
+        dialog.show()
+        self.assertFalse(dialog.advanced.isVisible())
+        self.wait(lambda: dialog.ready and not dialog.isVisible())
+        self.assertEqual(backend.install.call_args.args[:2], (None, None))
         dialog.close()
 
     def test_protocol_filter_spans_chunks_and_keeps_mod_output(self):

@@ -185,6 +185,7 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                                   backend='macos-arm64', launch=plan)
     result = sessions.handoff(data)
     if detach: return result
+    sessions.show_configuration(result)
     from .tui import watch_session
     return watch_session(project, data['session'])
 
@@ -229,9 +230,9 @@ class MacOSBackend(GameBackend):
                     'status', 'logs', 'stop', 'py', 'runtime', 'runtime-ui', 'runtime-player',
                     'client-python-requests', 'project-ui', 'reload', 'watch')
     managed_install = True
-    setup_description = ('原生 Apple Silicon / Metal；离线 Addon 测试；世界设置由各实例 cppconfig 保存。\n'
-                         '启动器从配置的发布源取得，开发者 APK 直接从网易下载。\n'
-                         '首次下载 APK 约 2.21 GB，展开约 3.88 GB；无需 Homebrew、Wine 或 MC Studio。')
+    setup_description = ('在 Apple Silicon Mac 上运行本地 Addon 测试。\n'
+                         '首次运行会自动下载原生启动器和网易开发者版资源，并在本机完成安装。\n'
+                         '需下载约 2.3 GB，请预留至少 7 GB 可用空间。')
 
     def world_option_restrictions(self):
         return {'cheat_info.' + key: reason for key, reason in (

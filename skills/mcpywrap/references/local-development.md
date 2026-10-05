@@ -1,19 +1,19 @@
 # Windows/macOS 本地无交互开发与验收
 
-适用于本地 Addon 世界。对两个平台使用相同命令、参数、JSON 解析和生命周期；后端选择由 mcpy 完成。安装来源仍有区别：Windows 通过 MC Studio 准备引擎；Apple Silicon 通过 engine install 准备原生运行包/APK，见 [macOS 安装](macos-local.md)。不支持的功能明确报告，不自动换平台、登录或切到桌面输入。
+适用于本地 Addon 世界。对两个平台使用相同命令、参数、JSON 解析和生命周期；后端选择由 mcpy 完成。安装来源仍有区别：Windows 通过 MC Studio 准备引擎；Apple Silicon 首次 run 自动准备原生运行包/APK，也可提前 engine install，见 [macOS 安装](macos-local.md)。不支持的功能明确报告，不自动换平台、登录或切到桌面输入。
 
 ## 纯命令契约
 
 统一前缀：`mcpy --local --project <绝对项目目录> --non-interactive`，以下每条有限命令最后添加 `--json`。全局参数在子命令前。stdout 是单个 JSON，stderr 可含构建诊断；同时检查退出码、ok、state、error、hint，不从退出码零推断游戏业务效果。
 
-这里“无头”是 mcpy 控制端无需 Qt 管理页、日志小窗、TUI 或人工点击。Minecraft 仍有原生窗口并需要图形会话/GPU。不要承诺 SSH 无显示服务运行或游戏无渲染模式。不要把 `--no-gui` 当成隐藏游戏窗口。
+这里“无头”是 mcpy 控制端无需 Qt 管理页、日志小窗、TUI 或人工点击。Minecraft 仍有原生窗口并需要图形会话/GPU。不要承诺 SSH 无显示服务运行或游戏无渲染模式。run 始终使用 CLI，--no-gui 是兼容参数，不能用于隐藏游戏窗口。
 
 | 步骤 | 公共命令 | 结果检查 |
 |---|---|---|
 | 安装能力 | `doctor --capabilities` | CLI/宿主具备需要的能力 |
-| 运行资源 | `doctor` | ok=true；否则根据 hint 准备资源，不循环启动 |
+| 运行资源 | `doctor` | Windows 按 hint 手动安装 MC Studio；macOS 资源缺失由首次 run 自动安装，失败后检查实际错误 |
 | 构建 | `build` | 组装成功只证明文件构建，不证明 Mod 已运行 |
-| 启动/复用 | `run --no-gui --detach` | 保存 session；需要独立验收世界才加 --new |
+| 启动/复用 | `run --detach` | 保存 session；需要独立验收世界才加 --new |
 | 会话能力 | `runtime capabilities --session <sid>` | schema_version=1，control.available；reload 各项 state |
 | 状态/找回 | `status --session <sid>` / `status --list` | running 仅表示进程存活；丢失启动响应先找回 |
 | 日志 | `logs --session <sid> --source game --tail 200` | source 还可为 engine/worker；检查双端 Mod 标记 |
@@ -61,3 +61,5 @@ JSON UI 重载的是定义集合，`--file` 不表示只刷新一个控件。可
 操控 UI/玩家时使用 `runtime install` → `runtime ui/player`。按 [UI 节点流程](runtime-ui.md) 获取新快照，使用节点 ID，不需要桌面输入。UI 无法表达的画面或截图需求再查看实际平台能力；macOS 不支持 Windows 桌面 screenshot/key/mouse/record。`runtime watch` 是持续的纯终端 Python 自动热更命令，不加 --json；资源变化提示手动重载，不自动重建业务 UI。结束监控后还要停止自己启动的游戏。
 
 不同测试实例可使用独立的世界设置；创建参数、模板导入及保存语义见[实例世界设置](instance-world-settings.md)。
+
+run 返回 config_path/config_hint；前台运行会主动打印实例 cppconfig 路径。需要改创建配置时编辑该文件，再用 run --new --cppconfig <文件> 创建世界。既有世界的设置以存档为准，不把创建配方误当作当前状态。

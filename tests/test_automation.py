@@ -123,6 +123,24 @@ class AutomationTests(unittest.TestCase):
         result, _ = self.call('mod', '--name', '../wrong')
         self.assertEqual(result.exit_code, 2)
 
+    def test_mod_does_not_open_a_gui_even_with_legacy_flag(self):
+        self.initialize()
+        with patch('mcpywrap.minecraft.template.mod_template.open_ui_crate_mod', side_effect=AssertionError('GUI')):
+            result, data = self.call('mod', '--gui')
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn('mcpy ui', data['error'])
+
+    def test_interactive_mod_uses_terminal_prompt(self):
+        self.initialize()
+        command = importlib.import_module('mcpywrap.commands.mod_cmd')
+        with patch.object(command, 'human_interaction', return_value=True), \
+                patch('click.prompt', return_value='TerminalMod') as prompt, \
+                patch('mcpywrap.minecraft.template.mod_template.open_ui_crate_mod', side_effect=AssertionError('GUI')):
+            result, data = self.call('mod')
+        self.assertEqual(result.exit_code, 0, result.output)
+        prompt.assert_called_once()
+        self.assertEqual(data['name'], 'TerminalMod')
+
     def test_local_dependency_then_package(self):
         self.initialize()
         dependency = self.root / 'dependency'

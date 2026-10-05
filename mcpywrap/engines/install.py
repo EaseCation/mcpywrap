@@ -14,12 +14,16 @@ import tempfile
 import time
 from urllib.parse import urljoin, urlsplit, urlencode
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from http.client import HTTPException
 import uuid
 import zipfile
 
 from .host import EngineError, describe, require_macos
 
 CATALOG_ENV = 'MCPY_RUNTIME_CATALOG'
+DEFAULT_CATALOG = ('https://github.com/EaseCation/mcpelauncher-manifest/releases/download/'
+                   'mcpy-runtime-v0.4.0-preview.1/catalog.json')
 # Public constant from the official ApkDownload component, verified 2026-10-05.
 # https://mcdev.webapp.163.com/static/js/4.05713153ba17aea6db53.js
 CDN_CONSTANT = 'mEE7Cot48r9j2AvEL2N6jpXEc'
@@ -75,15 +79,18 @@ def catalog(location=None):
         if current:
             validate_catalog(current['catalog'])
             return current['catalog'], current['catalog_base']
-        raise EngineError('尚未配置 macOS 预构建发布源。', 'catalog_unconfigured',
-                          '使用 mcpy engine install --catalog <catalog.json 的路径或 HTTPS 地址>；当前不假定上游发行包含网易适配。')
+        location = DEFAULT_CATALOG
     scheme = _scheme(location)
     if scheme == 'https':
-        with urlopen(str(location), timeout=20) as response:
-            raw = response.read(1024 * 1024 + 1)
-            if len(raw) > 1024 * 1024:
-                raise EngineError('发布目录过大', 'invalid_catalog')
-            data, base = json.loads(raw), str(location)
+        try:
+            with urlopen(str(location), timeout=20) as response:
+                raw = response.read(1024 * 1024 + 1)
+        except (OSError, URLError, HTTPException) as error:
+            raise EngineError('获取运行包发布目录失败：' + str(error), 'catalog_download_failed',
+                              '请检查网络后重试；默认发布源已内置，无需手动填写。') from None
+        if len(raw) > 1024 * 1024:
+            raise EngineError('发布目录过大', 'invalid_catalog')
+        data, base = json.loads(raw), str(location)
     elif not scheme:
         path = Path(location).expanduser().resolve()
         data, base = read_json(path), str(path)
@@ -149,55 +156,166 @@ def fetch(source, target, expected, size, progress=None):
         if path.stat().st_size != size or digest(path) != expected:
             raise EngineError('本地发行文件摘要不匹配', 'integrity_error')
         return path
+    if urlsplit(source).hostname == 'g79.gdl.netease.com' and size >= 128*1024*1024:
+        return _fetch_ranges(source, target, expected, size, progress)
     part = target.with_suffix(target.suffix + '.part')
-    offset = part.stat().st_size if part.exists() else 0
-    if offset >= size:
-        if offset == size and digest(part) == expected:
-            part.replace(target); return target
-        part.unlink(); offset = 0
-    headers = {'Range': 'bytes=%d-' % offset} if offset else {}
-    with urlopen(Request(source, headers=headers), timeout=30) as response:
-        if offset and response.status == 206:
-            content_range = response.headers.get('Content-Range', '')
-            if not content_range.startswith('bytes %d-' % offset) or not content_range.endswith('/%d' % size):
-                raise EngineError('续传响应与预期文件不一致', 'download_changed')
-        elif response.status == 200:
-            offset = 0
-        elif response.status != 206:
-            raise EngineError('下载响应异常', 'download_failed')
-        with part.open('ab' if offset else 'wb') as stream:
-            while True:
-                block = response.read(1024 * 1024)
-                if not block:
-                    break
-                offset += len(block)
-                if offset > size:
-                    raise EngineError('下载文件超过清单大小', 'integrity_error')
-                stream.write(block)
-                if progress: progress(offset, size)
-    if offset != size or digest(part) != expected:
-        raise EngineError('下载未完成或 SHA-256 不匹配；未安装该文件。', 'integrity_error',
-                          '可重试续传；完整文件摘要错误时检查发布源或导入正确 APK。')
+    for attempt in range(3):
+        offset = part.stat().st_size if part.exists() else 0
+        if offset >= size:
+            if offset == size and digest(part) == expected:
+                part.replace(target); return target
+            part.unlink(); offset = 0
+        if progress: progress(offset, size)
+        headers = {'Range': 'bytes=%d-' % offset, 'User-Agent': 'mcpywrap'}
+        try:
+            with urlopen(Request(source, headers=headers), timeout=30) as response:
+                if response.status == 206:
+                    content_range = response.headers.get('Content-Range', '')
+                    if not content_range.startswith('bytes %d-' % offset) or not content_range.endswith('/%d' % size):
+                        raise EngineError('续传响应与预期文件不一致', 'download_changed')
+                elif response.status == 200:
+                    offset = 0
+                else:
+                    raise EngineError('下载响应异常', 'download_failed')
+                with part.open('ab' if offset else 'wb') as stream:
+                    while True:
+                        block = response.read(1024 * 1024)
+                        if not block:
+                            break
+                        offset += len(block)
+                        if offset > size:
+                            raise EngineError('下载文件超过清单大小', 'integrity_error')
+                        stream.write(block)
+                        if progress: progress(offset, size)
+            if offset != size:
+                raise OSError('下载连接提前结束')
+            break
+        except HTTPError as error:
+            if error.code not in (408, 429, 500, 502, 503, 504):
+                raise EngineError('下载服务器返回 HTTP %d。' % error.code, 'download_failed',
+                                  '请稍后重试；若资源已下架，请反馈所选版本，或通过 --apk 导入匹配资源。') from None
+            last_error = error
+        except (OSError, URLError, HTTPException) as error:
+            last_error = error
+        if attempt == 2:
+            raise EngineError('网络下载失败：' + str(last_error), 'download_failed',
+                              '已保留下载进度；检查网络后重新运行即可续传，无需填写发布源。') from None
+        time.sleep(attempt + 1)
+    if digest(part) != expected:
+        raise EngineError('下载文件 SHA-256 不匹配；未安装该文件。', 'integrity_error',
+                          '请检查发布来源或导入匹配 APK；已有世界不受影响。')
     part.replace(target)
     return target
 
 
+
+def _fetch_ranges(source, target, expected, size, progress=None, *, chunk_size=16*1024*1024, workers=8):
+    """Resume verified-size CDN ranges, adapted from the validated APK downloader."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
+    part = target.with_suffix(target.suffix + '.part')
+    ledger = target.with_suffix(target.suffix + '.ranges.json')
+    count = (size + chunk_size - 1) // chunk_size
+    identity = {'sha256': expected, 'size': size, 'chunk_size': chunk_size}
+    done = set()
+    if ledger.is_file():
+        state = read_json(ledger)
+        if any(state.get(k) != v for k, v in identity.items()):
+            part.unlink(missing_ok=True); ledger.unlink()
+        else:
+            done = set(state.get('done', []))
+            if any(type(i) is not int or not 0 <= i < count for i in done):
+                raise EngineError('下载续传记录无效', 'download_changed')
+            length = part.stat().st_size if part.is_file() else 0
+            done = {i for i in done if min(size, (i+1)*chunk_size) <= length}
+    elif part.is_file():
+        length = part.stat().st_size
+        if length == size and digest(part) == expected:
+            part.replace(target); return target
+        # Reuse complete chunks of a previous sequential download.
+        if length < size: done = set(range(length // chunk_size))
+    write_json(ledger, dict(identity, done=sorted(done)))
+    with part.open('a+b') as stream: stream.truncate(size)
+    amounts = {i: min(chunk_size, size-i*chunk_size) if i in done else 0 for i in range(count)}
+    cancelled, lock = threading.Event(), threading.Lock()
+    last_update = [0.0]
+    if progress: progress(sum(amounts.values()), size)
+
+    def update(index, amount):
+        with lock:
+            amounts[index] = amount
+            now = time.monotonic()
+            if progress and now-last_update[0] >= .1:
+                progress(sum(amounts.values()), size); last_update[0] = now
+
+    def transfer(index):
+        start, end = index*chunk_size, min(size, (index+1)*chunk_size)-1
+        for attempt in range(3):
+            if cancelled.is_set(): return None
+            update(index, 0)
+            try:
+                request = Request(source, headers={'Range': 'bytes=%d-%d' % (start, end), 'User-Agent': 'mcpywrap'})
+                with urlopen(request, timeout=30) as response:
+                    if response.status != 206 or response.headers.get('Content-Range') != 'bytes %d-%d/%d' % (start, end, size):
+                        raise EngineError('网易 CDN 分段响应与清单不匹配', 'download_changed')
+                    at = start
+                    with part.open('r+b') as stream:
+                        stream.seek(start)
+                        read = getattr(response, 'read1', response.read)
+                        while not cancelled.is_set():
+                            block = read(256*1024)
+                            if not block: break
+                            if at+len(block) > end+1:
+                                raise EngineError('下载分段超过预期大小', 'integrity_error')
+                            stream.write(block); at += len(block); update(index, at-start)
+                        stream.flush(); os.fsync(stream.fileno())
+                    if cancelled.is_set(): return None
+                    if at != end+1: raise OSError('下载分段提前结束')
+                return index
+            except HTTPError as error:
+                if error.code not in (408, 429, 500, 502, 503, 504):
+                    raise EngineError('网易下载服务器返回 HTTP %d' % error.code, 'download_failed') from None
+                last_error = error
+            except (OSError, URLError, HTTPException) as error:
+                last_error = error
+            if attempt == 2:
+                raise EngineError('网易 APK 下载中断：' + str(last_error), 'download_failed',
+                                  '已保留完成的分段，重新运行即可续传。') from None
+            cancelled.wait(attempt + 1)
+
+    pool = ThreadPoolExecutor(max_workers=workers)
+    futures = []
+    try:
+        futures = [pool.submit(transfer, i) for i in range(count) if i not in done]
+        for future in as_completed(futures):
+            index = future.result()
+            if index is not None:
+                done.add(index)
+                write_json(ledger, dict(identity, done=sorted(done)))
+    except BaseException:
+        cancelled.set()
+        for future in futures: future.cancel()
+        raise
+    finally:
+        pool.shutdown(wait=True)
+    if digest(part) != expected:
+        part.unlink(missing_ok=True); ledger.unlink(missing_ok=True)
+        raise EngineError('下载文件 SHA-256 不匹配；未安装该文件。', 'integrity_error')
+    part.replace(target); ledger.unlink(missing_ok=True)
+    if progress: progress(size, size)
+    return target
+
+
 def official_apk_url(profile):
-    expected = profile['apk']['filename']
-    for channel in ('pe_old', 'pe'):
-        with urlopen('https://mc-launcher.webapp.163.com/users/get/download/' + channel, timeout=20) as response:
-            data = json.loads(response.read(65536))
-        url = data['data']['url']
-        parsed = urlsplit(url)
-        if parsed.scheme != 'https' or parsed.netloc != 'g79.gdl.netease.com' or parsed.query or parsed.fragment:
-            raise EngineError('官方接口返回了未识别的下载来源', 'download_source_changed')
-        if parsed.path != '/' + expected:
-            continue
-        expiry = format(int(time.time()) + 43200, 'x')
-        key = hashlib.md5((CDN_CONSTANT + parsed.path + expiry).encode()).hexdigest()
-        return url + '?' + urlencode({'key1': key, 'key2': expiry})
-    raise EngineError('官方渠道已不再提供本项目锁定的 ' + profile['apk']['version'], 'version_unavailable',
-                      '使用 mcpy engine install --apk <已取得的匹配版本 APK>，或显式选择已验证的新发布目录。')
+    # The verified profile already names the official CDN object. pe/pe_old are
+    # moving discovery channels and must not gate downloading a pinned version.
+    filename = profile['apk']['filename']
+    if not re.fullmatch(r'dev_launcher_[0-9.]+\.apk', filename):
+        raise EngineError('无效的官方 APK 文件名', 'invalid_catalog')
+    path = '/' + filename
+    expiry = format(int(time.time()) + 43200, 'x')
+    key = hashlib.md5((CDN_CONSTANT + path + expiry).encode()).hexdigest()
+    return 'https://g79.gdl.netease.com' + path + '?' + urlencode({'key1': key, 'key2': expiry})
 
 
 def verify_runtime(app, integrity, profile=None):
@@ -401,6 +519,25 @@ def _require_idle(destination):
             continue
 
 
+def _remaining_download(target, expected, size):
+    """Count additional space, without treating a sparse range file as downloaded."""
+    if target.is_file() and target.stat().st_size == size and digest(target) == expected:
+        return 0
+    part = target.with_suffix(target.suffix + '.part')
+    ledger = target.with_suffix(target.suffix + '.ranges.json')
+    if not part.is_file():
+        return size
+    if ledger.is_file():
+        state = read_json(ledger)
+        if (state.get('sha256'), state.get('size'), state.get('chunk_size')) != (expected, size, 16*1024*1024):
+            return size
+    elif part.stat().st_size >= size:
+        return 0 if part.stat().st_size == size and digest(part) == expected else size
+    info = part.stat()
+    allocated = getattr(info, 'st_blocks', 0) * 512
+    return max(0, size - min(info.st_size, allocated))
+
+
 def install(location=None, apk=None, progress=None):
     host = require_macos()
     cat, base = catalog(location); validate_catalog(cat)
@@ -419,7 +556,12 @@ def install(location=None, apk=None, progress=None):
         game_valid = _valid(verify_game, game, profile)
         if not runtime_valid: _require_idle(destination)
         if not game_valid: _require_idle(game)
-        required = (0 if game_valid else profile['unpacked_size'] + (0 if apk else profile['apk']['size']))
+        required = 0
+        if not game_valid:
+            apk_meta = profile['apk']
+            required = profile['unpacked_size']
+            if not apk:
+                required += _remaining_download(root/'cache'/apk_meta['filename'], apk_meta['sha256'], apk_meta['size'])
         required += 0 if runtime_valid else 512 * 1024 * 1024
         if shutil.disk_usage(root).free < required:
             raise EngineError('安装所需可用空间不足，约需 %.1f GB。' % (required / 1e9), 'disk_space')

@@ -1,8 +1,8 @@
-"""用参数生成 Mod 脚本，GUI 向导仅用于人工交互。"""
+"""通过参数或终端问答生成 Mod 脚本。"""
 import keyword
 import os
 import click
-from ..command_context import OperationCommand, project_dir, non_interactive, require_project
+from ..command_context import OperationCommand, project_dir, human_interaction, require_project
 from ..minecraft.addons import find_behavior_pack_dir
 from ..minecraft.template.generate_mod_files import generate_mod_framework
 from ..framework_presets import FRAMEWORK_PRESETS
@@ -14,7 +14,7 @@ from ..framework_presets import FRAMEWORK_PRESETS
 @click.option('--script-dir', default='myScript', show_default=True)
 @click.option('--server-system', default='ServerSystem', show_default=True)
 @click.option('--client-system', default='ClientSystem', show_default=True)
-@click.option('--gui', is_flag=True, help='打开人工使用的模板向导')
+@click.option('--gui', is_flag=True, hidden=True)
 @click.option('--framework', type=click.Choice(['native'] + list(FRAMEWORK_PRESETS)), default='native', show_default=True)
 @click.option('--source', '--qumod-source', 'qumod_source', help='框架预设的源码来源名称')
 def mod_cmd(name, version, script_dir, server_system, client_system, gui, framework, qumod_source):
@@ -25,15 +25,10 @@ def mod_cmd(name, version, script_dir, server_system, client_system, gui, framew
     behavior = find_behavior_pack_dir(str(project_dir()))
     if not behavior:
         raise click.ClickException('未找到行为包，请先初始化 Addon')
-    if gui or (not name and not non_interactive()):
-        if framework != 'native':
-            raise click.UsageError('请使用 mcpy ui → 添加依赖 → Git 依赖中的快捷添加按钮')
-        from ..command_context import json_output
-        if non_interactive() or json_output():
-            raise click.UsageError('Qt 模板向导仅供人工使用；请提供 --name 等生成参数')
-        from ..minecraft.template.mod_template import open_ui_crate_mod
-        open_ui_crate_mod(behavior)
-        return {'application': 'mod-wizard'}
+    if gui:
+        raise click.UsageError('图形模板向导已统一到 mcpy ui；CLI 使用 --name 等参数')
+    if not name and human_interaction():
+        name = click.prompt('Mod 名称')
     if not name:
         raise click.UsageError('非交互生成模板需要 --name')
     for label, value in [('name', name), ('script-dir', script_dir), ('server-system', server_system), ('client-system', client_system)]:

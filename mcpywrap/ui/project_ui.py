@@ -617,7 +617,7 @@ class GameInstanceManager(QMainWindow):
         if self.is_busy() or self.controller.session:
             self.log('请先保存退出当前游戏，再启动其他实例。', 'warning'); return
         if level_id is None and self.backend.managed_install and not self.backend.diagnose(self.base_dir).get('ok'):
-            self.prepare_engine()
+            self.prepare_engine(auto_install=True)
             if not self.backend.diagnose(self.base_dir).get('ok'):
                 self.log('运行资源尚未准备完成，可通过“运行环境”继续安装。', 'warning'); return
         identity = None
@@ -667,11 +667,11 @@ class GameInstanceManager(QMainWindow):
         self.mod_window.setParent(self, Qt.WindowType.Window)
         self.mod_window.show()
 
-    def prepare_engine(self):
+    def prepare_engine(self, auto_install=False):
         if self.is_busy(): return
         if self.backend.managed_install:
             from .engine_setup import EngineSetupDialog
-            EngineSetupDialog(self.backend, self).exec()
+            EngineSetupDialog(self.backend, self, auto_install=auto_install).exec()
         else:
             self.controller.run_task(lambda: self.backend.diagnose(self.base_dir, self.controller.engine_overrides))
 

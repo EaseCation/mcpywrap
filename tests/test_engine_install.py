@@ -52,6 +52,31 @@ class InstallerTests(unittest.TestCase):
                     'size': self.archive.stat().st_size, 'sha256': installer.digest(self.archive)}, 'profile': self.profile}
         self.catalog = self.root/'catalog.json'; self.catalog.write_text(json.dumps(self.cat))
 
+    def test_fresh_install_uses_bundled_default_catalog_url(self):
+        with patch.object(installer, 'urlopen', return_value=io.BytesIO(json.dumps(self.cat).encode())) as download:
+            cat, base = installer.catalog()
+        self.assertEqual(cat, self.cat)
+        self.assertEqual(base, installer.DEFAULT_CATALOG)
+        download.assert_called_once_with(installer.DEFAULT_CATALOG, timeout=20)
+        self.assertFalse(installer.home().exists())
+
+    def test_pinned_apk_download_does_not_depend_on_moving_discovery_channels(self):
+        from urllib.parse import urlsplit, parse_qs
+        with patch.object(installer, 'urlopen', side_effect=AssertionError('discovery request')):
+            url = installer.official_apk_url(self.profile)
+        parsed = urlsplit(url)
+        self.assertEqual(parsed.netloc, 'g79.gdl.netease.com')
+        self.assertEqual(parsed.path, '/' + self.apk.name)
+        self.assertEqual(set(parse_qs(parsed.query)), {'key1', 'key2'})
+
+    def test_catalog_network_failure_does_not_request_manual_configuration(self):
+        from urllib.error import URLError
+        with patch.object(installer, 'urlopen', side_effect=URLError('offline')):
+            with self.assertRaises(EngineError) as caught:
+                installer.catalog()
+        self.assertEqual(caught.exception.code, 'catalog_download_failed')
+        self.assertIn('网络', caught.exception.hint)
+
     def test_install_reuse_repair_and_immutable_release(self):
         first = installer.install(str(self.catalog), str(self.apk))
         self.assertTrue(first['ok'])
@@ -98,6 +123,85 @@ class InstallerTests(unittest.TestCase):
             installer.fetch('https://example.org/a', target, hashlib.sha256(content).hexdigest(), len(content))
         self.assertEqual(download.call_args.args[0].get_header('Range'), 'bytes=4-')
         self.assertEqual(target.read_bytes(), content)
+
+    def test_transient_download_failure_retries_the_existing_range(self):
+        from urllib.error import URLError
+        content = b'complete-download'
+        target = self.root/'retry.bin'
+        target.with_suffix('.bin.part').write_bytes(content[:4])
+        response = io.BytesIO(content[4:]); response.status = 206
+        response.headers = {'Content-Range': 'bytes 4-%d/%d' % (len(content)-1, len(content))}
+        with patch.object(installer, 'urlopen', side_effect=[URLError('temporary TLS failure'), response]) as download, \
+                patch.object(installer.time, 'sleep'):
+            installer.fetch('https://example.org/file', target, hashlib.sha256(content).hexdigest(), len(content))
+        self.assertEqual(target.read_bytes(), content)
+        self.assertEqual(download.call_count, 2)
+        self.assertTrue(all(call.args[0].get_header('Range') == 'bytes=4-' for call in download.call_args_list))
+
+    def test_cdn_chunks_reuse_contiguous_progress_and_verify_whole_file(self):
+        from urllib.error import URLError
+        content = b'0123456789abcdef'
+        target = self.root/'ranges.bin'
+        target.with_suffix('.bin.part').write_bytes(content[:6])
+        requested = []
+        def response(request, **kwargs):
+            value = request.get_header('Range'); requested.append(value)
+            start, end = map(int, value.removeprefix('bytes=').split('-'))
+            data = io.BytesIO(content[start:end+1]); data.status = 206
+            data.headers = {'Content-Range': 'bytes %d-%d/%d' % (start, end, len(content))}
+            return data
+        with patch.object(installer, 'urlopen', side_effect=response):
+            installer._fetch_ranges('https://g79.gdl.netease.com/file', target,
+                hashlib.sha256(content).hexdigest(), len(content), chunk_size=4, workers=2)
+        self.assertEqual(target.read_bytes(), content)
+        self.assertNotIn('bytes=0-3', requested)
+        self.assertFalse(target.with_suffix('.bin.ranges.json').exists())
+
+    def test_cdn_invalid_range_is_not_promoted_to_cache(self):
+        content = b'abcdefgh'
+        target = self.root/'invalid.bin'
+        response = io.BytesIO(content); response.status = 200; response.headers = {}
+        with patch.object(installer, 'urlopen', return_value=response):
+            with self.assertRaises(EngineError):
+                installer._fetch_ranges('https://g79.gdl.netease.com/file', target,
+                    hashlib.sha256(content).hexdigest(), len(content), chunk_size=8, workers=1)
+        self.assertFalse(target.exists())
+
+    def test_cdn_resume_downloads_holes_not_sparse_file_length(self):
+        content = b'0123456789abcdef'
+        target = self.root/'resume.bin'
+        expected = hashlib.sha256(content).hexdigest()
+        target.with_suffix('.bin.part').write_bytes(b'\0'*4 + content[4:8] + b'\0'*4 + content[12:])
+        target.with_suffix('.bin.ranges.json').write_text(json.dumps({
+            'sha256': expected, 'size': len(content), 'chunk_size': 4, 'done': [1, 3]}))
+        requested = []
+        def response(request, **kwargs):
+            start, end = map(int, request.get_header('Range').removeprefix('bytes=').split('-'))
+            requested.append(start)
+            data = io.BytesIO(content[start:end+1]); data.status = 206
+            data.headers = {'Content-Range': 'bytes %d-%d/%d' % (start, end, len(content))}
+            return data
+        with patch.object(installer, 'urlopen', side_effect=response):
+            installer._fetch_ranges('https://g79.gdl.netease.com/file', target,
+                expected, len(content), chunk_size=4, workers=2)
+        self.assertEqual(set(requested), {0, 8})
+        self.assertEqual(target.read_bytes(), content)
+
+    def test_sparse_resume_counts_only_allocated_space(self):
+        target = self.root/'sparse.apk'
+        size = 128*1024*1024
+        part = target.with_suffix('.apk.part')
+        with part.open('wb') as stream:
+            stream.write(b'partial')
+            stream.truncate(size)
+        target.with_suffix('.apk.ranges.json').write_text(json.dumps({
+            'sha256': 'a'*64, 'size': size, 'chunk_size': 16*1024*1024, 'done': []}))
+        remaining = installer._remaining_download(target, 'a'*64, size)
+        self.assertEqual(remaining, max(0, size-min(size, getattr(part.stat(), 'st_blocks', 0)*512)))
+        self.assertEqual(installer._remaining_download(target, 'b'*64, size), size)
+
+    def test_verified_cache_needs_no_download_space(self):
+        self.assertEqual(installer._remaining_download(self.apk, installer.digest(self.apk), self.apk.stat().st_size), 0)
 
     def test_os_floor_fails_before_creating_home(self):
         self.cat['runtime']['minimum_macos'] = '99.0'; self.catalog.write_text(json.dumps(self.cat))

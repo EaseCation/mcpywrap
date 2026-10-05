@@ -9,7 +9,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 
 ## Windows/macOS 共用的纯命令开发入口
 
-本地 Addon 开发默认采用同一套命令，不按平台编写两份启动/调试/热更流程。AI 使用 `--local --project <目录> --non-interactive`，启动为 `run --no-gui --detach --json`。无需操作 Qt/TUI 或原生窗口；游戏仍需要图形会话和 GPU，这不是无显示服务运行。
+本地 Addon 开发默认采用同一套命令，不按平台编写两份启动/调试/热更流程。AI 使用 `--local --project <目录> --non-interactive`，启动为 `run --detach --json`。`run` 始终使用 CLI，macOS 首次运行自动安装资源并在 stderr 显示进度；Qt 界面只有 `mcpy ui` 才打开。无需操作 Qt/TUI 或原生窗口；游戏仍需要图形会话和 GPU，这不是无显示服务运行。
 
 先读 [本地无交互开发与验收](references/local-development.md)：涵盖会话能力查询、就绪检查、双端 Python、JSON UI 重载、日志及保存退出。`runtime capabilities --session <sid> --json` 返回当前实例的能力，不能仅从宿主平台推断；旧实例固定旧运行包。优先公共 CLI，不直接调用 `_mcpy_launcher`、JNI、Safaia 或读取控制凭据。
 
@@ -39,7 +39,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 - 默认复用已有安装；更换来源需 `--upgrade`，可选 `--version`、`--git-ref <完整 SHA>`、`--editable-path <本机目录>`。PowerShell 对应 `-Upgrade/-Version/-GitRef/-EditablePath`。
 - 使用本机 bootstrap 返回的 `command` 执行后续 CLI；示例中的 `mcpy` 均指这个路径，不跨机器复用它。
 - Windows 服务端：bootstrap 加 `--local --require-capability serve`，再用 `mcpy --local doctor --capabilities --json`。需要登录时额外检查 `mcs-auth` 组件并由用户登录 MCS。
-- Apple Silicon macOS 本地：bootstrap 加 `--local --require-capability macos-local-worlds`，再用 `mcpy --local engine doctor --json` 检查资源。安装和限制见 [macOS 本地测试](references/macos-local.md)。资源未就绪时显式安装，不能从“有 run 命令”推断游戏可启动。
+- Apple Silicon macOS 本地：bootstrap 加 `--local --require-capability macos-local-worlds`，再用 `mcpy --local engine doctor --json` 检查资源。安装和限制见 [macOS 本地测试](references/macos-local.md)。资源未就绪时 run 会从内置发行源自动安装；也可提前执行 engine install。安装成功仍须验证游戏就绪。
 - macOS 远程端：bootstrap 加 `--remote <地址> --require-capability remote-client --require-capability network-sessions`；后台操作再要求调用端 `runtime-ui/runtime-player` 与执行端 `py`，截图要求 `screenshot`。桌面单次输入要求 `key/mouse`，Windows 编排要求 `input-sequence`，可重复传入 `--require-capability`。
 - 本机能力看 `local_capabilities`，Windows 服务能力看 `remote.capabilities`。`remote.ok=false` 时停止远程流程；组件具备不表示已登录、窗口已就绪或已进服。
 - `bootstrap --remote` 只做检测，不保存路由。每次远程调用明确传 `--remote <endpoint>`，或确认当前进程确实继承了 `MCPY_REMOTE`；不依赖上一次终端调用的 export。
@@ -61,7 +61,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 | runtime reload、runtime watch | Windows 或 Apple Silicon macOS 本地测试世界，显式使用 --local |
 | 配置服务器目标的 run | 本机校验项目与依赖，远端只连接服务器 |
 | 本地世界 run、实例管理 | Windows 或 Apple Silicon macOS 本机，明确使用 `--local`；macOS 目前仅 Addon，远端不支持世界实例 |
-| ui、mod --gui | Windows/macOS 的共用 PySide6 界面，仅供人工操作；Agent 仍用 CLI |
+| ui | Windows/macOS 的共用 PySide6 界面，仅供人工操作；Agent 仍用 CLI |
 | serve、edit | Windows 本机；macOS 不支持 MCEditor |
 
 `--project` 必须是调用端路径且目录已存在；纯连接不需要 init。远程实际会话保存在 Windows 的 serve 数据目录。
@@ -122,7 +122,7 @@ Windows 用户在专用、已登录未锁屏的桌面设置 `MCPY_REMOTE_TOKEN` 
 4. 一次性测试结束 stop；用户要求保留时报告会话 ID。busy 时先列举，不停止不属于本任务的会话。
 
 启动响应丢失用相同 endpoint 的 `status --list --json` 找回；输入超时不盲目重试。
-人工交互的本地 run 默认打开 Qt6 管理页；加 --no-gui 使用终端状态。只有本机运行可省略 detach/JSON 前台看状态：网络和 macOS 本地世界 Ctrl+C 保存退出，Windows 本地世界保留原有前台中断保留会话行为。远程始终用 detach。
+本地 run 始终显示 CLI 状态，--no-gui 仅作为兼容参数。只有 ui 命令打开 Qt6 管理页及相关子窗口。只有本机运行可省略 detach/JSON 前台看状态：网络和 macOS 本地世界 Ctrl+C 保存退出，Windows 本地世界保留原有前台中断保留会话行为。远程始终用 detach。
 
 ## 统一运行时与玩家操作
 

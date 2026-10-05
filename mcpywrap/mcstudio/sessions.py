@@ -102,6 +102,12 @@ def handoff(data):
               'engine_log_path': data.get('engine_log_path'),
               'mode': data.get('mode', 'local'),
               'window_title_hint': 'Minecraft', 'window_verified': False}
+    if data.get('mode', 'local') == 'local' and data.get('config_path'):
+        result['instance'] = data.get('level_id')
+        result['config_path'] = data['config_path']
+        if str(data['config_path']).endswith('.cppconfig'):
+            result['config_hint'] = ('需要自定义世界时，可手动编辑此文件，再用 run --new --cppconfig <该文件路径> 创建实例；'
+                                     '已有世界继续使用存档中的设置。')
     from ..engines.backend import get_backend
     result.update(get_backend(data.get('backend', 'windows')).handoff(data))
     if data.get('network'):
@@ -111,6 +117,14 @@ def handoff(data):
                       connection_verified=False, addons_assembled=False,
                       engine_version=data['network']['engine']['version'])
     return result
+
+
+def show_configuration(result):
+    """CLI presentation shared by foreground backends; JSON handoffs retain fields."""
+    import click
+    if result.get('config_path'):
+        click.echo('实例配置：' + result['config_path'])
+        if result.get('config_hint'): click.echo(result['config_hint'])
 
 
 def stop(project, session):

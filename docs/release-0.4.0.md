@@ -5,9 +5,9 @@
 ## 完成度结论
 
 - Windows：用户手动安装 MC Studio 并在其中下载引擎，这是正式设计。mcpy 负责发现、诊断和接入，不自动安装 MC Studio。新 PySide6 UI 和共用命令需要在真实 Windows 桌面复测。
-- macOS：显式提供匹配 catalog 后，安装器可自动下载原生运行包、从网易取得 APK、校验和提取，随后直接运行。没有登录/手工复制游戏二进制的步骤。
+- macOS：mcpy run 从内置固定 HTTPS 发行目录自动下载原生运行包及网易开发者 APK，校验、提取后继续运行；用户无需填写 catalog/APK 路径。
 - 原生启动器适配位于独立的 launcher/submodule 工作区，不包含在本 mcpy Git 分支；发布前需将对应源码/构建引用固定并推送，或分发已校验的完整对应源码归档。
-- 尚未达到“普通用户仅安装 mcpy 即可使用默认源全自动下载”的公开发行状态：当前没有已发布的默认 HTTPS catalog/运行包源。保留 catalog_unconfigured 的准确提示，不填一个尚不存在的下载 URL。
+- 原生运行包公开分发于 EaseCation/mcpelauncher-manifest 的 mcpy-runtime-v0.4.0-preview.1 Release，附带对应源码、catalog 和摘要；Python 0.4.0 的 PyPI 发布仍是单独步骤。
 - macOS 运行包当前 ad-hoc 签名，公开下载后的 Gatekeeper 行为和最低实际系统尚未验收。编译目标 11.0 不等于完整 Qt GUI 支持 11.0，Qt wheel 的系统/Python 要求以解析结果为准。
 - macOS 离线 Addon 范围内工作；MCEditor、本地 Map、联网/身份登录以及 Windows 桌面截图/录制不伪装为可用。JSON UI 热更更新定义，需要重新注册/创建业务 UI 和回调。
 
@@ -39,10 +39,10 @@ mcpy --local --project <项目目录> --non-interactive init --name demo --type 
 mcpy --local --project <项目目录> --non-interactive mod --name DemoMod --json
 ```
 
-Windows 已手动准备 MC Studio 引擎后，直接使用 run。macOS 首次运行需准备发布目录（APK 由网易下载，不需要 --apk）：
+Windows 已手动准备 MC Studio 引擎后，直接使用 run。macOS 直接运行即可自动准备环境（APK 由网易下载）：
 
 ```sh
-mcpy --local --non-interactive engine install --catalog <catalog.json的HTTPS地址或本地路径> --json
+mcpy --local --non-interactive engine install --json  # 可选，run 也会自动安装
 mcpy --local engine doctor --json
 mcpy --local --project <项目目录> --non-interactive run --no-gui --detach --json
 mcpy --local --project <项目目录> runtime capabilities --session <id> --json
@@ -50,7 +50,13 @@ mcpy --local --project <项目目录> logs --session <id> --source game --tail 2
 mcpy --local --project <项目目录> stop --session <id> --json
 ```
 
-不带非交互/JSON 的人工 run 会打开 Qt6 开发界面；macOS 资源缺失时进入同一个安装对话框，完成后继续启动。纯命令模式不会弹出安装窗口或等待输入，按结构化 hint 显式安装。需要离线导入时，engine install 可加 --apk；版本错误应拒绝并保留已有环境。已有世界固定其运行包版本，更新运行包不自动迁移世界。
+run 始终是纯 CLI，包括首次安装进度、默认世界创建和配置文件提示；--no-gui 保留为兼容参数。只有 mcpy ui 打开 Qt 管理页、折叠的新建确认框及安装子窗口。纯命令模式不弹窗或询问来源。高级用户可覆盖 --catalog 或通过 --apk 导入匹配资源。已有世界固定运行包版本，不自动迁移。
+
+### 2026-10-06 macOS CLI 验收
+
+在 Apple Silicon / macOS 26.6.2 上，清空相关环境变量，使用默认资源目录和独立 Addon 项目执行裸 `mcpy run`。公开 catalog 和原生运行包下载成功；网易 APK 的下载、重试、取消和续传路径已实际触发，但当天 CDN 出现 TLS 中断且速度偏低，未完成本轮全量联网下载。后续复用此前从官方下载且 SHA-256 一致的 3.10.100.299889 APK 缓存，完成校验、提取、自动兼容检查、默认世界创建和启动。此结果不等同于干净网络环境下的完整下载验收。
+
+前台打印真实 cppconfig 路径和修改提示，无 Qt 辅助窗口；游戏进入 `hud_screen`，客户端和服务端 Python 返回相同世界 ID。Ctrl+C 保存退出后可重新启动；`run --detach --json` 的 stdout 可解析为单个 JSON，并携带 config_path/config_hint。测试结束后关闭本轮游戏会话。自动测试共运行 518 项，24 项按平台条件跳过，其余通过；覆盖默认来源、CLI 自动安装、终端模板生成、Qt 自动安装完成继续、分段续传和空间估算。Skill 校验通过。
 
 ## Windows 复测清单
 

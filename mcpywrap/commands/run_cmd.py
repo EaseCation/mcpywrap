@@ -423,7 +423,7 @@ def take_world_options(arguments, cppconfig=None):
 @click.command(cls=OperationCommand)
 @world_options
 @engine_options
-@click.option("--no-gui", is_flag=True, help="只显示游戏，不打开辅助 GUI")
+@click.option("--no-gui", is_flag=True, hidden=True, help="兼容参数；run 始终使用 CLI")
 @click.option("--detach", is_flag=True, help="后台运行并返回游戏会话")
 @click.option('--mcs-auth', is_flag=True, help='本次单人测试或网络连接使用已登录的 MC Studio 身份')
 @click.option('--cppconfig', type=click.Path(exists=True, dir_okay=False, resolve_path=True),
@@ -457,23 +457,17 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         raise click.UsageError('--mcs-auth 仅用于网络连接，不用于存档管理')
     from ..engines.backend import get_backend
     from ..engines.host import EngineError
-    from ..command_context import human_interaction
     backend = get_backend()
-    if human_interaction() and not (no_gui or detach or list or delete or clean_all):
-        from ..dependencies import read_project
-        if not read_project(base_dir).get('tool', {}).get('mcpywrap', {}).get('server'):
-            from ..ui.project_ui import show_run_ui
-            return show_run_ui(base_dir, mcs_auth, autorun=True, new=new, instance=instance_prefix,
-                               engine_overrides=engine_overrides, world_config=world_config)
     options = dict(new=new, listing=list, delete=delete, force=force, clean_all=clean_all,
-                   instance_prefix=instance_prefix, no_gui=no_gui, detach=detach,
+                   instance_prefix=instance_prefix, no_gui=True, detach=detach,
                    mcs_auth=mcs_auth, overrides=engine_overrides, world_config=world_config)
     try:
         return backend.run(base_dir, **options)
     except EngineError as error:
-        if error.code != 'setup_required' or not human_interaction(): raise
-        from .engine_cmd import setup_wizard
-        setup_wizard()
+        if error.code != 'setup_required' or not backend.managed_install: raise
+        from .engine_cmd import perform_install
+        click.echo('首次运行：自动下载并准备本地游戏环境…', err=True)
+        perform_install()
         return backend.run(base_dir, **options)
 
 
@@ -592,6 +586,7 @@ def _run_windows(base_dir, *, new=False, listing=False, delete=None, force=False
         result = sessions.handoff(data)
         if detach:
             return result
+        sessions.show_configuration(result)
         click.echo('会话: ' + data['session'] + '；日志: ' + data['log_path'])
         try:
             while sessions.read(base_dir, data['session'])['state'] in ('starting', 'running'):

@@ -76,13 +76,13 @@ Git 项目使用 `[[tool.mcpywrap.git_dependencies]]` 声明，支持 Addon 与�
 | `mcpy build` | 将项目和依赖构建到配置的输出目录 |
 | `mcpy package` | 构建项目和依赖，在 `dist` 中生成可分发 ZIP |
 | `mcpy dev` | 监控 Addon 源码与依赖变化，持续更新构建结果 |
-| `mcpy mod` | 通过向导创建 Python Mod 框架 |
+| `mcpy mod` | 用参数或终端问答创建 Python Mod 框架 |
 | `mcpy modsdk` | 管理网易 ModSDK |
 | `mcpy run -n` | 创建新的游戏测试实例 |
 | `mcpy run -l` | 查看已有实例 |
 | `mcpy run -d <ID前缀>` | 删除指定实例 |
 
-本地世界模式下，`mcpy run` 默认复用最近创建的实例。构建时主项目内容优先于依赖；修改依赖声明后，请重新启动 `mcpy dev`。
+本地世界模式下，`mcpy run` 始终使用 CLI，默认复用最近创建的实例；没有实例时直接用默认配置创建。macOS 资源缺失会自动下载安装并显示进度，无需填写发布源或 APK。输出会提供实例 cppconfig 路径及修改方式。图形界面只通过 `mcpy ui` 打开。构建时主项目内容优先于依赖；修改依赖声明后，请重新启动 `mcpy dev`。
 
 ### 打包分发
 

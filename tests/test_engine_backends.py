@@ -70,21 +70,33 @@ class BackendTests(unittest.TestCase):
                 self.assertTrue(run.call_args.kwargs['new'])
                 self.assertTrue(run.call_args.kwargs['detach'])
 
-    def test_setup_missing_is_structured_and_does_not_prompt(self):
-        with patch('mcpywrap.engines.backend.get_backend', return_value=MacOSBackend()), \
-                patch('mcpywrap.engines.macos.require_macos'), patch('click.prompt', side_effect=AssertionError('prompt')):
+    def test_run_installs_missing_resources_without_prompts_or_gui(self):
+        backend = Mock(spec=GameBackend, managed_install=True)
+        backend.run.side_effect = [EngineError('missing', 'setup_required'), {'session': 'a'*32}]
+        backend.install.return_value = {'ok': True}
+        with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
+                patch('mcpywrap.commands.engine_cmd.get_backend', return_value=backend), \
+                patch('click.prompt', side_effect=AssertionError('prompt')), \
+                patch('mcpywrap.ui.project_ui.show_run_ui', side_effect=AssertionError('GUI')):
             result = self.call('run', '--detach')
-        self.assertEqual(result.exit_code, 1, result.output)
-        self.assertEqual(json.loads(result.stdout)['code'], 'setup_required')
-        self.assertFalse((self.root/'engine').exists())
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(backend.run.call_count, 2)
+        backend.install.assert_called_once()
+        self.assertEqual(backend.install.call_args.args[:2], (None, None))
+        self.assertTrue(backend.run.call_args.kwargs['no_gui'])
 
-    def test_human_run_keeps_explicit_engine_selection_in_gui(self):
-        with patch('mcpywrap.command_context.human_interaction', return_value=True), \
+    def test_human_run_is_cli_and_preserves_explicit_engine_selection(self):
+        backend = Mock(spec=GameBackend)
+        backend.run.return_value = {'session': 'a'*32}
+        with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
+                patch('mcpywrap.command_context.human_interaction', return_value=True), \
                 patch('mcpywrap.ui.project_ui.show_run_ui') as show:
             result = self.runner.invoke(cli, ['--local', '--project', str(self.root),
                 'run', '--engine-version', '3.9.0.401155', '--new'])
         self.assertEqual(result.exit_code, 0, result.output)
-        self.assertEqual(show.call_args.kwargs['engine_overrides']['engine_version'], '3.9.0.401155')
+        show.assert_not_called()
+        self.assertEqual(backend.run.call_args.kwargs['overrides']['engine_version'], '3.9.0.401155')
+        self.assertTrue(backend.run.call_args.kwargs['no_gui'])
 
     def test_gui_backend_start_keeps_engine_overrides(self):
         backend = WindowsBackend()
@@ -107,16 +119,17 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 1)
         self.assertIn('MC Studio', json.loads(result.stdout)['hint'])
 
-    def test_wizard_uses_backend_and_passes_choices(self):
+    def test_default_engine_setup_does_not_ask_for_sources(self):
         command = importlib.import_module('mcpywrap.commands.engine_cmd')
         backend = Mock(managed_install=True, setup_description='fixture')
         backend.diagnose.return_value = {'ok': False}
-        backend.installation_choice.return_value = 'fixture/3.9'
+        backend.install.return_value = {'ok': True}
         with patch.object(command, 'get_backend', return_value=backend), \
-                patch.object(command, 'human_interaction', return_value=True), \
-                patch('click.prompt', side_effect=['2', '/fixture.apk']), patch('click.confirm', return_value=True):
-            command.setup_wizard()
-        self.assertEqual(backend.install.call_args.args[:2], (None, '/fixture.apk'))
+                patch('click.prompt', side_effect=AssertionError('prompt')), \
+                patch('click.confirm', side_effect=AssertionError('confirmation')):
+            result = command.setup_wizard()
+        self.assertTrue(result['ok'])
+        self.assertEqual(backend.install.call_args.args[:2], (None, None))
 
     def test_startup_failures_are_not_reported_as_ready(self):
         path = self.root/'engine.log'
