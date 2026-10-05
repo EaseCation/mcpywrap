@@ -33,7 +33,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 
 ## 安装与前置检查
 
-- 本轮统一 macOS 后端、Qt6 和会话能力查询要求 CLI 0.4.0+；候选版未上 PyPI 时按仓库验收文档安装对应 wheel，不把已更新的 Skill 当作 CLI 已升级。
+- macOS 后端、Qt6 和会话能力查询要求 CLI 0.4.0+；候选版未上 PyPI 时按仓库验收文档安装对应 wheel，不把已更新的 Skill 当作 CLI 已升级。
 - Skill 文件夹和 CLI 分别安装，更新一端不会自动更新另一端。两台机器都复制完整 Skill，并在各自机器上检查 CLI。
 - 使用已有 uv 运行 `uv run --no-project --python 3.12 "<skill>/scripts/bootstrap.py"`，无需假定 PATH 中存在 `python`；Windows 也可用 [bootstrap.ps1](scripts/bootstrap.ps1)。
 - 默认复用已有安装；更换来源需 `--upgrade`，可选 `--version`、`--git-ref <完整 SHA>`、`--editable-path <本机目录>`。PowerShell 对应 `-Upgrade/-Version/-GitRef/-EditablePath`。

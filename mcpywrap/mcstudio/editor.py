@@ -44,6 +44,7 @@ def create_editor_config(project_name: str, project_dir: str, is_map: bool, addo
         return None
     download_path = engine.download_dir
     engine_version = engine.version
+    project_dir = os.path.abspath(project_dir)
     config = {
         "AssertCacheDir": os.path.join(download_path, "EngineAssert"),
         "CanPublishResourceComponent": True,
@@ -55,6 +56,8 @@ def create_editor_config(project_name: str, project_dir: str, is_map: bool, addo
         "EditLogFilePath": os.path.join(download_path, "work", "editor", "edit.log"),
         "EditMaterialPaths": [],
         "EditName": project_name,
+        "EditPath": project_dir,
+        "EditType": 1 if is_map else 7,
         "EditVersion": engine_version,
         "EditorResourcePackPath": os.path.join(engine_install_dir, "data", "inner_res"),
         "ElkUrl": "https://x19mclexpr.nie.netease.com/client-log",
@@ -63,6 +66,14 @@ def create_editor_config(project_name: str, project_dir: str, is_map: bool, addo
         "IsMap": is_map,
         "NameSpace": "ec",
         "SaveBackMapPath": project_dir,
+        "SaveBackAddOnPath": project_dir,
+        "StudioTempPath": os.path.join(project_dir, '.runtime', 'editor'),
+        # MCEditor's startup parser requires these even for an existing Addon.
+        # CreateNew=False keeps them from creating/replacing the user's world.
+        "WorldType": 1,
+        "Seed": "",
+        "BlockNums": [16, 16],
+        "BornPoint": [0, 64, 0],
         "ShowGuide": False,
         "Source": "import"
     }

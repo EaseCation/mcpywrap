@@ -121,8 +121,9 @@ print('__MCPY_RESULT_%s__' + _m_b64.b64encode(_m_serialized))
 
 
 class SafaiaChannel:
-    def __init__(self, log_write):
+    def __init__(self, log_write, ready=None):
         self.log_write = log_write
+        self.ready = ready
         self.listener = socket.socket()
         self.listener.bind(('127.0.0.1', 0))
         self.listener.listen(2)
@@ -236,6 +237,11 @@ class SafaiaChannel:
             raise ValueError('执行侧必须为 client 或 server')
         if not isinstance(code, str) or not code.strip() or len(code.encode('utf-8')) > MAX_CODE:
             raise ValueError('代码必须是非空 UTF-8 文本且不超过 32 KiB')
+        # Safaia connects before the Windows game Python systems initialize.
+        # Sending then can lose the result and permanently occupy this channel.
+        if self.ready is not None and not self.ready():
+            return {'state': 'unavailable', 'side': side,
+                    'error': '世界尚未就绪，请等待加载完成；此请求未发送到游戏'}
         if not self.serial.acquire(blocking=False):
             raise ValueError('已有游戏脚本正在执行')
         try:

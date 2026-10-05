@@ -365,6 +365,17 @@ class EngineDiscoveryTests(unittest.TestCase):
             config = json.loads((self.project / 'studio.json').read_text(encoding='utf-8'))
             self.assertEqual(config['EditVersion'], engine.version)
             self.assertEqual(config['AssertCacheDir'], str(root / 'EngineAssert'))
+            # The real startup parser normalizes EditPath and indexes both
+            # world vectors even when CreateNew=False / IsMap=False.
+            self.assertEqual(Path(os.path.abspath(config['EditPath'])), self.project)
+            self.assertEqual(config['EditType'], 7)
+            self.assertEqual(Path(config['SaveBackAddOnPath']), self.project)
+            self.assertTrue(Path(config['StudioTempPath']).is_absolute())
+            self.assertIsInstance(config['WorldType'], int)
+            self.assertIsInstance(config['Seed'], str)
+            self.assertEqual(len(config['BlockNums']), 2)
+            self.assertEqual(len(config['BornPoint']), 3)
+            self.assertFalse(config['CreateNew'])
 
 
 @unittest.skipUnless(os.name == 'nt', 'Windows 注册表与磁盘 API')

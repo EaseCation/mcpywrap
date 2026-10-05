@@ -1,0 +1,12 @@
+[
+  {"action": "look", "pitch": 0, "yaw": 0},
+  {"action": "move", "right": 1, "duration_ms": 200},
+  {"action": "move", "right": -1, "duration_ms": 200},
+  {"action": "move", "forward": 1, "duration_ms": 200, "sprint": true},
+  {"action": "move", "forward": -1, "duration_ms": 200},
+  {"action": "key", "keys": "W", "hold_ms": 100},
+  {"action": "sneak", "duration_ms": 300},
+  {"action": "jump"},
+  {"action": "wait", "duration_ms": 250},
+  {"action": "look", "pitch": 0, "yaw": 90}
+]

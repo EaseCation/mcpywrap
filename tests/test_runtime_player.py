@@ -148,6 +148,32 @@ class PlayerTests(unittest.TestCase):
         self.assertFalse(self.api.sprinting)
         self.assertTrue(self.p.status(result['id'])['released'])
 
+    def test_sequence_waits_for_engine_to_observe_move_unlock(self):
+        def unlock():
+            self.api.log.append(('unlock',))
+            self.api.AddTimer(.03, lambda: setattr(self.api, 'vector', (0., 0.)))
+            return True
+        self.api.UnlockInputVector = unlock
+        job = self.p.sequence([{'action': 'move', 'right': 1, 'duration_ms': 200},
+                               {'action': 'move', 'right': -1, 'duration_ms': 200}])
+        self.api.advance(1)
+        result = self.p.status(job['id'])
+        self.assertEqual(result['state'], 'completed')
+        self.assertEqual([entry for entry in self.api.log if entry[0] == 'move'],
+                         [('move', (-1., 0.)), ('move', (1., 0.))])
+        self.assertEqual(self.api.vector, (0., 0.))
+
+    def test_sequence_does_not_overwrite_input_remaining_after_unlock(self):
+        self.api.UnlockInputVector = lambda: True
+        job = self.p.sequence([{'action': 'move', 'right': 1, 'duration_ms': 200},
+                               {'action': 'move', 'right': -1, 'duration_ms': 200}])
+        self.api.advance(2)
+        result = self.p.status(job['id'])
+        self.assertEqual(result['state'], 'failed')
+        self.assertEqual(result['code'], 'input_busy')
+        self.assertEqual([entry for entry in self.api.log if entry[0] == 'move'],
+                         [('move', (-1., 0.))])
+
     def test_other_input_and_menu_are_not_overridden(self):
         self.api.vector=(1,0)
         with self.assertRaises(UIError):self.p.move(forward=1)

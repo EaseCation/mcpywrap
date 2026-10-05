@@ -1,4 +1,4 @@
-"""在已准备的独立生存世界中，用公开 CLI 验收吃东西/射箭队列并恢复朝向与选槽。
+"""可选实机测试，不参与默认 unittest：验证吃东西/射箭队列并恢复朝向与选槽。
 
 测试会消耗一份食物和一支箭；不创建物品、不切游戏模式、不停止传入会话。
 """
@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 from manual_runtime_ui import foreground
+from manual.runtime_controls.support import invoke_json
 
 
 def main():
@@ -22,13 +23,15 @@ def main():
     parser.add_argument('--output',required=True)
     parser.add_argument('--require-background',action='store_true')
     args=parser.parse_args(); output=Path(args.output)
+    if args.require_background and sys.platform != 'win32':
+        parser.error('--require-background 只验证 Windows 前台；macOS 请省略')
     if output.exists():raise ValueError('输出必须是新文件')
     prefix=[sys.executable,'-X','utf8','-m','mcpywrap','--local','--project',args.project]
     history=[]
     def call(*command):
-        p=subprocess.run(prefix+list(command)+['--session',args.session,'--json'],capture_output=True,encoding='utf-8',timeout=25)
-        result=json.loads(p.stdout);history.append({'command':command,'result':result})
-        if p.returncode or not result.get('ok'):raise RuntimeError(result)
+        result,code=invoke_json(prefix+list(command)+['--session',args.session,'--json'],timeout=60)
+        history.append({'command':command,'result':result})
+        if code or not result.get('ok'):raise RuntimeError(result)
         return result
     def player(*command):return call('runtime','player',*command)
     game=call('status')['game']

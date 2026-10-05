@@ -7,6 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 使用中文进行沟通
 - 代码注释中使用中文进行注释
 
+## 文档与手动测试约定
+
+- 仓库文档维护可复用的使用说明、接口契约和兼容性限制；不提交按日期的开发进度、任务计划、单次验收报告或临时机器路径。
+- 开发过程、运行日志和测试结果保存在 Git 忽略的 `test/`、`.runtime/` 或仓库外目录。
+- 实机脚本必须明确标注为可选手动测试，不接入默认单元测试、CI 或正常游戏启动。默认测试只能模拟其调用端逻辑。
+
 ## 项目概述
 
 mcpywrap 是一个用于《我的世界》中国版 ModSDK/资源包的全周期管理工具，基于 Python 生态系统构建。项目支持：
@@ -239,7 +245,7 @@ target_dir = "./build"     # 构建输出目录
 
 ### 测试和调试
 
-项目无自动化测试，依赖实际运行验证：
+默认自动化测试使用临时目录、模拟游戏 API 和回环服务，运行 `python -X utf8 -m unittest discover -s tests -v`。实机 UI/玩家及服务端夹具使用 [可选手动测试](tests/manual/runtime_controls/README.md)，不会默认启动游戏。
 
 - `mcpy run` - 启动游戏实例验证功能
 - `mcpy dev` - 热重载测试开发工作流

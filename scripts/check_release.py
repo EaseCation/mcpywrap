@@ -46,8 +46,13 @@ with tarfile.open(sdist) as archive:
                      'docs/game-backends.md', 'docs/launcher-client-python.md', 'docs/macos-resource-reload.md',
                      'docs/qt6-development.md', 'docs/shared-log-ui.md', 'docs/release-0.4.0.md',
                      'tests/test_session_capabilities.py', 'tests/test_engine_install.py', 'tests/test_shared_logs.py'}
-    runtime_files.update(p.relative_to(root).as_posix() for p in (root / 'docs/validation').glob('*') if p.is_file())
+    manual_files = {p.relative_to(root).as_posix() for p in (root / 'tests/manual/runtime_controls').rglob('*')
+                    if p.is_file() and '__pycache__' not in p.parts}
+    runtime_files.update(manual_files)
     assert runtime_files <= sdist_names, f'Sdist missing runtime documentation/tests: {runtime_files - sdist_names}'
+    for name in manual_files:
+        assert archive.extractfile(f'mcpywrap-{version}/{name}').read() == (root/name).read_bytes(), \
+            f'Sdist has stale optional manual test: {name}'
     skill_files = {p.relative_to(root).as_posix() for p in (root / 'skills').rglob('*') if p.is_file() and '__pycache__' not in p.parts}
     assert skill_files <= sdist_names, f'Sdist missing skill files: {skill_files - sdist_names}'
     assert bridge_files <= sdist_names, 'Sdist missing signed bridge payload'

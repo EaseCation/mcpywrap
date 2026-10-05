@@ -10,12 +10,7 @@ mcpy --local --project /path/to/addon run
 mcpy --local --project /path/to/addon run --no-gui
 ```
 
-首次 macOS 使用“运行环境”安装资源（同 CLI 的 catalog/APK 安装服务）；默认无公开发行源，需要发行方的 catalog。测试用本地资源已放在独立目录，可这样打开已有测试项目：
-
-```sh
-MCPY_ENGINE_HOME=/Users/fangyizhou/Documents/coding/mcpelauncher-manifest/build-macos-arm64/product-engine-home \
-  mcpy --local --project /Users/fangyizhou/Documents/coding/mcpelauncher-manifest/build-macos-arm64/product-smoke-project ui
-```
+首次 macOS 使用“运行环境”安装资源（与 CLI 共用 catalog/APK 安装服务）；没有公开默认源时，需要提供发行方 catalog。
 
 界面复用原有项目/依赖布局，支持本地、包、Git 依赖与框架快捷添加，Mod 模板、实例创建/选择/删除、运行环境安装、保存退出和重新部署重载世界。macOS 明确显示并禁用“MCEditor（不支持）”；Windows 继续使用其 MC Studio Editor。
 
@@ -42,12 +37,11 @@ Python 模块热更更新模块命名空间；不会自动重建已有对象、�
 
 新原生运行包声明 addon_link_protocol=1，使用 `--link-source-addons`：游戏行为包/资源包目录软链接到实例 assembled 目录，packs 中的标准名称也只是链接。主项目和依赖继续由同一组装器合并，监控直接更新组装目录，无需再复制运行副本。原始项目和依赖不移动、不删除。旧实例仍固定旧运行包，保留复制兼容路径；升级运行包后新建实例才启用新协议。
 
-## 验证与范围
+## 平台范围
 
-在 Apple M1 Max / macOS 26.6.2 实际打开 Qt6 Cocoa 窗口，验证原生 Metal 游戏启动、两包软链接、普通 Mod 调试日志持续显示、Python 控制台、客户端/服务端源码值变化、自动监控、重开原世界和关闭窗口保存退出。最小探针、OreDetector、Ration 使用现有项目构建流程。证据在 launcher 的 build-macos-arm64/stability/pyside6-gui-smoke.json、qt6-hot-reload-result.json 和界面截图。
+Qt 依赖随 mcpy 自动安装，由包管理器根据 Python/系统版本选择兼容 wheel，无需手工配置插件路径。使用系统原生样式和调色板；悬浮窗默认宽 320 逻辑像素，置顶为原生 QToolButton 图钉，保留选中反馈、主题色和无障碍名称。
 
-本机安装 PySide6-Essentials 6.11.2 / Qt 6.11.2，QtCore Mach-O 的最低系统标记为 macOS 13.0；原生游戏组件的构建目标仍为 11.0，两者不能混为一个已验证下限。当前 Windows 侧由共用接口和 Qt 测试回归，尚未进行新的 Windows 实机验收。MCEditor、MCS 身份、Windows 桌面输入/录制不因此变成 macOS 功能。
-
+Qt GUI 的最低系统要求以实际 wheel 为准，不能用原生游戏组件的编译目标推断 GUI 支持范围。MCEditor、MCS 身份、Windows 桌面输入/录制不属于 macOS 功能。游戏内 UI/玩家控制的可选手动检查见 [运行时手动测试](../tests/manual/runtime_controls/README.md)。
 
 ## Qt 绑定的发行许可
 
@@ -55,4 +49,4 @@ mcpy 自身继续使用 MIT；GUI 改为 PySide6-Essentials 和 Shiboken6，选�
 
 发行时保留 Qt/PySide 的版权、许可及第三方声明，并提供适用 LGPL 组件的对应源码获取方式。若以后改为冻结桌面应用、直接捆绑 Qt 或使用其他 Qt 模块，需要重新核对实际模块及重新链接/替换要求。切换 PySide6 消除的是 PyQt GPL 绑定依赖，不是免除所有第三方许可义务。上游许可信息见 https://doc.qt.io/qtforpython-6/licenses.html 。
 
-PySide6 迁移验证：443 项回归运行成功（419 通过，24 平台相关跳过）；本机 GUI 完成日志、Python 控制台、双端热更、原世界重载和保存关闭。迁移时已从 mcpy 专用环境移除 PyQt6，未提供双绑定回退。后台结果通过显式 Slot 更新主线程界面，线程归属测试通过。发行声明随 wheel 携带于 THIRD_PARTY_NOTICES.md。
+后台结果通过显式 Slot 更新主线程界面，发行声明随 wheel 携带于 THIRD_PARTY_NOTICES.md。

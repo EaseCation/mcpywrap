@@ -71,23 +71,23 @@ MOD.Client("Client")
 
 一个 Mod 内的功能模块共用其框架，多个独立 Mod 安装到各自的脚本目录。已有手工复制的 QuMod 会明确报冲突，向导不会擅自删除或覆盖它。
 
-## 源码与发布调研（2026-09-27）
+## 来源与版本依据
 
 官方文档 https://qumod.cc/QuModLibs/modMain.html 同时链接：
 
-| 来源 | 仓库 | 本次核对 |
+| 来源 | 仓库 | 用途 |
 |---|---|---|
 | GitHub | https://github.com/GitHub-Zero123/QuModLibs | 维护者源码仓库，BSD-3-Clause，未归档 |
-| Gitee | https://gitee.com/bili_zero123/qu_mod_libs | 官方文档指向的另一源码入口；HEAD和全部标签与GitHub一致 |
+| Gitee | https://gitee.com/bili_zero123/qu_mod_libs | 官方文档指向的另一源码入口 |
 
-两边 HEAD 都是 `a07430aaaa6dce5f1ef68de3fda52ea4b9366c2c`（2026-07-08）；源码 `Information.py` 标注 `Version = "1.4.3"`、`ApiVersion = 4`。这也是矿物探测鞋实机验收采用的提交。
+预设固定提交 `a07430aaaa6dce5f1ef68de3fda52ea4b9366c2c`；该提交的 `Information.py` 标注 `Version = "1.4.3"`、`ApiVersion = 4`。不要用仓库当前 HEAD 代替项目锁定提交。
 
-GitHub Releases 数量为0。现有标签为 v1.3.6、v1.3.9、v1.4.0、v1.4.0-MINI，最新源码没有对应的 v1.4.3 标签。因此界面的“1.4.3”表示此已验证源码版本，**不是声称存在官方1.4.3 Release**。默认锁完整SHA，不能将 master 或“最新”视为稳定版本契约。
+界面的“1.4.3”取自固定提交的源码元数据，不表示存在同名官方 Release。默认锁完整 SHA，不能将 master、当前 HEAD 或“最新”视为稳定版本契约。
 
-仓库提供 Scripts/QuModLibs、Optional、Tools、Tests；没有供本工具直接消费的官方包索引或传递依赖描述。框架导入/模块裁剪工具不等于发布依赖仓库。本次以原始源码仓库作为来源，用通用 git_dependencies、导出描述、依赖图与内容锁补上获取、安装与恢复契约；旧code_libraries保持兼容；不要求上游为了我们的工具改造项目。
+仓库提供 Scripts/QuModLibs、Optional、Tools、Tests；没有供本工具直接消费的官方包索引或传递依赖描述。框架导入/模块裁剪工具不等于发布依赖仓库。工具以原始源码仓库作为来源，用通用 git_dependencies、导出描述、依赖图与内容锁补上获取、安装与恢复契约；旧code_libraries保持兼容；不要求上游为了我们的工具改造项目。
 
 默认安装标准 `Scripts/QuModLibs`，包含其内置模块；不自动合并 Optional、不根据业务 import 自动裁剪、不运行上游 EXE。可选模块的独立依赖契约留给后续明确设计，不能根据目录名猜测。
 
-稳定性保障来自“官方来源＋明确提交＋内容锁＋本地缓存＋验收记录”，不是承诺任一托管平台永远在线。后续升级应先做兼容验证，再更新工具中的推荐提交；已有项目不会随工具升级自动改变版本。
+稳定性保障来自“官方来源＋明确提交＋内容锁＋本地缓存＋兼容验证”，不是承诺任一托管平台永远在线。后续升级应先做兼容验证，再更新工具中的推荐提交；已有项目不会随工具升级自动改变版本。
 
 内部实现边界：QuMod只存在于 framework_presets 的数据（来源、提交、目录、模板）和CLI快捷别名中。标准缓存、Git项目解析、依赖管理与组装代码不识别QuMod。任意其他仓库可用 `mcpy add --git` 接入同一流程，详见 [Git依赖结构](git-dependencies.md)。

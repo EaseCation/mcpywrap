@@ -16,6 +16,22 @@ from mcpywrap.engines.windows import WindowsBackend
 
 
 class BackendTests(unittest.TestCase):
+    def test_windows_world_readiness_waits_for_client_system_initialization(self):
+        backend = WindowsBackend()
+        path = self.root/'game.log'
+        data = {'mode': 'local', 'log_path': str(path)}
+        channel = backend.debug_channel(data, lambda text: None)
+        self.addCleanup(channel.close)
+        self.assertFalse(backend.refresh(data, channel))
+        path.write_bytes(b'world loading\nOnHandlePushScreen hud_')
+        self.assertFalse(backend.refresh(data, channel))
+        self.assertFalse(channel.ready())
+        with path.open('ab') as stream: stream.write(b'screen\n')
+        self.assertTrue(backend.refresh(data, channel))
+        self.assertTrue(data['world_ready'])
+        self.assertTrue(channel.ready())
+        self.assertFalse(backend.refresh(data, channel))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -62,9 +78,24 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)['code'], 'setup_required')
         self.assertFalse((self.root/'engine').exists())
 
+    def test_human_run_keeps_explicit_engine_selection_in_gui(self):
+        with patch('mcpywrap.command_context.human_interaction', return_value=True), \
+                patch('mcpywrap.ui.project_ui.show_run_ui') as show:
+            result = self.runner.invoke(cli, ['--local', '--project', str(self.root),
+                'run', '--engine-version', '3.9.0.401155', '--new'])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(show.call_args.kwargs['engine_overrides']['engine_version'], '3.9.0.401155')
+
+    def test_gui_backend_start_keeps_engine_overrides(self):
+        backend = WindowsBackend()
+        overrides = {'engine_version': '3.9.0.401155'}
+        with patch.object(backend, 'run', return_value={}) as run:
+            backend.start_session(str(self.root), 'world', overrides=overrides)
+        self.assertEqual(run.call_args.kwargs['overrides'], overrides)
+
     def test_engine_doctor_never_routes_remote_or_creates_files(self):
         backend = GameBackend()
-        with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
+        with patch('mcpywrap.commands.engine_cmd.get_backend', return_value=backend), \
                 patch('mcpywrap.remote.client.routed_command', side_effect=AssertionError('remote')):
             result = self.call('engine', 'doctor')
         self.assertEqual(result.exit_code, 1)

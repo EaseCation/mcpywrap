@@ -3,11 +3,11 @@ include docs/releasing.md
 include docs/runtime-debug.md
 include docs/runtime-ui.md docs/runtime-player.md
 include docs/input-sequence.md
-recursive-include docs/validation *.json *.txt
 include docs/local-dependencies.md docs/engine-discovery.md docs/development.md
 include docs/mcs-auth.md
 include docs/code-libraries.md docs/git-dependencies.md docs/qumod.md
 recursive-include tests *.py
+recursive-include tests/manual *.md *.json
 recursive-include skills *.md *.yaml *.ps1 *.py
 include scripts/build_mcs_auth_bridge.py
 include scripts/build_all_native.py

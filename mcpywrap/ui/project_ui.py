@@ -11,11 +11,11 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QHeaderView, 
     QMessageBox, QSplitter, QTextEdit, QPlainTextEdit, QFrame,
-    QStyleFactory, QCheckBox, QFileDialog, QGroupBox,
+    QCheckBox, QFileDialog, QGroupBox,
     QTabWidget, QLineEdit, QListWidget, QListWidgetItem, QComboBox, QCompleter, QToolButton, QMenu, QInputDialog, QSizePolicy, QFormLayout
 )
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer, QStringListModel
-from PySide6.QtGui import QIcon, QFont, QColor, QPalette
+from PySide6.QtGui import QIcon, QFont, QColor
 
 from ..commands.run_cmd import _setup_dependencies
 from ..commands.edit_cmd import open_edit
@@ -32,12 +32,12 @@ from ..builders.dependency_manager import find_all_mcpywrap_packages
 class GameInstanceManager(QMainWindow):
     """游戏实例管理器主窗口"""
     
-    def __init__(self, base_dir, mcs_auth=False):
+    def __init__(self, base_dir, mcs_auth=False, engine_overrides=None):
         super().__init__()
         self.base_dir = os.path.abspath(base_dir)
         self.mcs_auth = mcs_auth
         self.backend = get_backend()
-        self.controller = SessionController(self.base_dir, self.backend, self)
+        self.controller = SessionController(self.base_dir, self.backend, self, engine_overrides)
         self.closing = False
         self.log_window = None
         self.dependency_service = DependencyService(self.base_dir)
@@ -645,7 +645,7 @@ class GameInstanceManager(QMainWindow):
             from .engine_setup import EngineSetupDialog
             EngineSetupDialog(self.backend, self).exec()
         else:
-            self.controller.run_task(lambda: self.backend.diagnose(self.base_dir))
+            self.controller.run_task(lambda: self.backend.diagnose(self.base_dir, self.controller.engine_overrides))
 
     def delete_selected_instance(self):
         """删除选中的游戏实例"""
@@ -719,7 +719,7 @@ class GameInstanceManager(QMainWindow):
             return
             
         if self.reload_runtime_dependencies():
-            open_edit(self.base_dir)
+            open_edit(self.base_dir, engine_overrides=self.controller.engine_overrides)
     
     def remove_selected_dependency(self):
         if self.dependency_busy:
@@ -863,25 +863,12 @@ class DependencyInstallThread(QThread):
             self.result.emit(False, f'依赖安装失败: {exc}')
 
 
-def show_run_ui(base_dir=None, mcs_auth=False, autorun=False, new=False, instance=None):
+def show_run_ui(base_dir=None, mcs_auth=False, autorun=False, new=False, instance=None, engine_overrides=None):
     """显示游戏实例管理UI"""
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setStyle(QStyleFactory.create("Fusion"))
+    # Keep Qt's platform style and system palette for the project and floating controls.
     
-    # 设置应用主题
-    palette = QPalette()
-    palette.setColor(QPalette.ColorRole.Window, QColor(240, 240, 240))
-    palette.setColor(QPalette.ColorRole.WindowText, QColor(0, 0, 0))
-    palette.setColor(QPalette.ColorRole.Base, QColor(255, 255, 255))
-    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(245, 245, 245))
-    palette.setColor(QPalette.ColorRole.Text, QColor(0, 0, 0))
-    palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
-    palette.setColor(QPalette.ColorRole.ButtonText, QColor(0, 0, 0))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218, 70))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
-    app.setPalette(palette)
-    
-    window = GameInstanceManager(base_dir or os.getcwd(), mcs_auth=mcs_auth)
+    window = GameInstanceManager(base_dir or os.getcwd(), mcs_auth=mcs_auth, engine_overrides=engine_overrides)
     window.show()
     if autorun:
         identity = instance or (window.instances[0]['level_id'] if window.instances and not new else None)

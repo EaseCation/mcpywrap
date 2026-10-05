@@ -10,6 +10,33 @@ class WindowsBackend(GameBackend):
                     'screenshot', 'key', 'mouse', 'input-sequence', 'mcs-auth', 'serve', 'project-ui', 'editor')
     setup_description = '请在 MC Studio 下载游戏引擎；使用 mcpy doctor 检查资源，可用 --engine-version 选择版本。'
 
+    def debug_channel(self, data, write_log):
+        from ..mcstudio.runtime_debug import SafaiaChannel
+        self._world_ready = data.get('mode') != 'local'
+        self._log_offset, self._log_pending = 0, b''
+        if data.get('mode') == 'local': data['world_ready'] = False
+        return SafaiaChannel(write_log, ready=lambda: self._world_ready)
+
+    def refresh(self, data, channel):
+        if self._world_ready: return False
+        from pathlib import Path
+        path = Path(data['log_path'])
+        try:
+            with path.open('rb') as stream:
+                stream.seek(self._log_offset)
+                chunk = stream.read(65536)
+                self._log_offset = stream.tell()
+        except FileNotFoundError:
+            return False
+        text = self._log_pending + chunk
+        # This engine log is emitted after client/server Python system creation.
+        if b'OnHandlePushScreen hud_screen' in text:
+            self._world_ready = data['world_ready'] = True
+            self._log_pending = b''
+            return True
+        self._log_pending = text[-64:]
+        return False
+
     def reload_restriction(self, data, kind):
         from pathlib import Path
         version = (data.get('launch') or {}).get('engine_version') or Path(

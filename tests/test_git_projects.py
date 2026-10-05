@@ -23,7 +23,7 @@ from test_local_dependencies import addon
 class GitProjects(unittest.TestCase):
     def test_windows_lock_migration_is_explicit_and_preserves_old_lock(self):
         from mcpywrap.git_projects import sync_projects
-        from mcpywrap.source_files import windows_checkout_digest
+        from mcpywrap.source_files import windows_checkout_digest, digest
         repo, rev = self.repository('legacy', 'code')
         # 固定 LF 字节，避免 Windows 文本写入让旧/新摘要在夹具中意外相同。
         (repo/'src/legacy_marker.py').write_bytes(b'VALUE = 1\n')
@@ -34,6 +34,7 @@ class GitProjects(unittest.TestCase):
         lock = json.loads(path.read_text())
         source, _ = fetch_snapshot(repo.as_uri(), rev)
         lock['nodes'][0]['source_sha256'] = windows_checkout_digest(source)
+        self.assertNotEqual(lock['nodes'][0]['source_sha256'], digest(source))
         lock['nodes'][0]['sha256'] = 'a' * 64  # legacy tool/platform registration
         path.write_text(json.dumps(lock))
         previous = path.read_bytes()

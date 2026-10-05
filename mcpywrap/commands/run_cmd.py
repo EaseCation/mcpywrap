@@ -409,7 +409,8 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         from ..dependencies import read_project
         if not read_project(base_dir).get('tool', {}).get('mcpywrap', {}).get('server'):
             from ..ui.project_ui import show_run_ui
-            return show_run_ui(base_dir, mcs_auth, autorun=True, new=new, instance=instance_prefix)
+            return show_run_ui(base_dir, mcs_auth, autorun=True, new=new, instance=instance_prefix,
+                               engine_overrides=engine_overrides)
     options = dict(new=new, listing=list, delete=delete, force=force, clean_all=clean_all,
                    instance_prefix=instance_prefix, no_gui=no_gui, detach=detach,
                    mcs_auth=mcs_auth, overrides=engine_overrides)

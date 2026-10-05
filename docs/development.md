@@ -25,7 +25,7 @@ python skills/mcpywrap/scripts/smoke.py --project D:\mods\test --game --expect-l
 脚本结束后停止自己创建的会话；日志和产物留在项目中。
 需要手动截图验证时直接运行 `run --no-gui --detach --json`，保存会话 ID，操作完后显式 stop。
 网络验证使用 `smoke.py --project <已有目录> --connect <地址> --expect-log <约定标记>`，不打包项目。单人与网络测试都可显式加 `--mcs-auth`；脚本停止自己创建的会话。
-历史验收记录仅用于追溯，不能代替当前版本测试。
+UI/玩家动作及服务端场景准备使用 [可选手动测试入口](../tests/manual/runtime_controls/README.md)。这些脚本不参与默认 unittest/CI，不在正常游戏启动时执行；测试报告写到忽略的 `test/` 或仓库外目录，不提交过程记录。
 
 录制自动化测试使用模拟任务和真实回环 HTTP，覆盖超过 64 MiB 的分块下载、内存上限、输入并行、清理保护和归档校验。真实 WGC／Media Foundation 验证在已登录未锁屏的 Windows 桌面显式运行：
 
@@ -43,7 +43,7 @@ Remove-Item Env:MCPY_NATIVE_TESTS
 
 局域网协议与路由测试使用 `tests/test_remote.py` 的真实回环 HTTP 和模拟游戏，不需要实际登录。
 桌面原生实现集中在 `mcstudio/window.py`，Skill 脚本只组合公开 CLI。鼠标逻辑通过模拟 Win32 测试释放与坐标，实机效果按截图验证。
-Windows CI 保留 3.9/3.12/3.14；macOS CI 验证无 Qt 安装、本机构建与远程客户端。真实跨机验收需另行准备 Windows 桌面和 macOS 客户端。
+Windows CI 保留 3.9/3.12/3.14；macOS CI 验证 Qt 的延迟导入、Qt 离屏组件、本机构建与远程客户端。真实跨机测试需另行准备 Windows 桌面和 macOS 客户端。
 
 游戏内 UI 的协议与有状态适配器测试见 `tests/test_runtime_ui.py`。在独立测试世界运行 `tests/manual_runtime_ui.py --project <目录> --session <会话> --output <新JSON> --require-background` 可通过公开 CLI 验证节点、后台滚动、点击音频页、主音量调整及恢复、旧快照拒绝与重复请求；运行前保持其他应用前台。脚本不停止传入会话，由创建者在结束后 stop。正式 UI 功能与内部引擎接口边界见 [runtime-ui.md](runtime-ui.md)。
 

@@ -567,6 +567,17 @@ class PlayerController(UIController):
             if job['_waiting']:
                 child=self.operations[job['_waiting']]
                 if child['state']=='pending':self._schedule_sequence(job,.01);return
+                if child['action']=='move' and child['state']=='completed':
+                    # UnlockInputVector succeeds before GetInputVector reflects it
+                    # on a real engine tick. Do not start the next input early or
+                    # overwrite a user's movement if it remains nonzero.
+                    current=self._read()
+                    if any(abs(v)>.01 for v in current['input_vector']):
+                        deadline=job.setdefault('_move_release_deadline',self.clock()+1.)
+                        require(self.clock()<deadline,'input_busy','移动解锁后输入仍未归零，停止后续动作')
+                        self._schedule_sequence(job,.01);return
+                    job.pop('_move_release_deadline',None)
+                    child['after']=current
                 if child.get('expected_rotation') and child['state']=='completed':
                     current=self._read()['rotation'];expected=child['expected_rotation']
                     require(abs(current['pitch']-expected['pitch'])<=.2 and abs((current['yaw']-expected['yaw']+180)%360-180)<=.2,

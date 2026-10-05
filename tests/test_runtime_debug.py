@@ -19,6 +19,20 @@ from mcpywrap.commands.dev_cmd import changed_reload_targets
 
 
 class RuntimeDebugTests(unittest.TestCase):
+    def test_windows_cold_start_does_not_send_code_before_world_ready(self):
+        ready = False
+        channel = SafaiaChannel(lambda text: None, ready=lambda: ready)
+        self.addCleanup(channel.close)
+        channel.client = Mock()
+        result = channel.execute('print("run only once")')
+        self.assertEqual(result['state'], 'unavailable')
+        channel.client.sendall.assert_not_called()
+        self.assertIsNone(channel.pending)
+        ready = True
+        # With no result, the normal unknown-result protection still applies.
+        result = channel.execute('1+1', timeout=0)
+        self.assertEqual(channel.client.sendall.call_count, 1)
+
     def test_discovery_queries_only_selected_process(self):
         from mcpywrap.mcstudio.runtime_debug import owned_udp_ports, owned_udp_endpoints
         sockets = [Mock(laddr=Mock(ip='127.0.0.1', port=26613)),

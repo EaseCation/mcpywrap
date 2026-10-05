@@ -31,4 +31,4 @@ Windows/macOS 共同基线是 `--local --project <目录> --non-interactive run 
 
 基线使用同步 Python；可选队列仍以当前会话能力为准。远程调用遇到不支持的队列/等待条件会在发送代码前拒绝，py-result 和本地会话能力查询不会落到本机会话。没有新增服务端协议。
 
-技能 smoke.py 新增 --client-file/--server-file，使用同一 CLI 等待世界/HUD、分别执行一次验收脚本、收集 JSON/日志并 finally 停止自己创建的游戏。2026-10-05 在 macOS local6 真机验证双端 ModSDK 同一世界返回正常，脚本自动保存关闭。Windows 契约和路由通过自动测试覆盖，本轮没有 Windows 真机复测。
+smoke.py 的 --client-file/--server-file 通过同一 CLI 等待世界/HUD、分别执行一次脚本、收集 JSON/日志，并停止自己创建的游戏。可选 UI/玩家与服务端配套测试见 [手动测试入口](../tests/manual/runtime_controls/README.md)。

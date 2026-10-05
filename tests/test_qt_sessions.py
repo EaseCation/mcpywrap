@@ -67,6 +67,29 @@ class GuiTests(unittest.TestCase):
             self.wait(lambda: self.window.controller.session is not None and not self.window.is_busy())
         setup.assert_called_once()
 
+    def test_explicit_engine_is_kept_when_starting_and_reloading_world(self):
+        overrides = {'engine_version': '3.9.0.401155'}
+        self.window.controller.engine_overrides = overrides
+        self.window.start_game_thread('world')
+        self.wait(lambda: self.window.controller.session and not self.window.is_busy())
+        self.backend.start_session.assert_called_once_with(str(self.root), 'world', None, overrides=overrides)
+        self.backend.start_session.reset_mock()
+        with patch('mcpywrap.mcstudio.sessions.read', return_value={'state': 'running', 'level_id': 'world'}), \
+                patch('mcpywrap.mcstudio.sessions.stop', return_value={'state': 'exited'}):
+            self.window.controller.restart()
+            self.wait(lambda: not self.window.is_busy())
+        self.backend.start_session.assert_called_once_with(str(self.root), 'world', overrides=overrides)
+
+    def test_reloading_attached_session_preserves_its_engine_selection(self):
+        overrides = {'engine_version': '3.9.0.401155'}
+        self.window.controller.session = 'a'*32
+        with patch('mcpywrap.mcstudio.sessions.read', return_value={
+                'state': 'running', 'level_id': 'world', 'engine_overrides': overrides}), \
+                patch('mcpywrap.mcstudio.sessions.stop', return_value={'state': 'exited'}):
+            self.window.controller.restart()
+            self.wait(lambda: not self.window.is_busy())
+        self.backend.start_session.assert_called_once_with(str(self.root), 'world', overrides=overrides)
+
     def test_background_result_updates_widgets_on_application_thread(self):
         workers, updates = [], []
         self.window.log_output.textChanged.connect(

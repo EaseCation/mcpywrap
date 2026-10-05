@@ -15,9 +15,10 @@ class SessionController(QObject):
     failed = Signal(str)
     watch_message = Signal(str, str)
 
-    def __init__(self, project, backend, parent=None):
+    def __init__(self, project, backend, parent=None, engine_overrides=None):
         super().__init__(parent)
         self.project, self.backend = str(Path(project).resolve()), backend
+        self.engine_overrides = {key: value for key, value in (engine_overrides or {}).items() if value is not None}
         self.session, self.owns_session, self.data = None, False, {}
         self.task, self.watcher = None, None
         self.workspace_busy = False
@@ -88,7 +89,8 @@ class SessionController(QObject):
     def start(self, identity=None, auth_context=None):
         if self.session:
             self.log('请先保存退出当前游戏。', 'warning'); return False
-        return self.run_task(lambda: self.backend.start_session(self.project, identity, auth_context), self.attach, report=False)
+        options = {'overrides': self.engine_overrides} if self.engine_overrides else {}
+        return self.run_task(lambda: self.backend.start_session(self.project, identity, auth_context, **options), self.attach, report=False)
 
     @Slot(object)
     def attach(self, result):
@@ -146,7 +148,9 @@ class SessionController(QObject):
             if watcher: watcher.stop()
             data = sessions.read(self.project, session)
             sessions.stop(self.project, session)
-            return self.backend.start_session(self.project, data['level_id'])
+            overrides = self.engine_overrides or data.get('engine_overrides') or {}
+            return self.backend.start_session(self.project, data['level_id'],
+                                              **({'overrides': overrides} if overrides else {}))
         def finished(result):
             self.watcher = None; self.logs.finish(); self.attach(result)
         def failed():
