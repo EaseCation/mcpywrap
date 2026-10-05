@@ -21,6 +21,27 @@ class ResourceReloadTests(unittest.TestCase):
             self.assertIn('重载世界',result['error'])
             deploy.assert_not_called();request.assert_not_called()
 
+    def test_unknown_version_keeps_unverified_shader_and_material_disabled(self):
+        self.data['launch']['engine_version'] = 'future'
+        for kind in ('material', 'shader'):
+            with self.subTest(kind=kind), patch('mcpywrap.mcstudio.sessions.read', return_value=self.data), \
+                    patch.object(MacOSBackend, 'deploy') as deploy, \
+                    patch('mcpywrap.mcstudio.runtime_debug.control_request') as request:
+                result = reload_session('.', 'a'*32, kind, 'fixture')
+            self.assertEqual(result['state'], 'unsupported')
+            deploy.assert_not_called(); request.assert_not_called()
+
+    def test_optional_ui_recognition_failure_blocks_before_deploy(self):
+        self.data['launch'].update(runtime='/runtime/app', compat_report='/report.json')
+        metadata = {'json_ui_reload_protocol': 1, 'game_compatibility': {'elf_rules_schema': 1}}
+        with patch('mcpywrap.mcstudio.sessions.read', return_value=self.data), \
+                patch('mcpywrap.engines.macos.install.read_json', side_effect=[metadata, {'ui': None}]), \
+                patch.object(MacOSBackend, 'deploy') as deploy, \
+                patch('mcpywrap.mcstudio.runtime_debug.control_request') as request:
+            result = reload_session('.', 'a'*32, 'ui')
+        self.assertEqual(result['state'], 'unsupported')
+        deploy.assert_not_called(); request.assert_not_called()
+
     def test_direct_ui_helper_respects_same_restriction(self):
         with patch('mcpywrap.mcstudio.sessions.read',return_value=self.data), \
                 patch('mcpywrap.mcstudio.runtime_debug.control_request') as request:

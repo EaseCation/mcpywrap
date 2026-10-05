@@ -60,7 +60,9 @@ def pinned_runtime(item):
     if install._version(require_macos()['macos_version']) < install._version(meta['minimum_macos']):
         raise EngineError('当前系统低于此实例的最低 macOS 要求', 'os_too_old')
     install.verify_game(game, plan['profile'])
-    return {'runtime': str(app), 'game': str(game), 'profile': plan['profile'], 'runtime_id': plan['runtime_id']}
+    compatibility = install.preflight_runtime(app, game, plan['profile'], meta, plan['runtime_id'])
+    return {'runtime': str(app), 'game': str(game), 'profile': plan['profile'], 'runtime_id': plan['runtime_id'],
+            'compat_report': compatibility}
 
 
 def run(project, *, new=False, listing=False, delete=None, clean_all=False, force=False,
@@ -147,7 +149,8 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                 if stage.exists(): shutil.rmtree(stage)
             plan = {'runtime': state['runtime'], 'game': state['game'], 'data': str(directory/'data'),
                     'cache': str(directory/'cache'), 'packs': str(directory/'packs'),
-                    'world_id': item['level_id'], 'world_name': item['name'], 'engine_version': version}
+                    'world_id': item['level_id'], 'world_name': item['name'], 'engine_version': version,
+                    'compat_report': state.get('compat_report')}
             data = sessions.start(project, item['config_path'], item['level_id'],
                                   backend='macos-arm64', launch=plan)
     result = sessions.handoff(data)
@@ -166,6 +169,8 @@ def launch_session(data):
                '--data-dir', plan['data'], '--cache-dir', plan['cache'], '--world-id', plan['world_id'],
                '--world-name', plan['world_name'], '--source-addon', plan['packs'], '--angle-backend', 'metal',
                '--debug-loopback', '--exec-client', '--log', data['engine_log_path']]
+    if plan.get('compat_report'):
+        command += ['--compat-report', plan['compat_report']]
     metadata = install.read_json(app/'Contents/Resources/runtime.json')
     if metadata.get('addon_link_protocol') == 1:
         command.append('--link-source-addons')
@@ -250,8 +255,15 @@ class MacOSBackend(GameBackend):
                 metadata = {}
             if metadata.get('json_ui_reload_protocol') != 1:
                 return '此实例固定的运行包不支持 JSON UI 热更；可重新部署并重载世界，或安装新版运行包后启动新实例。'
+            if (metadata.get('game_compatibility') or {}).get('elf_rules_schema') == 1:
+                try:
+                    report = install.read_json(launch['compat_report'])
+                except (OSError, ValueError, KeyError, TypeError):
+                    report = {}
+                if not isinstance(report.get('ui'), dict):
+                    return '此引擎的 JSON UI 接口未通过结构识别；请重新部署并重载世界，或反馈兼容性诊断。'
             return None
-        if launch.get('engine_version') != '3.9.100.297020': return None
+        # A new APK version does not establish support for unverified Metal APIs.
         return {
             'material': '当前材质热更包装接口缺失，底层入口尚未验证可用；请重新部署并重载世界。',
             'shader': '当前 Metal 运行路径尚未验证 Shader 热更；暂不调用动态重编译，请重新部署并重载世界。',

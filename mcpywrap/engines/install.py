@@ -8,6 +8,7 @@ import shutil
 import stat
 import struct
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -215,8 +216,11 @@ def verify_runtime(app, integrity, profile=None):
     meta = read_json(app/'Contents/Resources/runtime.json')
     if meta.get('platform') != 'darwin-arm64' or meta.get('launch_protocol') != 1 or meta.get('client_python_protocol') != 1:
         raise EngineError('运行包不支持当前启动协议', 'runtime_incompatible')
+    contract = meta.get('game_compatibility') or {}
     if profile is not None and meta.get('game_profile') != profile:
-        raise EngineError('运行包与 APK 兼容配置不匹配', 'runtime_incompatible')
+        if (contract.get('elf_rules_schema') != 1 or contract.get('package_name') != profile.get('package_name')
+                or contract.get('abi') != 'arm64-v8a'):
+            raise EngineError('运行包与 APK 兼容配置不匹配', 'runtime_incompatible')
     exe = app/'Contents/MacOS/mcpelauncher-client'
     with exe.open('rb') as stream:
         if struct.unpack('<II', stream.read(8)) != (0xfeedfacf, 0x100000c):
@@ -224,6 +228,49 @@ def verify_runtime(app, integrity, profile=None):
     if os.name != 'nt' and not os.access(exe, os.X_OK):
         raise EngineError('启动器没有执行权限', 'integrity_error')
     return meta
+
+
+def preflight_runtime(app, game, profile, metadata, runtime_id):
+    """结构匹配在安装选择/启动之前完成；不运行游戏，也不改写旧版本。"""
+    contract = metadata.get('game_compatibility') or {}
+    if contract.get('elf_rules_schema') != 1:
+        return None
+    rules_hash = contract.get('rules_sha256')
+    if not _hash(rules_hash):
+        raise EngineError('运行包缺少自动兼容规则摘要', 'runtime_incompatible')
+    game, app = Path(game), Path(app)
+    expected = profile['files'].get('lib/arm64-v8a/libminecraftpe.so')
+    if not _hash(expected):
+        raise EngineError('APK 缺少原生核心库摘要', 'runtime_incompatible')
+    report = game.parent/'compatibility'/(rules_hash+'.json')
+    if report.is_file():
+        cached = read_json(report)
+        if cached.get('schema') == 1 and cached.get('elf_sha256') == expected and cached.get('rules_sha256') == rules_hash:
+            return str(report)
+    script = app/'Contents/Resources/launcher/analyze_developer_binary.py'
+    try:
+        process = subprocess.run([sys.executable, '-B', str(script), str(game/'lib/arm64-v8a/libminecraftpe.so'),
+                                  '--output', str(report)], capture_output=True, text=True, encoding='utf-8', timeout=120)
+        result = json.loads(process.stdout)
+        if not isinstance(result, dict):
+            raise ValueError('Invalid compatibility response')
+        returncode = process.returncode
+    except (OSError, subprocess.TimeoutExpired, ValueError) as error:
+        result = {'error': '自动兼容检查未完成：' + type(error).__name__}
+        returncode = 1
+    if returncode or not result.get('ok'):
+        diagnostic = {'schema': 1, 'stage': 'native_compatibility', 'runtime': runtime_id,
+                      'engine_version': profile['apk']['version'], 'elf_sha256': expected,
+                      'rules_sha256': rules_hash, 'error': result.get('error', '结构检查失败')}
+        report.parent.mkdir(parents=True, exist_ok=True)
+        failure = report.with_name(rules_hash+'-failure.json')
+        write_json(failure, diagnostic)
+        raise EngineError('此开发包暂未通过启动器兼容性检查，已保留现有可用版本。',
+                          'unsupported_engine_structure', '请反馈诊断文件：'+str(failure), diagnostic_path=str(failure))
+    cached = read_json(report)
+    if cached.get('elf_sha256') != expected or cached.get('rules_sha256') != rules_hash:
+        raise EngineError('兼容检查结果与输入文件不一致', 'integrity_error')
+    return str(report)
 
 
 def extract_runtime(archive, stage):
@@ -412,6 +459,8 @@ def install(location=None, apk=None, progress=None):
                 _replace(stage, game)
             finally:
                 if stage.exists(): shutil.rmtree(stage)
+        metadata = verify_runtime(destination/'McpyRuntime.app', destination/'McpyRuntime.integrity.json', profile)
+        preflight_runtime(destination/'McpyRuntime.app', game, profile, metadata, runtime['id'])
         write_json(root/'current.json', {'catalog': cat, 'catalog_base': base})
         (root/'install-plan.json').unlink(missing_ok=True)
     return diagnose()

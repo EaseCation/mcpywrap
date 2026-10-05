@@ -21,3 +21,7 @@
 资源热更统一返回 triggered、effect_verified=false；Python 脚本仍返回 completed。平台限制在部署/调用前检查，Qt 与 CLI 共用规则。runtime watch 自动热更 Python，资源变化提示手动检查或重载世界。
 
 通用游戏内 UI/玩家能力可通过 [可选手动测试](../tests/manual/runtime_controls/README.md) 检查；资源热更另需对应 Mod 的效果验证，不能用按钮或脚本回执代替。
+
+3.10.100.299889 也已验证定义重载；新运行包按 ELF 结构识别接口，同一运行包可服务多个 APK 版本，仍需重新注册/创建界面；材质包装接口缺失，Metal Shader 尚未验证，两个入口继续返回 unsupported。切换 APK 版本后需新建实例，不能直接改动旧实例的引擎版本号。
+
+结构规则运行包在安装与启动前执行预检，核心结构无法确认时返回 `unsupported_engine_structure` 和诊断路径，不改变已选版本。JSON UI 定位失败单独返回 unsupported，不影响离线世界启动。新 APK 的版本号不会自动启用尚未验证的 Material/Metal Shader 热更。资源下载仍由发行 catalog 固定版本，结构兼容并不代表已经实现自动跟随官方最新 APK。
