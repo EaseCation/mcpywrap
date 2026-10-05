@@ -2,7 +2,10 @@
 
 ## 0.4.0
 
-- 修复 Windows GUI 引擎参数丢失、Safaia 冷启动提前执行、连续移动解锁的 tick 延迟和 MCEditor 配置缺失；小窗改为原生图钉按钮并跟随系统样式，安装自动解析兼容的 Qt6。
+- 交互式 `run` 默认显示共用日志与热更小窗；AI 用 `--no-gui --detach --json`。macOS 首次运行自动下载公开原生运行包和网易开发者资源，显示进度和实例配置路径。
+- Windows/macOS 共用 v2 Git 依赖锁，旧锁自动验证、备份并升级；同步提示使用依赖名称和清晰的下一步命令。
+
+- 修复 Windows GUI 引擎参数丢失、Safaia 冷启动提前执行、连续移动解锁的 tick 延迟和 MCEditor 配置缺失；小窗使用原生置顶复选框并跟随系统样式，安装自动解析兼容的 Qt6。
 
 - Windows 与 Apple Silicon macOS 共用运行后端接口、会话、日志、双端 Python、热更和 AI 非交互命令；新增按实例查询的 runtime capabilities。
 - GUI 统一迁移至 PySide6 / Qt6，共用彩色日志、Python 控制台和监控；悬浮小窗默认单行，详细操作按需展开。
@@ -10,7 +13,7 @@
 - 项目组装和 QuMod/Git 依赖共用解析器；自动监控、重载、操作状态在主界面和小窗同步。
 - Skill 统一 Windows/macOS 纯命令工作流，验收助手支持双端脚本、日志与自动关闭；远程队列参数不再被静默忽略。
 - 修复冷启动探针排队后的查询、Windows 盘符路径识别，并补充旧 Windows 锁迁移兼容性；增加候选分支 CI 与独立环境安装检查。
-- 此分支为候选版：Windows 全功能复测、macOS 默认公开运行包源及下载后的系统签名体验仍为发布门槛，详见 docs/release-0.4.0.md。
+- 此分支为候选版：Windows 最新变更复测、CI 全部通过和 macOS 干净环境安装体验仍为发布门槛，详见 docs/release-0.4.0.md。
 
 ## 0.3.19
 

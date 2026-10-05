@@ -67,19 +67,24 @@ class GuiTests(unittest.TestCase):
         self.assertEqual(dialog.cppconfig()['world_info']['difficulty'],3)
         self.assertFalse(dialog.cppconfig()['world_info']['cheat_info']['keep_inventory'])
         self.backend.world_option_restrictions.return_value = {}
-        with patch('mcpywrap.ui.world_config.WorldConfigDialog.exec', return_value=WorldConfigDialog.DialogCode.Rejected):
-            self.window.create_new_instance()
+        QTimer.singleShot(0, lambda: QApplication.activeModalWidget().reject())
+        self.window.create_new_instance()
         self.backend.start_session.assert_not_called()
 
     def test_new_confirmation_passes_cppconfig_to_shared_controller(self):
         from mcpywrap.ui.world_config import WorldConfigDialog
         self.backend.world_option_restrictions.return_value = {}
-        config = {'world_info': {'difficulty':3}}
-        with patch('mcpywrap.ui.world_config.WorldConfigDialog.exec', return_value=WorldConfigDialog.DialogCode.Accepted), \
-                patch.object(WorldConfigDialog, 'cppconfig', return_value=config), \
-                patch.object(self.window, 'start_game_thread') as start:
+        # Patching methods on a QObject class crashes PySide 6.10/Python 3.9
+        # during signal introspection. Exercise the real modal dialog instead.
+        def accept():
+            dialog = QApplication.activeModalWidget()
+            dialog.fields['difficulty'].setCurrentIndex(3)
+            dialog.accept()
+        QTimer.singleShot(0, accept)
+        with patch.object(self.window, 'start_game_thread') as start:
             self.window.create_new_instance()
-        start.assert_called_once_with(world_config=config)
+        start.assert_called_once()
+        self.assertEqual(start.call_args.kwargs['world_config']['world_info']['difficulty'], 3)
 
     def test_start_and_stop_use_managed_session_without_platform_branch(self):
         self.window.start_game_thread('world')
