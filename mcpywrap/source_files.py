@@ -30,8 +30,9 @@ def _relative(value, label):
 
 
 def digest(directory):
+    # Compare path components as strings: WindowsPath itself sorts case-insensitively.
     h = hashlib.sha256()
-    for path in sorted(Path(directory).rglob('*')):
+    for path in sorted(Path(directory).rglob('*'), key=lambda p: p.relative_to(directory).parts):
         if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
             raise DependencyError(f'代码库不允许链接: {path}')
         if path.is_file():

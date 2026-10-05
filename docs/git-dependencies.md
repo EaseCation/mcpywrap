@@ -71,6 +71,17 @@ Python的project.dependencies继续表示工具Python依赖，不变成游戏代
 
 提交配置、锁文件、业务源码及.gitignore，忽略.mcpy、.runtime、build和dist。旧code_libraries与mcpy-code-libraries.lock.json兼容，获取层同样复用用户级源码缓存，不要求已有项目迁移。
 
+
+## Windows 与 macOS 共用锁文件
+
+两端提交并使用同一份 `mcpy-git.lock.json`，无需维护平台分支。锁定的是 Git 提交、源码和依赖关系；本机安装目录位于 `.mcpy/`，不提交到 Git。当前依赖都是游戏源码，没有需要分别锁定的 Windows/macOS 原生包。
+
+v2 锁使用相同的大小写敏感路径排序；源码由 Git archive 提取，保留仓库内的原始字节，工具生成的文件统一使用 LF。切换操作系统不会改变依赖摘要。新机器或克隆项目后运行一次 `mcpy sync`，随后正常 `mcpy run`。
+
+普通 `mcpy sync` 会验证旧 v1 锁的源码，再自动更新跨平台格式，不再需要迁移参数。旧锁备份于 `.mcpy/lock-backups/`；需要重建的旧平台安装副本保留于 `.mcpy/registration-backups/`。提交新锁后，团队两端应使用支持 v2 的新版 mcpy。旧源码校验失败、或已安装文件出现无法解释的修改时仍会报错，不自动丢弃用户修改。
+
+终端只显示同步进度、结果和必要操作；`mcpy sync --json` 保留备份位置、完整摘要等诊断信息，供脚本和 AI 使用。`--migrate-windows-lock` 暂留作旧脚本兼容参数。
+
 ## 验证范围
 
 自动化测试使用与任何框架无关的本地Git仓库，覆盖Addon自动识别、代码导出、Git子依赖与仓库内引用、循环/越界、项目隔离、离线恢复、并发下载、更新/回退/移除、内容篡改和深层Windows路径。官方QuMod GitHub与Gitee固定提交的完整源码摘要一致，均通过创建框架、打包和干净克隆sync。

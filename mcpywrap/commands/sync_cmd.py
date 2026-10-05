@@ -1,19 +1,30 @@
 """显式维护项目，无隐式初始化或 SDK 安装。"""
 import subprocess
 import sys
+import time
 from pathlib import Path
 import click
-from ..command_context import OperationCommand, project_dir, require_project, project_scope
+from ..command_context import OperationCommand, project_dir, require_project, project_scope, json_output
 from ..dependencies import read_project, write_project
 
 
 @click.command(cls=OperationCommand)
 @click.option('--install', is_flag=True, help='同时在当前工具环境中可编辑安装项目')
-@click.option('--migrate-windows-lock', is_flag=True, help='验证旧 Windows/CRLF 源码摘要后备份并迁移派生注册锁')
+@click.option('--migrate-windows-lock', is_flag=True, hidden=True)
 def sync_cmd(install, migrate_windows_lock=False):
     """同步包配置；--install 安装到 mcpy 工具环境，不安装到游戏。"""
     require_project()
-    return sync_project(project_dir(), install, migrate_windows_lock=migrate_windows_lock)
+    started = time.monotonic()
+    click.echo('同步依赖…', err=True)
+    result = sync_project(project_dir(), install, migrate_windows_lock=migrate_windows_lock)
+    if json_output():
+        return result
+    if result['git_lock_migrations']:
+        click.echo('已更新跨平台依赖记录，旧文件已备份。')
+    count = result['git_projects'] + result['code_libraries']
+    click.secho('完成 · %d 个源码依赖已就绪 · %.1fs' % (count, time.monotonic()-started), fg='green')
+    if install:
+        click.echo('项目已安装到当前 Python 环境。')
 
 
 def sync_project(path, install=False, migrate_windows_lock=False):
@@ -59,7 +70,7 @@ def sync_project(path, install=False, migrate_windows_lock=False):
         if kind == 'map':
             ensure_map_setuptools_sync(interactive=False)
         else:
-            find_and_configure_behavior_pack(str(path), config)
+            find_and_configure_behavior_pack(str(path), config, quiet=True)
             write_project(path, config)
         if install:
             proc = subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-input', '-e', str(path)],

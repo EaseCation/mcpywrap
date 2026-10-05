@@ -113,7 +113,7 @@ class OperationGroup(click.Group):
                 except click.ClickException as exc:
                     code = exc.exit_code
                     result = {'ok': False, 'error': exc.format_message(),
-                              'hint': '使用 mcpy <命令> --help 查看所需参数。'}
+                              'hint': '使用 mcpy <命令> --help 查看所需参数。' if isinstance(exc, click.UsageError) else None}
                 except (KeyboardInterrupt, click.Abort):
                     code = 130
                     result = {'ok': False, 'error': '操作已中断', 'hint': None}

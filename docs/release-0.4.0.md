@@ -61,7 +61,7 @@ run 始终是纯 CLI，包括首次安装进度、默认世界创建和配置文
 ## Windows 复测清单
 
 1. 干净 Python 3.12 环境安装 CI wheel，pip check；doctor 正确识别已安装/缺失/多个版本的 MC Studio，引导手动准备资源。
-2. 旧 Git 锁如提示 Windows 摘要差异，显式执行 `mcpy sync --migrate-windows-lock`；原锁会备份，不自动重写。中文及空格路径：init → mod → sync/build/package；本地依赖、Git 依赖、QuMod 增删及重开项目，依赖与模板内容正确。
+2. 旧 Git 锁通过普通 `mcpy sync` 自动验证、备份并更新为跨平台 v2 格式；Windows/macOS 共用同一份锁，两端需更新 mcpy。中文及空格路径：init → mod → sync/build/package；本地依赖、Git 依赖、QuMod 增删及重开项目，依赖与模板内容正确。
 3. 同一项目从 CLI 和 Qt 启动/复用/选择/新建实例；`--no-gui --detach --json` 不打开辅助窗；状态和日志返回同一会话。
 4. Qt6 项目、依赖、实例、模板页；创建 Mod 子窗口不会启动第二个事件循环；按钮禁用/后台任务/错误提示正确。
 5. 默认紧凑悬浮小窗、原生控件、置顶、移动到其他屏幕、展开/收起/缩放；长状态不撑宽。日志染色、搜索、协议详情与主界面同步；关闭小窗保留游戏。

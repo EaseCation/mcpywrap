@@ -63,3 +63,7 @@ JSON UI 重载的是定义集合，`--file` 不表示只刷新一个控件。可
 不同测试实例可使用独立的世界设置；创建参数、模板导入及保存语义见[实例世界设置](instance-world-settings.md)。
 
 run 返回 config_path/config_hint；前台运行会主动打印实例 cppconfig 路径。需要改创建配置时编辑该文件，再用 run --new --cppconfig <文件> 创建世界。既有世界的设置以存档为准，不把创建配方误当作当前状态。
+
+## 跨平台依赖恢复
+
+Windows/macOS 共用项目的 mcpy-git.lock.json。新机器或克隆项目后先执行 sync --json；旧 Windows 锁会自动验证、备份并升级，不再要求 --migrate-windows-lock。检查 ok、git_projects 和 git_lock_migrations；迁移详情仅用于诊断，不向用户逐项转述摘要/节点 ID。提交 v2 锁后两端都要使用支持该格式的新版 CLI。run/build 缺少依赖时按照提示执行 sync，不删除锁文件或改动固定提交来跳过校验。

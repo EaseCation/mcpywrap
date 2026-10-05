@@ -67,6 +67,8 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 `--project` 必须是调用端路径且目录已存在；纯连接不需要 init。远程实际会话保存在 Windows 的 serve 数据目录。
 远程结果中的 `project/image` 是调用端路径；`remote_project/executable/log_path/engine_log_path` 是 Windows 信息。读取远程日志用 logs，不在 macOS 打开 Windows 路径。
 
+Windows/macOS 共用依赖锁；克隆后用 `sync --json` 恢复，旧平台格式自动验证和备份。向用户说明依赖名称与下一步命令，完整迁移信息保留在 JSON 中。
+
 ## 项目工作流
 
 有限命令使用 `--non-interactive --json`，检查退出码和 `ok/error/hint`；保留用户已选择的项目路径与配置。
