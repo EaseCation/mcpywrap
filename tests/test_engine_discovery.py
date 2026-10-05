@@ -270,7 +270,7 @@ class EngineDiscoveryTests(unittest.TestCase):
         self.registry.return_value = [(str(root), 'registry64')]
         path = self.project / '.runtime/test.cppconfig'
         path.parent.mkdir()
-        path.write_text('{"version":"3.9"}')
+        path.write_text('{"version":"3.9","world_info":{"level_id":"test","difficulty":3}}')
         captured = []
 
         def launch(config_path, **kwargs):
@@ -278,11 +278,12 @@ class EngineDiscoveryTests(unittest.TestCase):
             self.assertEqual(json.loads(Path(config_path).read_text(encoding='utf-8'))['version'], kwargs['engine'].version)
             return Mock()
 
-        with patch.object(run, '_setup_dependencies', return_value=[]), patch.object(run, 'setup_global_addons_symlinks', return_value=(True, [], [])), patch.object(run, 'open_game', side_effect=launch), patch.object(run, 'is_windows', return_value=False), patch.object(run, 'open_safaia'), patch.object(run, '_gen_random_port', return_value=10000):
+        with patch.object(run, 'get_mcs_game_engine_data_path', return_value=str(self.root/'game-data')), patch.object(run, '_setup_dependencies', return_value=[]), patch.object(run, 'setup_global_addons_symlinks', return_value=(True, [], [])), patch.object(run, 'open_game', side_effect=launch), patch.object(run, 'is_windows', return_value=False), patch.object(run, 'open_safaia'), patch.object(run, '_gen_random_port', return_value=10000):
             self.assertTrue(run._run_game_with_instance(str(path), 'test', [], wait=False)[0])
             self.assertEqual(captured[-1].version, '3.9')
             self.assertTrue(run._run_game_with_instance(str(path), 'test', [], wait=False, engine_overrides={'engine_version': '3.10'})[0])
             self.assertEqual(captured[-1].version, '3.10')
+            self.assertEqual(json.loads(path.read_text())['world_info']['difficulty'], 3)
 
     def test_run_failure_does_not_link_write_or_launch(self):
         run = importlib.import_module('mcpywrap.commands.run_cmd')
@@ -317,7 +318,7 @@ class EngineDiscoveryTests(unittest.TestCase):
         self.registry.return_value = [(str(root), 'registry64')]
         path = self.project / '.runtime/test.cppconfig'
         messages = []
-        with patch.object(run, '_setup_dependencies', return_value=[]), patch.object(run, 'setup_global_addons_symlinks', return_value=(True, [], [])), patch.object(run, 'open_game', return_value=False), patch.object(run, 'open_safaia') as safaia, patch('mcpywrap.mcstudio.studio_server_ui.run_studio_server_ui_subprocess') as logs, patch.object(run, '_gen_random_port', return_value=10000):
+        with patch.object(run, 'get_mcs_game_engine_data_path', return_value=str(self.root/'game-data')), patch.object(run, '_setup_dependencies', return_value=[]), patch.object(run, 'setup_global_addons_symlinks', return_value=(True, [], [])), patch.object(run, 'open_game', return_value=False), patch.object(run, 'open_safaia') as safaia, patch('mcpywrap.mcstudio.studio_server_ui.run_studio_server_ui_subprocess') as logs, patch.object(run, '_gen_random_port', return_value=10000):
             self.assertFalse(run._run_game_with_instance(str(path), 'test', [], wait=False, log_callback=lambda message, level: messages.append(message))[0])
             safaia.assert_not_called()
             logs.assert_not_called()

@@ -49,6 +49,38 @@ class GuiTests(unittest.TestCase):
         self.app.processEvents()
         self.assertTrue(condition())
 
+    def test_new_instance_confirms_with_settings_collapsed_and_can_cancel(self):
+        from mcpywrap.ui.world_config import WorldConfigDialog
+        from mcpywrap.mcstudio.runtime_cppconfig import gen_runtime_config, WORLD_FIELDS
+        dialog = WorldConfigDialog('test')
+        self.addCleanup(dialog.close)
+        dialog.show(); self.app.processEvents()
+        self.assertFalse(dialog.scroll.isVisible())
+        initial = dialog.cppconfig()['world_info']
+        expected = gen_runtime_config('', 'test', 'preview', '', '', [], [])['world_info']
+        self.assertEqual(initial, {key:expected[key] for key in WORLD_FIELDS})
+        dialog.more.setChecked(True); self.app.processEvents()
+        self.assertTrue(dialog.scroll.isVisible())
+        dialog.fields['difficulty'].setCurrentIndex(3)
+        dialog.rules['keep_inventory'].setChecked(False)
+        dialog.more.setChecked(False)
+        self.assertEqual(dialog.cppconfig()['world_info']['difficulty'],3)
+        self.assertFalse(dialog.cppconfig()['world_info']['cheat_info']['keep_inventory'])
+        self.backend.world_option_restrictions.return_value = {}
+        with patch('mcpywrap.ui.world_config.WorldConfigDialog.exec', return_value=WorldConfigDialog.DialogCode.Rejected):
+            self.window.create_new_instance()
+        self.backend.start_session.assert_not_called()
+
+    def test_new_confirmation_passes_cppconfig_to_shared_controller(self):
+        from mcpywrap.ui.world_config import WorldConfigDialog
+        self.backend.world_option_restrictions.return_value = {}
+        config = {'world_info': {'difficulty':3}}
+        with patch('mcpywrap.ui.world_config.WorldConfigDialog.exec', return_value=WorldConfigDialog.DialogCode.Accepted), \
+                patch.object(WorldConfigDialog, 'cppconfig', return_value=config), \
+                patch.object(self.window, 'start_game_thread') as start:
+            self.window.create_new_instance()
+        start.assert_called_once_with(world_config=config)
+
     def test_start_and_stop_use_managed_session_without_platform_branch(self):
         self.window.start_game_thread('world')
         self.wait(lambda:self.window.controller.session=='a'*32 and not self.window.is_busy())

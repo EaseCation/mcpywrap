@@ -101,6 +101,8 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 
 ## 游戏会话
 
+新建不同地形、难度、种子或游戏规则的测试实例时，读[实例世界设置](references/instance-world-settings.md)。使用 `run --new` 的直接参数，无需先创建再修改文件；世界设置属于实例，不写入项目 pyproject.toml。
+
 Windows 用户在专用、已登录未锁屏的桌面设置 `MCPY_REMOTE_TOKEN` 后运行 `mcpy --local serve` 并保持控制台打开；默认 `0.0.0.0:18765`，不加 `--json`。
 远程首次设置按需读[远程测试](references/remote-testing.md)，不要把监听地址 0.0.0.0 当作客户端地址。
 

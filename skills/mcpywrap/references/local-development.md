@@ -59,3 +59,5 @@ JSON UI 重载的是定义集合，`--file` 不表示只刷新一个控件。可
 实际效果可用正式 Label.GetText、业务计数等验证；禁止先 SetText 再把显示变化当成 JSON 热更成功。重复刷新前确保上一次定义加载及 UI 重建完成，重新获取控件。新增文件或复杂继承不生效时报告范围，保留日志，按需保存并重载世界。
 
 操控 UI/玩家时使用 `runtime install` → `runtime ui/player`。按 [UI 节点流程](runtime-ui.md) 获取新快照，使用节点 ID，不需要桌面输入。UI 无法表达的画面或截图需求再查看实际平台能力；macOS 不支持 Windows 桌面 screenshot/key/mouse/record。`runtime watch` 是持续的纯终端 Python 自动热更命令，不加 --json；资源变化提示手动重载，不自动重建业务 UI。结束监控后还要停止自己启动的游戏。
+
+不同测试实例可使用独立的世界设置；创建参数、模板导入及保存语义见[实例世界设置](instance-world-settings.md)。

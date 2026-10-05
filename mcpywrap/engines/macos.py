@@ -18,7 +18,10 @@ def instances(project):
     found = []
     for path in root.glob('*/instance.json'):
         item = install.read_json(path)
-        item['config_path'] = str(path)
+        item['config_path'] = str(path.with_name('world.cppconfig'))
+        if Path(item['config_path']).is_file():
+            from ..mcstudio.runtime_cppconfig import read_cppconfig
+            item['name'] = read_cppconfig(item['config_path'])['world_info']['name']
         found.append(item)
     return sorted(found, key=lambda x: x['created_at'], reverse=True)
 
@@ -62,16 +65,21 @@ def pinned_runtime(item):
     install.verify_game(game, plan['profile'])
     compatibility = install.preflight_runtime(app, game, plan['profile'], meta, plan['runtime_id'])
     return {'runtime': str(app), 'game': str(game), 'profile': plan['profile'], 'runtime_id': plan['runtime_id'],
-            'compat_report': compatibility}
+            'compat_report': compatibility, 'cppconfig_protocol': meta.get('cppconfig_protocol')}
 
 
 def run(project, *, new=False, listing=False, delete=None, clean_all=False, force=False,
-        instance_prefix=None, detach=False, mcs_auth=False, overrides=None):
+        instance_prefix=None, detach=False, mcs_auth=False, overrides=None, world_config=None):
     require_macos()
     from ..dependencies import read_project
     from ..command_context import json_output, human_interaction
     from ..mcstudio import sessions
     from ..remote.service import directory_lock
+    from ..mcstudio.runtime_cppconfig import prepare_cppconfig, creation_settings, saved_world_settings
+    if world_config is not None:
+        if not new or instance_prefix or listing or delete or clean_all:
+            raise EngineError('自定义世界配置仅用于新建实例', 'invalid_world_options')
+        creation_settings(world_config)
     overrides = overrides or {}
     if mcs_auth or overrides.get('game_executable_path') or overrides.get('mcs_download_path'):
         raise EngineError('MC Studio 身份、EXE 和下载目录参数仅适用于 Windows。', 'unsupported_option',
@@ -121,6 +129,10 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
             if requested and requested != version:
                 raise EngineError('当前实例／资源固定为 ' + version, 'engine_version_mismatch',
                                   '选择匹配的运行包；旧实例不自动升级，需要升级时显式 --new。')
+            supports_config = state.get('cppconfig_protocol') == 1
+            if not supports_config and world_config is not None:
+                raise EngineError('此运行包尚不支持 cppconfig 世界设置。', 'runtime_incompatible',
+                                  '安装支持 cppconfig_protocol=1 的运行包，并创建新实例。')
             if item is None:
                 identity = uuid.uuid4().hex
                 directory = Path(project)/'.runtime/macos/instances'/identity
@@ -128,7 +140,7 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                 item = {'level_id': identity, 'name': config.get('project', {}).get('name', '开发测试'),
                         'created_at': time.time(), 'backend': 'macos-arm64',
                         'installation': {'runtime_id': state['runtime_id'], 'profile': state['profile']},
-                        'config_path': str(directory/'instance.json')}
+                        'config_path': str(directory/'world.cppconfig')}
                 install.write_json(directory/'instance.json', {k: v for k, v in item.items() if k != 'config_path'})
             directory = Path(item['config_path']).parent
             builder = AddonProjectBuilder(project, directory/'assembled')
@@ -148,10 +160,28 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
             finally:
                 if stage.exists(): shutil.rmtree(stage)
             plan = {'runtime': state['runtime'], 'game': state['game'], 'data': str(directory/'data'),
-                    'cache': str(directory/'cache'), 'packs': str(directory/'packs'),
-                    'world_id': item['level_id'], 'world_name': item['name'], 'engine_version': version,
+                    'cache': str(directory/'cache'), 'engine_version': version,
                     'compat_report': state.get('compat_report')}
-            data = sessions.start(project, item['config_path'], item['level_id'],
+            config_path = Path(item['config_path'])
+            if supports_config:
+                legacy = None
+                if not config_path.exists() and world_config is None and (directory/'data').exists():
+                    # Migrate the actual saved world, not today's tool defaults.
+                    legacy = {'world_info': saved_world_settings(directory/'data/minecraftWorlds'/item['level_id']/'level.dat')}
+                prepare_cppconfig(config_path, version, item['name'], item['level_id'], '',
+                    config.get('project', {}).get('name', 'project'),
+                    [str(directory/'packs/behavior_pack')] if (directory/'packs/behavior_pack').is_dir() else [],
+                    [str(directory/'packs/resource_pack')] if (directory/'packs/resource_pack').is_dir() else [],
+                    world_config if world_config is not None else legacy)
+                plan['cppconfig'] = str(config_path)
+            else:
+                # Existing immutable runtimes still use the previous launch protocol.
+                # Never pretend they can apply edited cppconfig settings.
+                if config_path.exists():
+                    raise EngineError('此运行包不能读取 cppconfig，请安装新版并新建实例。', 'runtime_incompatible')
+                plan.update(packs=str(directory/'packs'), world_id=item['level_id'], world_name=item['name'])
+                config_path = directory/'instance.json'
+            data = sessions.start(project, str(config_path), item['level_id'],
                                   backend='macos-arm64', launch=plan)
     result = sessions.handoff(data)
     if detach: return result
@@ -166,9 +196,12 @@ def launch_session(data):
     if not helper.is_file():
         raise EngineError('运行包缺少启动适配器，请重新安装。', 'runtime_incompatible')
     command = [sys.executable, str(helper), '--runtime', str(app), '--game-dir', plan['game'],
-               '--data-dir', plan['data'], '--cache-dir', plan['cache'], '--world-id', plan['world_id'],
-               '--world-name', plan['world_name'], '--source-addon', plan['packs'], '--angle-backend', 'metal',
+               '--data-dir', plan['data'], '--cache-dir', plan['cache'], '--angle-backend', 'metal',
                '--debug-loopback', '--exec-client', '--log', data['engine_log_path']]
+    if plan.get('cppconfig'):
+        command += ['--cppconfig', plan['cppconfig']]
+    else:
+        command += ['--world-id', plan['world_id'], '--world-name', plan['world_name'], '--source-addon', plan['packs']]
     if plan.get('compat_report'):
         command += ['--compat-report', plan['compat_report']]
     metadata = install.read_json(app/'Contents/Resources/runtime.json')
@@ -196,16 +229,28 @@ class MacOSBackend(GameBackend):
                     'status', 'logs', 'stop', 'py', 'runtime', 'runtime-ui', 'runtime-player',
                     'client-python-requests', 'project-ui', 'reload', 'watch')
     managed_install = True
-    setup_description = ('原生 Apple Silicon / Metal；离线创造模式超平坦 Addon 测试。\n'
+    setup_description = ('原生 Apple Silicon / Metal；离线 Addon 测试；世界设置由各实例 cppconfig 保存。\n'
                          '启动器从配置的发布源取得，开发者 APK 直接从网易下载。\n'
                          '首次下载 APK 约 2.21 GB，展开约 3.88 GB；无需 Homebrew、Wine 或 MC Studio。')
 
+    def world_option_restrictions(self):
+        return {'cheat_info.' + key: reason for key, reason in (
+            ('experimental_holiday', '此后端尚未验证实验玩法配置。'),
+            ('experimental_biomes', '此后端尚未验证实验玩法配置。'),
+            ('fancy_bubbles', '此后端暂不支持此画面选项。'))}
+
     def run(self, project, **options):
+        from ..mcstudio.runtime_cppconfig import creation_settings
+        settings = creation_settings(options.get('world_config'))
+        for field, reason in self.world_option_restrictions().items():
+            group, key = field.split('.')
+            if settings.get(group, {}).get(key):
+                raise EngineError(reason, 'unsupported_world_option', field=field)
         options.pop('no_gui', None)
         return run(project, **options)
 
     def watch_directory(self, project, data):
-        return Path(data['launch']['packs']).parent/'assembled'
+        return Path(data['config_path']).parent/'assembled'
 
     def instances(self, project):
         return [dict(item, creation_time=item['created_at']) for item in instances(project)]
@@ -213,7 +258,7 @@ class MacOSBackend(GameBackend):
     def deploy(self, project, data):
         from ..builders.project_builder import AddonProjectBuilder
         from ..remote.service import directory_lock
-        directory = Path(data['launch']['packs']).parent
+        directory = Path(data['config_path']).parent
         with directory_lock(directory/'deploy-lock'):
             builder = AddonProjectBuilder(project, directory/'assembled')
             success, error = builder.build()

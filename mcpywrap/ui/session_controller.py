@@ -86,10 +86,11 @@ class SessionController(QObject):
             if success: success(result)
         self.changed.emit()
 
-    def start(self, identity=None, auth_context=None):
+    def start(self, identity=None, auth_context=None, world_config=None):
         if self.session:
             self.log('请先保存退出当前游戏。', 'warning'); return False
         options = {'overrides': self.engine_overrides} if self.engine_overrides else {}
+        if world_config is not None: options['world_config'] = world_config
         return self.run_task(lambda: self.backend.start_session(self.project, identity, auth_context, **options), self.attach, report=False)
 
     @Slot(object)

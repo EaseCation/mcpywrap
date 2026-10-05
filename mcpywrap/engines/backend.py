@@ -32,12 +32,17 @@ class GameBackend:
     def delete_instances(self, project, identity=None):
         return self.run(project, delete=identity, clean_all=identity is None, force=True)
 
-    def start_session(self, project, identity=None, auth_context=None, overrides=None):
+    def start_session(self, project, identity=None, auth_context=None, overrides=None, world_config=None):
         from ..command_context import project_scope
         with project_scope(project):
             return self.run(project, new=identity is None, instance_prefix=identity,
                             detach=True, no_gui=True, **({'auth_context': auth_context} if auth_context else {}),
-                            **({'overrides': overrides} if overrides else {}))
+                            **({'overrides': overrides} if overrides else {}),
+                            **({'world_config': world_config} if world_config is not None else {}))
+
+    def world_option_restrictions(self):
+        """Unsupported cppconfig fields for presentation; adapters also validate."""
+        return {}
 
     def watch_directory(self, project, data):
         from pathlib import Path

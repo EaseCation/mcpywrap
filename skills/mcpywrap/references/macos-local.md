@@ -10,7 +10,7 @@ mcpy --local --project <Addon项目> --non-interactive run --detach --json
 
 当前没有默认公开发行地址；向用户索取发行目录或复用已配置的 MCPY_RUNTIME_CATALOG，不虚构 URL。省略 --apk 时下载网易官方 APK，版本由 catalog 固定；新版或正式 APK 不能替换验证版本。默认资源目录为 ~/Library/Application Support/mcpy，可用 MCPY_ENGINE_HOME 隔离。无需 Homebrew、Wine、已安装的 Launcher 或 MPay 账号。终端交互运行 engine/run 有引导；AI 使用非交互和 JSON，不代替用户输入密码。
 
-支持离线创造模式超平坦 Addon 世界和源码 Python Mod，使用既有项目构建/依赖能力。默认重开最新实例，--new 新建；run --list 列出，run <ID前缀> 指定。项目 .runtime/macos/instances 保存世界，每个实例固定运行包与 APK。安装新版不会迁移原世界；发现版本不匹配时说明原因，不自动删除/重建。已有实例的 Mod 修改需先 stop 再 run，运行中再次 run 只返回现有会话。
+支持离线 Addon 世界和源码 Python Mod，使用既有项目构建/依赖能力。支持 cppconfig_protocol=1 的新运行包可按实例选择地形、模式、难度、种子及规则，见[实例世界设置](instance-world-settings.md)；旧运行包仍使用原来的平坦创造启动参数。默认重开最新实例，--new 新建；run --list 列出，run <ID前缀> 指定。项目 .runtime/macos/instances 保存世界，每个实例固定运行包与 APK。安装新版不会迁移原世界；发现版本不匹配时说明原因，不自动删除/重建。已有实例的 Mod 修改需先 stop 再 run，运行中再次 run 只返回现有会话。
 
 run 返回进程启动，随后 status 的 world_ready=true 表示已观察到 HUD；还需验证客户端/服务端日志和实际玩法。日志使用 logs --source engine/game/worker。源码构建通过并不证明服务端 Mod 执行。
 

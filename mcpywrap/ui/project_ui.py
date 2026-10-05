@@ -275,7 +275,13 @@ class GameInstanceManager(QMainWindow):
         # 实例操作按钮
         btn_layout = QHBoxLayout()
         
-        self.new_btn = QPushButton("新建实例")
+        self.new_btn = QToolButton()
+        self.new_btn.setText('新建实例')
+        self.new_btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        menu = QMenu(self.new_btn)
+        menu.addAction('从 cppconfig 新建…', self.create_from_cppconfig)
+        menu.addAction('按选中实例配置新建', self.create_from_selected)
+        self.new_btn.setMenu(menu)
         self.new_btn.clicked.connect(self.create_new_instance)
         btn_layout.addWidget(self.new_btn)
         
@@ -557,14 +563,16 @@ class GameInstanceManager(QMainWindow):
         self.remove_dep_btn.setEnabled(not self.dependency_busy)
     
     def create_new_instance(self):
-        """创建新的游戏实例"""
-        if self.dependency_busy or not self.reload_runtime_dependencies():
-            self.log("❌ 无法创建实例，项目依赖加载失败", "error")
-            return
-        
-        self.log("🆕 正在创建新的游戏实例...")
-        
-        self.start_game_thread(None)
+        self.confirm_new_instance()
+
+    def confirm_new_instance(self, config=None):
+        if self.is_busy() or self.controller.session:
+            self.log('请先保存退出当前游戏，再创建实例。', 'warning'); return
+        from .world_config import WorldConfigDialog
+        restrictions = self.backend.world_option_restrictions()
+        dialog = WorldConfigDialog(self.current_project, self, config=config, restrictions=restrictions)
+        if dialog.exec() == WorldConfigDialog.DialogCode.Accepted:
+            self.start_game_thread(world_config=dialog.cppconfig())
 
     def run_selected_instance(self):
         """运行选中的游戏实例"""
@@ -585,7 +593,27 @@ class GameInstanceManager(QMainWindow):
         # 使用QThread启动游戏，避免UI卡死
         self.start_game_thread(level_id)
 
-    def start_game_thread(self, level_id=None):
+    def create_from_cppconfig(self):
+        path, _ = QFileDialog.getOpenFileName(self, '从 cppconfig 新建', self.base_dir,
+                                             'cppconfig (*.cppconfig);;JSON (*.json)')
+        if path:
+            self.start_from_config(path)
+
+    def create_from_selected(self):
+        rows = self.instance_table.selectionModel().selectedRows()
+        if not rows:
+            self.log('请先选择实例。', 'warning'); return
+        self.start_from_config(self.instances[rows[0].row()]['config_path'])
+
+    def start_from_config(self, path):
+        from ..mcstudio.runtime_cppconfig import creation_settings
+        try:
+            config = {'world_info': creation_settings(path)}
+        except (OSError, ValueError) as error:
+            self.log(str(error), 'error'); return
+        self.confirm_new_instance(config)
+
+    def start_game_thread(self, level_id=None, world_config=None):
         if self.is_busy() or self.controller.session:
             self.log('请先保存退出当前游戏，再启动其他实例。', 'warning'); return
         if level_id is None and self.backend.managed_install and not self.backend.diagnose(self.base_dir).get('ok'):
@@ -599,7 +627,7 @@ class GameInstanceManager(QMainWindow):
                 identity = acquire_identity(interactive=True)
             except AuthError as exc:
                 self.log(str(exc), 'error'); return
-        self.controller.start(level_id, identity)
+        self.controller.start(level_id, identity, **({'world_config': world_config} if world_config is not None else {}))
 
     @Slot(object)
     def on_game_started(self, result):
@@ -863,7 +891,7 @@ class DependencyInstallThread(QThread):
             self.result.emit(False, f'依赖安装失败: {exc}')
 
 
-def show_run_ui(base_dir=None, mcs_auth=False, autorun=False, new=False, instance=None, engine_overrides=None):
+def show_run_ui(base_dir=None, mcs_auth=False, autorun=False, new=False, instance=None, engine_overrides=None, world_config=None):
     """显示游戏实例管理UI"""
     app = QApplication.instance() or QApplication(sys.argv)
     # Keep Qt's platform style and system palette for the project and floating controls.
@@ -872,7 +900,7 @@ def show_run_ui(base_dir=None, mcs_auth=False, autorun=False, new=False, instanc
     window.show()
     if autorun:
         identity = instance or (window.instances[0]['level_id'] if window.instances and not new else None)
-        QTimer.singleShot(0, lambda: window.start_game_thread(identity))
+        QTimer.singleShot(0, lambda: window.start_game_thread(identity) if identity else window.confirm_new_instance(world_config))
     import signal
     previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:

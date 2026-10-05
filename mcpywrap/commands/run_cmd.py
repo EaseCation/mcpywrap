@@ -18,7 +18,8 @@ from ..config import config_exists, read_config, get_project_dependencies, get_p
 from ..builders.AddonsPack import AddonsPack
 from ..mcstudio.game import open_game, open_safaia
 from ..mcstudio.mcs import get_mcs_game_engine_data_path, is_windows
-from ..mcstudio.runtime_cppconfig import gen_runtime_config
+from ..mcstudio.runtime_cppconfig import (prepare_cppconfig, creation_settings,
+                                        write_cppconfig, for_saved_world, RULE_LABELS)
 from ..mcstudio.discovery import discover_engines, require_resources, DiscoveryError, engine_options
 from ..mcstudio.symlinks import setup_global_addons_symlinks
 from ..utils.project_setup import find_and_configure_behavior_pack
@@ -217,6 +218,11 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
     mcs_download_dir = engine.download_dir
     # 获取游戏引擎数据目录
     engine_data_path = get_mcs_game_engine_data_path()
+    if engine_data_path is None:
+        appdata = os.environ.get('APPDATA')
+        if not appdata:
+            raise ValueError('无法定位 Windows 游戏存档目录：缺少 APPDATA')
+        engine_data_path = os.path.join(appdata, 'MinecraftPE_Netease')
 
     log_message(f"🎮 使用引擎版本: {engine.version} ({engine.source})", "info")
 
@@ -242,20 +248,9 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
         # 生成运行时配置
         live.update(Text("📝 生成运行时配置中...", "cyan"))
         log_message("📝 生成运行时配置中...", "info")
-        runtime_config = gen_runtime_config(
-            engine.version,
-            world_name,
-            level_id,
-            mcs_download_dir,
-            project_name,
-            behavior_links,
-            resource_links
-        )
-
-        # 写入配置文件
-        ensure_dir(os.path.dirname(os.path.abspath(config_path)))
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(runtime_config, f, ensure_ascii=False, indent=2)
+        runtime_config = prepare_cppconfig(
+            config_path, engine.version, world_name, level_id, mcs_download_dir,
+            project_name, behavior_links, resource_links)
 
         live.update(Text(f"📝 配置文件已生成: {os.path.basename(config_path)}", "green"))
         log_message(f"📝 配置文件已生成: {os.path.basename(config_path)}", "success")
@@ -273,7 +268,8 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
             live.update(Text("🗺️ 正在准备地图存档...", "cyan"))
             log_message("🗺️ 正在准备地图存档...", "info")
             
-            map_pack_origin.copy_level_data_to(runtime_map_dir)
+            if not os.path.isfile(os.path.join(runtime_map_dir, "level.dat")):
+                map_pack_origin.copy_level_data_to(runtime_map_dir)
 
             live.update(Text(f"✓ 已复制地图存档", "green"))
             log_message(f"✓ 已复制地图存档", "success")
@@ -297,7 +293,12 @@ def _run_game_with_instance(config_path, level_id, all_packs, wait=True, log_cal
             log_message(f"✓ 已创建world_resource_packs.json，包含{len(resource_packs_config)}个资源包", "success")
             
     # 启动游戏
-    launch_config_path = config_path
+    level_dat = Path(engine_data_path)/'minecraftWorlds'/level_id/'level.dat'
+    runtime_config = for_saved_world(runtime_config, level_dat)
+    # Keep the instance recipe separate from live/authenticated launch details.
+    launch_config_path = str(Path(output_path).with_name('runtime.cppconfig')) if output_path else str(
+        Path(config_path).parent/'launch'/level_id/'runtime.cppconfig')
+    write_cppconfig(launch_config_path, runtime_config)
     if auth_context is not None:
         auth_context.apply(runtime_config)
         launch_config_path = auth_config_path
@@ -372,18 +373,68 @@ def _gen_random_port():
     return 0  # 返回0让操作系统自动分配端口
 
 
+WORLD_CHOICES = {
+    'world_type': {'infinite': 1, 'flat': 2},
+    'game_type': {'survival': 0, 'creative': 1, 'adventure': 2},
+    'difficulty': {'peaceful': 0, 'easy': 1, 'normal': 2, 'hard': 3},
+    'permission_level': {'visitor': 0, 'member': 1, 'operator': 2}}
+
+
+def world_options(function):
+    # Distinct destination names keep these out of engine discovery overrides.
+    for key, label in reversed(tuple(RULE_LABELS.items())):
+        flag = key.replace('_', '-')
+        if key == 'random_tick_speed':
+            function = click.option('--'+flag, 'world_rule_'+key, type=click.IntRange(0, 2147483647),
+                                    default=None, help=label+'（仅新建实例）')(function)
+        else:
+            function = click.option('--'+flag+'/--no-'+flag, 'world_rule_'+key, default=None,
+                                    help=label+'（仅新建实例）')(function)
+    for flag, key, label in [('cheats', 'cheat', '作弊'), ('start-with-map', 'start_with_map', '初始地图'),
+                             ('bonus-items', 'bonus_items', '奖励箱')]:
+        function = click.option('--'+flag+'/--no-'+flag, 'world_field_'+key, default=None,
+                                help=label+'（仅新建实例）')(function)
+    for key, label in [('name', '世界名称'), ('seed', '种子')]:
+        flag = '--world-name' if key == 'name' else '--seed'
+        function = click.option(flag, 'world_field_'+key, default=None, help=label+'（仅新建实例）')(function)
+    for key, values in reversed(tuple(WORLD_CHOICES.items())):
+        function = click.option('--'+key.replace('_','-'), 'world_field_'+key,
+                                type=click.Choice(tuple(values)), default=None,
+                                help='世界设置（仅新建实例）')(function)
+    return function
+
+
+def take_world_options(arguments, cppconfig=None):
+    info = creation_settings(cppconfig) if cppconfig else {}
+    for key in tuple(arguments):
+        if not key.startswith(('world_field_', 'world_rule_')):
+            continue
+        value = arguments.pop(key)
+        if value is None:
+            continue
+        if key.startswith('world_rule_'):
+            info.setdefault('cheat_info', {})[key[len('world_rule_'):]] = value
+        else:
+            field = key[len('world_field_'):]
+            info[field] = WORLD_CHOICES[field][value] if field in WORLD_CHOICES else value
+    return {'world_info': info} if info or cppconfig else None
+
+
 @click.command(cls=OperationCommand)
+@world_options
 @engine_options
 @click.option("--no-gui", is_flag=True, help="只显示游戏，不打开辅助 GUI")
 @click.option("--detach", is_flag=True, help="后台运行并返回游戏会话")
 @click.option('--mcs-auth', is_flag=True, help='本次单人测试或网络连接使用已登录的 MC Studio 身份')
+@click.option('--cppconfig', type=click.Path(exists=True, dir_okay=False, resolve_path=True),
+              help='使用 cppconfig 的 world_info 创建实例；仅与 --new 一起使用')
 @click.option('--new', '-n', is_flag=True, help='创建新的游戏实例')
 @click.option('--list', '-l', is_flag=True, help='列出所有可用的游戏实例')
 @click.option('--delete', '-d', help='删除指定的游戏实例 (输入实例ID前缀)')
 @click.option('--force', '-f', is_flag=True, help='强制删除，不提示确认')
 @click.option('--clean-all', is_flag=True, help='清空所有游戏实例')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, **engine_overrides):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, **engine_overrides):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例。
@@ -394,6 +445,9 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
     Ctrl+C 结束本次网络游戏；--detach 返回可查询、操作和停止的会话。
     """
     base_dir = str(current_project())
+    world_config = take_world_options(engine_overrides, cppconfig)
+    if world_config is not None and (not new or instance_prefix or list or delete or clean_all):
+        raise click.UsageError('世界创建参数仅用于 --new，不覆盖已有实例')
     if (delete or clean_all) and non_interactive() and not force:
         raise click.UsageError("非交互删除需要 --force")
     # 检查项目是否已初始化
@@ -410,10 +464,10 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         if not read_project(base_dir).get('tool', {}).get('mcpywrap', {}).get('server'):
             from ..ui.project_ui import show_run_ui
             return show_run_ui(base_dir, mcs_auth, autorun=True, new=new, instance=instance_prefix,
-                               engine_overrides=engine_overrides)
+                               engine_overrides=engine_overrides, world_config=world_config)
     options = dict(new=new, listing=list, delete=delete, force=force, clean_all=clean_all,
                    instance_prefix=instance_prefix, no_gui=no_gui, detach=detach,
-                   mcs_auth=mcs_auth, overrides=engine_overrides)
+                   mcs_auth=mcs_auth, overrides=engine_overrides, world_config=world_config)
     try:
         return backend.run(base_dir, **options)
     except EngineError as error:
@@ -425,9 +479,13 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
 
 def _run_windows(base_dir, *, new=False, listing=False, delete=None, force=False,
                  clean_all=False, instance_prefix=None, no_gui=False, detach=False,
-                 mcs_auth=False, overrides=None, auth_context=None):
+                 mcs_auth=False, overrides=None, auth_context=None, world_config=None):
     # Preserve the established Windows instance/GUI implementation behind the backend.
     list, engine_overrides = listing, overrides or {}
+    if world_config is not None:
+        if not new or instance_prefix or listing or delete or clean_all:
+            raise click.UsageError('自定义世界配置仅用于新建实例')
+        creation_settings(world_config)
     # 在存档选择、配置同步和目录创建之前分流；管理选项仍只管理本地存档。
     if not (list or delete or clean_all):
         from ..dependencies import read_project
@@ -438,7 +496,7 @@ def _run_windows(base_dir, *, new=False, listing=False, delete=None, force=False
             if mcs_auth:
                 from dataclasses import replace
                 target = replace(target, auth='mcs')
-            if new or instance_prefix:
+            if new or instance_prefix or world_config is not None:
                 raise click.UsageError('网络模式不支持 --new 或本地世界实例 ID')
             packs = prepare_project(base_dir, config)
             return run_network(target, project_dir=base_dir, packs=packs,
@@ -519,6 +577,9 @@ def _run_windows(base_dir, *, new=False, listing=False, delete=None, force=False
             level_id, config_path = _generate_new_instance_config(base_dir, project_name)
             console.print(f"🆕 创建首个实例: {level_id[:8]}...", style="green")
             console.print("💡 下次运行将重用此实例，若需创建新实例请使用 \"--new\" 参数", style="yellow")
+
+    if world_config is not None:
+        prepare_cppconfig(config_path, '', project_name, level_id, '', project_name, [], [], world_config)
 
     from ..command_context import json_output
     if json_output() and not detach:

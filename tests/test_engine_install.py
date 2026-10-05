@@ -55,6 +55,7 @@ class InstallerTests(unittest.TestCase):
     def test_install_reuse_repair_and_immutable_release(self):
         first = installer.install(str(self.catalog), str(self.apk))
         self.assertTrue(first['ok'])
+        self.assertEqual(first['cppconfig_protocol'], 0)
         game = Path(first['game'])
         (game/'assets/data.bin').unlink()
         self.assertFalse(installer.diagnose(check_files=True)['ok'])

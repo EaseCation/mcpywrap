@@ -357,6 +357,8 @@ def diagnose(check_files=False):
             raise EngineError('macOS 版本低于运行包要求', 'os_too_old')
         if not (app/'Contents/Resources/runtime.json').is_file():
             raise EngineError('尚未安装所选运行包', 'runtime_missing')
+        metadata = read_json(app/'Contents/Resources/runtime.json')
+        data['cppconfig_protocol'] = metadata.get('cppconfig_protocol', 0)
         if not (game/'installed.json').is_file():
             raise EngineError('尚未安装所选 APK 资源', 'game_missing')
         if check_files:
