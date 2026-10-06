@@ -203,6 +203,89 @@ class InstallerTests(unittest.TestCase):
     def test_verified_cache_needs_no_download_space(self):
         self.assertEqual(installer._remaining_download(self.apk, installer.digest(self.apk), self.apk.stat().st_size), 0)
 
+    def test_failed_upgrade_preserves_selected_runtime_and_worlds(self):
+        first = installer.install(str(self.catalog), str(self.apk))
+        current = (installer.home()/'current.json').read_bytes()
+        world = self.root/'project/.runtime/world/level.dat'
+        world.parent.mkdir(parents=True); world.write_bytes(b'world-state')
+        self.cat['runtime']['id'] = 'fixture2'
+        self.catalog.write_text(json.dumps(self.cat))
+        for operation, failure in (
+                ('fetch', EngineError('network', 'download_failed')),
+                ('extract_runtime', OSError('disk full')),
+                ('preflight_runtime', EngineError('unsupported', 'runtime_incompatible'))):
+            with self.subTest(operation=operation), patch.object(installer, operation, side_effect=failure):
+                with self.assertRaises((EngineError, OSError)):
+                    installer.install(str(self.catalog), str(self.apk))
+            self.assertEqual((installer.home()/'current.json').read_bytes(), current)
+            self.assertTrue(installer.diagnose(check_files=True)['ok'])
+            self.assertEqual(world.read_bytes(), b'world-state')
+            self.assertFalse(list((installer.home()/'runtimes').glob('.runtime-*')))
+        repaired = installer.install(apk=str(self.apk))
+        self.assertEqual(repaired['runtime_id'], 'fixture2')
+        self.assertTrue(Path(first['runtime']).is_dir())
+
+    def test_interrupted_first_apk_extraction_cleans_stage_and_retries(self):
+        def interrupt(apk, stage, profile, progress):
+            (stage/'partial-file').write_bytes(b'partial')
+            raise KeyboardInterrupt()
+        with patch.object(installer, 'extract_apk', side_effect=interrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                installer.install(str(self.catalog), str(self.apk))
+        self.assertFalse((installer.home()/'current.json').exists())
+        self.assertFalse(list((installer.home()/'engines').glob('*/.apk-*')))
+        self.assertTrue(installer.install(apk=str(self.apk))['ok'])
+
+    def test_corrupt_range_ledger_is_restarted_safely(self):
+        content = b'abcdefgh'
+        expected = hashlib.sha256(content).hexdigest()
+        for record in ('{broken', '[]', '{"done": [[1]]}'):
+            target = self.root/'bad-ledger.bin'
+            target.with_suffix('.bin.part').write_bytes(b'wrong!!!')
+            target.with_suffix('.bin.ranges.json').write_text(record)
+            self.assertEqual(installer._remaining_download(target, expected, len(content)), len(content))
+            data = io.BytesIO(content); data.status = 206
+            data.headers = {'Content-Range': 'bytes 0-7/8'}
+            with patch.object(installer, 'urlopen', return_value=data):
+                installer._fetch_ranges('https://g79.gdl.netease.com/file', target,
+                    expected, len(content), chunk_size=8, workers=1)
+            self.assertEqual(target.read_bytes(), content)
+            target.unlink()
+
+    def test_download_disk_full_is_not_reported_as_network_failure(self):
+        import errno
+        error = OSError(errno.ENOSPC, 'No space left')
+        with patch.object(installer, 'urlopen', side_effect=error) as download:
+            with self.assertRaises(EngineError) as caught:
+                installer.fetch('https://example.org/file', self.root/'disk.bin', 'a'*64, 8)
+        self.assertEqual(caught.exception.code, 'download_storage_failed')
+        self.assertEqual(download.call_count, 1)
+
+    def test_replacement_interrupt_restores_previous_directory(self):
+        destination, stage = self.root/'installed', self.root/'stage'
+        destination.mkdir(); (destination/'data').write_bytes(b'old')
+        stage.mkdir(); (stage/'data').write_bytes(b'new')
+        rename = Path.rename
+        def interrupted(path, target):
+            if path == stage: raise KeyboardInterrupt()
+            return rename(path, target)
+        with patch.object(Path, 'rename', interrupted):
+            with self.assertRaises(KeyboardInterrupt): installer._replace(stage, destination)
+        self.assertEqual((destination/'data').read_bytes(), b'old')
+        self.assertEqual((stage/'data').read_bytes(), b'new')
+
+    def test_checksum_failure_never_promotes_download(self):
+        content = b'wrong'
+        target = self.root/'hash.bin'
+        data = io.BytesIO(content); data.status = 206
+        data.headers = {'Content-Range': 'bytes 0-4/5'}
+        with patch.object(installer, 'urlopen', return_value=data):
+            with self.assertRaises(EngineError):
+                installer._fetch_ranges('https://g79.gdl.netease.com/file', target,
+                    hashlib.sha256(b'right').hexdigest(), 5, chunk_size=5, workers=1)
+        self.assertFalse(target.exists())
+        self.assertFalse(target.with_suffix('.bin.part').exists())
+
     def test_os_floor_fails_before_creating_home(self):
         self.cat['runtime']['minimum_macos'] = '99.0'; self.catalog.write_text(json.dumps(self.cat))
         with self.assertRaises(EngineError): installer.install(str(self.catalog), str(self.apk))

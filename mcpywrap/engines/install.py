@@ -1,5 +1,6 @@
 """Verified, local assembly of a game-free runtime and an official developer APK."""
 import hashlib
+import errno
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -49,8 +50,13 @@ def read_json(path):
 def write_json(path, data):
     path = Path(path)
     temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
-    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    temporary.replace(path)
+    try:
+        with temporary.open('w', encoding='utf-8') as stream:
+            stream.write(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
+            stream.flush(); os.fsync(stream.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def selected():
@@ -146,6 +152,12 @@ def safe_member(name):
     return path
 
 
+def _check_download_storage(error):
+    if isinstance(error, OSError) and error.errno in (errno.ENOSPC, errno.EDQUOT, errno.EACCES, errno.EROFS):
+        raise EngineError('无法保存下载文件：' + str(error), 'download_storage_failed',
+                          '请检查可用空间和目录权限后重试；已安装版本和世界不受影响。') from None
+
+
 def fetch(source, target, expected, size, progress=None):
     target = Path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -196,6 +208,7 @@ def fetch(source, target, expected, size, progress=None):
                                   '请稍后重试；若资源已下架，请反馈所选版本，或通过 --apk 导入匹配资源。') from None
             last_error = error
         except (OSError, URLError, HTTPException) as error:
+            _check_download_storage(error)
             last_error = error
         if attempt == 2:
             raise EngineError('网络下载失败：' + str(last_error), 'download_failed',
@@ -219,13 +232,17 @@ def _fetch_ranges(source, target, expected, size, progress=None, *, chunk_size=1
     identity = {'sha256': expected, 'size': size, 'chunk_size': chunk_size}
     done = set()
     if ledger.is_file():
-        state = read_json(ledger)
-        if any(state.get(k) != v for k, v in identity.items()):
+        try:
+            state = read_json(ledger)
+            valid = (isinstance(state, dict) and all(state.get(k) == v for k, v in identity.items())
+                     and isinstance(state.get('done'), list)
+                     and all(type(i) is int and 0 <= i < count for i in state['done']))
+        except (ValueError, TypeError):
+            valid = False
+        if not valid:
             part.unlink(missing_ok=True); ledger.unlink()
         else:
             done = set(state.get('done', []))
-            if any(type(i) is not int or not 0 <= i < count for i in done):
-                raise EngineError('下载续传记录无效', 'download_changed')
             length = part.stat().st_size if part.is_file() else 0
             done = {i for i in done if min(size, (i+1)*chunk_size) <= length}
     elif part.is_file():
@@ -277,6 +294,7 @@ def _fetch_ranges(source, target, expected, size, progress=None, *, chunk_size=1
                     raise EngineError('网易下载服务器返回 HTTP %d' % error.code, 'download_failed') from None
                 last_error = error
             except (OSError, URLError, HTTPException) as error:
+                _check_download_storage(error)
                 last_error = error
             if attempt == 2:
                 raise EngineError('网易 APK 下载中断：' + str(last_error), 'download_failed',
@@ -502,10 +520,17 @@ def _replace(stage, destination):
     if destination.exists(): destination.rename(backup)
     try:
         stage.rename(destination)
-    except Exception:
+    except BaseException:
         if backup.exists(): backup.rename(destination)
         raise
-    if backup.exists(): shutil.rmtree(backup)
+    if backup.exists():
+        # A successful verified replacement must not become a failed install
+        # merely because the old, unused files could not be removed.
+        try:
+            shutil.rmtree(backup)
+        except OSError:
+            from ..command_context import report_warning
+            report_warning('安装已完成，旧资源暂未清理：' + str(backup))
 
 
 def _require_idle(destination):
@@ -528,8 +553,11 @@ def _remaining_download(target, expected, size):
     if not part.is_file():
         return size
     if ledger.is_file():
-        state = read_json(ledger)
-        if (state.get('sha256'), state.get('size'), state.get('chunk_size')) != (expected, size, 16*1024*1024):
+        try:
+            state = read_json(ledger)
+        except (ValueError, TypeError):
+            return size
+        if not isinstance(state, dict) or (state.get('sha256'), state.get('size'), state.get('chunk_size')) != (expected, size, 16*1024*1024):
             return size
     elif part.stat().st_size >= size:
         return 0 if part.stat().st_size == size and digest(part) == expected else size
