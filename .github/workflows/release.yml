@@ -2,7 +2,7 @@ name: Test, build and publish
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/0.4.0-*']
     tags: ['v*']
   pull_request:
     branches: [main]
@@ -119,6 +119,7 @@ jobs:
   macos:
     runs-on: macos-latest
     env:
+      QT_QPA_PLATFORM: offscreen
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: '1'
     steps:
@@ -128,15 +129,25 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install .
       - run: python -m pip check
-      - name: Verify client install without Qt
-        run: python -c "import importlib.util; assert importlib.util.find_spec('PyQt5') is None; import mcpywrap.cli"
+      - name: Verify Qt6 availability and lazy CLI imports
+        run: python -c "import sys; import mcpywrap.cli; assert not any(k.startswith('PySide6') for k in sys.modules); import PySide6.QtCore"
       - run: python -m unittest discover -s tests -p test_remote.py -v
       - run: python -m unittest discover -s tests -p test_remote_scripts.py -v
       - run: python -m unittest discover -s tests -p test_git_projects.py -v
       - run: python -m unittest discover -s tests -p test_qumod_workflow.py -v
       - run: python -m unittest discover -s tests -p test_recordings.py -v
       - run: python -m unittest discover -s tests -p 'test_runtime*.py' -v
+      - run: python -m unittest discover -s tests -p test_resource_reload.py -v
+      - run: python -m unittest discover -s tests -p test_session_capabilities.py -v
+      - run: python -m unittest discover -s tests -p test_skill_workflows.py -v
       - run: python -m unittest discover -s tests -p test_input_sequence.py -v
+      - run: python -m unittest discover -s tests -p test_shared_logs.py -v
+      - run: python -m unittest discover -s tests -p test_qt_sessions.py -v
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - run: python -m unittest discover -s tests -p test_engine_backends.py -v
+      - run: python -m unittest discover -s tests -p test_engine_install.py -v
+      - run: python -m unittest discover -s tests -p test_launcher_python.py -v
       - name: Build a project using the public CLI
         run: |
           mkdir -p "$RUNNER_TEMP/中文 project"

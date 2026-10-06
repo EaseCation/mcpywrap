@@ -16,8 +16,12 @@ def ui_cmd(mcs_auth=False):
     from ..command_context import json_output
     if non_interactive() or json_output():
         raise click.UsageError("Qt 管理页仅供人工使用；Agent 请调用 run、add、remove 等命令")
-    if os.name != 'nt':
-        raise click.ClickException('此界面仅支持 Windows 人工操作，不支持远程 GUI')
+    from ..engines.backend import get_backend
+    backend = get_backend()
+    if 'project-ui' not in backend.capabilities:
+        raise click.ClickException('本机后端暂不支持项目界面')
+    if mcs_auth and 'mcs-auth' not in backend.capabilities:
+        raise click.UsageError('当前后端不支持 MC Studio 登录身份')
     # 检查项目是否已初始化
     if not config_exists():
         require_project()

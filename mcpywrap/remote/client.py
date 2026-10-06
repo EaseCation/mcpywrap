@@ -164,6 +164,8 @@ def routed_command(name, parameters):
     if not endpoint:
         return False, None
     p = dict(parameters)
+    if name == 'py' and (p.get('no_wait') or p.get('wait_until') is not None):
+        raise click.UsageError('远程会话不支持客户端队列或等待条件；请使用同步 runtime py。未发送代码。')
     client = Client(endpoint, project_dir())
     for key in ('game_executable', 'game_executable_path', 'mcs_download_path'):
         if p.get(key):

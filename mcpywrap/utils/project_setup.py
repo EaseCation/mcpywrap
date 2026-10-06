@@ -48,11 +48,11 @@ def get_default_project_name():
     """获取默认项目名称（当前目录名）"""
     return project_dir().name
 
-def update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir=None):
+def update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir=None, *, quiet=False):
     """更新配置中的行为包信息"""
     if behavior_pack_dir:
         rel_path = os.path.relpath(behavior_pack_dir, base_dir)
-        click.echo(click.style(f'📦 更新包路径: {rel_path}', fg='blue'))
+        if not quiet: click.echo(click.style(f'📦 更新包路径: {rel_path}', fg='blue'))
         
         if not config.get('tool'):
             config['tool'] = {}
@@ -65,10 +65,10 @@ def update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir=
         # 设置或保留target_dir配置
         if target_dir:
             config['tool'].setdefault('mcpywrap', {})['target_dir'] = target_dir
-            click.echo(click.style(f'📂 目标目录设置为: {target_dir}', fg='green'))
+            if not quiet: click.echo(click.style(f'📂 目标目录设置为: {target_dir}', fg='green'))
         elif config.get('tool', {}).get('mcpywrap', {}).get('target_dir'):
             target_dir = config['tool']['mcpywrap']['target_dir']
-            click.echo(click.style(f'📂 保留目标目录: {target_dir}', fg='blue'))
+            if not quiet: click.echo(click.style(f'📂 保留目标目录: {target_dir}', fg='blue'))
         else:
             config.setdefault('tool', {}).setdefault('mcpywrap', {})['target_dir'] = ""
             
@@ -77,18 +77,18 @@ def update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir=
         # 如果没有找到behavior_pack目录，则默认使用当前目录
         return "."
 
-def find_and_configure_behavior_pack(base_dir, config, ask_for_target=False):
+def find_and_configure_behavior_pack(base_dir, config, ask_for_target=False, *, quiet=False):
     """查找行为包并更新配置"""
     behavior_pack_dir = None
     target_dir = None
     
     # 检查是否为Minecraft addon项目并查找行为包
     if is_minecraft_addon_project(base_dir):
-        click.echo(click.style('🔍 检测到Minecraft addon项目结构', fg='magenta'))
+        if not quiet: click.echo(click.style('🔍 检测到Minecraft addon项目结构', fg='magenta'))
         behavior_pack_dir = find_behavior_pack_dir(base_dir)
         
         if behavior_pack_dir:
-            click.echo(click.style(f'✅ 找到行为包目录: {behavior_pack_dir}', fg='green'))
+            if not quiet: click.echo(click.style(f'✅ 找到行为包目录: {behavior_pack_dir}', fg='green'))
             
             # 询问目标目录（如果需要）
             if ask_for_target and click.confirm(click.style('❓ 是否配置构建目标目录？（指定生成的脚本文件应安装到的位置）', fg='magenta'), default=False):
@@ -96,12 +96,12 @@ def find_and_configure_behavior_pack(base_dir, config, ask_for_target=False):
                 ensure_dir(target_dir)
             
             # 更新配置
-            rel_path = update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir)
+            rel_path = update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir, quiet=quiet)
             return behavior_pack_dir, rel_path
         else:
-            click.echo(click.style('⚠️ 无法找到行为包目录', fg='yellow'))
+            if not quiet: click.echo(click.style('⚠️ 无法找到行为包目录', fg='yellow'))
     else:
-        click.echo(click.style('⚠️ 未检测到标准的Minecraft addon项目结构', fg='yellow'))
+        if not quiet: click.echo(click.style('⚠️ 未检测到标准的Minecraft addon项目结构', fg='yellow'))
     
     return None, "."
 

@@ -1,6 +1,7 @@
 """通用远程依赖合同：测试仓库没有QuMod预设，全部使用真实本地Git。"""
 import concurrent.futures
 import json
+import inspect
 import os
 from pathlib import Path
 import shutil
@@ -21,6 +22,163 @@ from test_local_dependencies import addon
 
 
 class GitProjects(unittest.TestCase):
+    def test_windows_lock_migration_is_automatic_and_preserves_old_lock(self):
+        from mcpywrap.git_projects import sync_projects
+        from mcpywrap.source_files import windows_checkout_digest, digest
+        repo, rev = self.repository('legacy', 'code')
+        # 固定 LF 字节，避免 Windows 文本写入让旧/新摘要在夹具中意外相同。
+        (repo/'src/legacy_marker.py').write_bytes(b'VALUE = 1\n')
+        (repo/'.gitattributes').write_bytes(b'src/legacy_marker.py -text\n')
+        rev = self.commit(repo)
+        self.service.add(repo.as_uri())
+        path = self.main / LOCK_FILE
+        lock = json.loads(path.read_text())
+        lock['version'] = 1
+        source, _ = fetch_snapshot(repo.as_uri(), rev)
+        lock['nodes'][0]['source_sha256'] = windows_checkout_digest(source)
+        self.assertNotEqual(lock['nodes'][0]['source_sha256'], digest(source))
+        lock['nodes'][0]['sha256'] = 'a' * 64  # legacy tool/platform registration
+        path.write_text(json.dumps(lock))
+        previous = path.read_bytes()
+        report = []
+        sync_projects(self.main, migration_report=report)
+        self.assertEqual(len(report), 1)
+        self.assertEqual(Path(report[0]['backup']).read_bytes(), previous)
+        self.assertNotEqual(path.read_bytes(), previous)
+        sync_projects(self.main)  # migrated locks resume strict normal checks
+        resolve_projects(self.main)
+
+    def test_windows_case_order_lock_with_lf_is_automatically_migrated(self):
+        from mcpywrap.git_projects import sync_projects
+        from mcpywrap.source_files import windows_checkout_digest, digest
+        repo, _ = self.repository('case-legacy', 'code')
+        (repo/'src/B.py').write_bytes(b'B = 1\n')
+        (repo/'src/a.py').write_bytes(b'a = 2\n')
+        rev = self.commit(repo)
+        self.service.add(repo.as_uri())
+        source, _ = fetch_snapshot(repo.as_uri(), rev)
+        old_digest = windows_checkout_digest(source, crlf=False)
+        self.assertNotEqual(old_digest, digest(source))
+        path = self.main/LOCK_FILE
+        lock = json.loads(path.read_text())
+        lock['version'] = 1
+        lock['nodes'][0]['source_sha256'] = old_digest
+        path.write_text(json.dumps(lock))
+        sync_projects(self.main)
+        resolve_projects(self.main)
+
+    def test_migration_rejects_unexplained_source_and_registration_changes(self):
+        from mcpywrap.git_projects import sync_projects
+        repo, _ = self.repository('changed', 'code')
+        self.service.add(repo.as_uri())
+        path = self.main / LOCK_FILE
+        original = json.loads(path.read_text())
+        for field in ('source_sha256', 'sha256'):
+            lock = json.loads(json.dumps(original))
+            lock['nodes'][0][field] = '0' * 64
+            path.write_text(json.dumps(lock))
+            with self.subTest(field=field), self.assertRaises(DependencyError):
+                sync_projects(self.main, migrate_windows_lock=True)
+            self.assertEqual(json.loads(path.read_text()), lock)
+
+    def test_legacy_migration_still_rejects_changed_source(self):
+        from mcpywrap.git_projects import sync_projects
+        repo, _ = self.repository('legacy-corrupt', 'code')
+        self.service.add(repo.as_uri())
+        path = self.main/LOCK_FILE
+        lock = json.loads(path.read_text()); lock['version'] = 1
+        lock['nodes'][0]['source_sha256'] = '0'*64
+        path.write_text(json.dumps(lock)); before = path.read_bytes()
+        with self.assertRaisesRegex(DependencyError, '源码校验失败'):
+            sync_projects(self.main)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertFalse((self.main/'.mcpy/lock-backups').exists())
+
+    def test_existing_windows_source_cache_remains_usable_offline(self):
+        from mcpywrap.source_files import windows_checkout_digest
+        repo, _ = self.repository('old-source-cache', 'code')
+        (repo/'src/B.py').write_bytes(b'B = 1\n')
+        rev = self.commit(repo)
+        source, _ = fetch_snapshot(repo.as_uri(), rev)
+        metadata = source.parent/'source.json'
+        record = json.loads(metadata.read_text())
+        record['sha256'] = windows_checkout_digest(source, crlf=False)
+        metadata.write_text(json.dumps(record))
+        with patch('mcpywrap.git_cache._git', side_effect=AssertionError('network')):
+            fetched, commit = fetch_snapshot(repo.as_uri(), rev)
+        self.assertEqual(commit, rev)
+        self.assertEqual(fetched, source)
+
+    def test_lock_bytes_are_independent_of_windows_path_order(self):
+        from mcpywrap.git_projects import sync_projects
+        from mcpywrap.source_files import digest
+        repo, _ = self.repository('portable', 'code')
+        (repo/'src/B.py').write_bytes(b'B = 1\n')
+        (repo/'src/a.py').write_bytes(b'a = 2\n')
+        self.commit(repo)
+        self.service.add(repo.as_uri())
+        path = self.main/LOCK_FILE
+        before = path.read_bytes()
+        class WindowsOrderedPath(type(Path())):
+            def __lt__(self, other):
+                return tuple(p.lower() for p in self.parts) < tuple(p.lower() for p in other.parts)
+        with patch('mcpywrap.source_files.Path', WindowsOrderedPath):
+            sync_projects(self.main)
+            resolve_projects(self.main)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(json.loads(before)['version'], 2)
+        registered = resolve_projects(self.main)[0][1]
+        self.assertNotIn(b'\r\n', (registered/'behavior_pack/manifest.json').read_bytes())
+
+    def test_old_windows_generated_files_are_backed_up_and_rebuilt(self):
+        from mcpywrap.git_projects import sync_projects
+        from mcpywrap.source_files import windows_checkout_digest
+        repo, _ = self.repository('old-generated', 'code')
+        self.service.add(repo.as_uri())
+        registered = resolve_projects(self.main)[0][1]
+        manifest = registered/'behavior_pack/manifest.json'
+        manifest.write_bytes(manifest.read_bytes().replace(b'\n', b'\r\n'))
+        old_manifest = manifest.read_bytes()
+        path = self.main/LOCK_FILE
+        lock = json.loads(path.read_text()); lock['version'] = 1
+        lock['nodes'][0]['sha256'] = windows_checkout_digest(registered, crlf=False)
+        path.write_text(json.dumps(lock))
+        sync_projects(self.main)
+        resolve_projects(self.main)
+        self.assertNotIn(b'\r\n', manifest.read_bytes())
+        backup = list((self.main/'.mcpy/registration-backups').glob('*/project/behavior_pack/manifest.json'))
+        self.assertEqual(len(backup), 1)
+        self.assertEqual(backup[0].read_bytes(), old_manifest)
+
+    def test_human_sync_is_concise_and_json_keeps_details(self):
+        repo, _ = self.repository('readable', 'code')
+        self.service.add(repo.as_uri())
+        path = self.main/LOCK_FILE
+        lock = json.loads(path.read_text()); lock['version'] = 1
+        path.write_text(json.dumps(lock))
+        options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
+        runner = CliRunner(**options)
+        result = runner.invoke(cli, ['--project', str(self.main), 'sync'])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn('1 个源码依赖已就绪', result.output)
+        self.assertIn('旧文件已备份', result.output)
+        for internal in ('git_lock_migrations', 'source_sha256', 'installed:', '找到行为包目录'):
+            self.assertNotIn(internal, result.output)
+        result = runner.invoke(cli, ['--project', str(self.main), 'sync', '--json'])
+        self.assertEqual(json.loads(result.stdout)['git_projects'], 1)
+        self.assertEqual(json.loads(result.stdout)['git_lock_migrations'], [])
+
+    def test_missing_dependency_error_identifies_name_and_next_command(self):
+        repo, _ = self.repository('readable', 'code')
+        self.service.add(repo.as_uri())
+        registered = resolve_projects(self.main)[0][1]
+        shutil.rmtree(registered)
+        with self.assertRaises(DependencyError) as caught:
+            resolve_projects(self.main)
+        self.assertIn('readable', str(caught.exception))
+        self.assertIn('mcpy sync', str(caught.exception))
+        self.assertNotIn(registered.name, str(caught.exception))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='mcpy-git-test-')
         self.root = Path(self.temp.name)
@@ -168,7 +326,7 @@ class GitProjects(unittest.TestCase):
         self.assertFalse((self.main / 'build/behavior_pack/Mod/versions/new.py').exists())
         resolved = resolve_projects(self.main)[0][1]
         (resolved / 'behavior_pack/Mod/versions/__init__.py').write_text('tamper')
-        with self.assertRaisesRegex(DependencyError, '摘要'):
+        with self.assertRaisesRegex(DependencyError, '本地文件'):
             resolve_projects(self.main)
         self.assertFalse(AddonProjectBuilder(self.main, self.main / 'build').build()[0])
         self.service.remove(first['dependency'])
@@ -202,7 +360,7 @@ class GitProjects(unittest.TestCase):
         watcher.setup_from_config('consumer')
         registered = resolve_projects(self.main)[0][1]
         (registered / 'behavior_pack/tampered.py').write_text('TAMPERED = True')
-        with self.assertRaisesRegex(ValueError, '摘要'):
+        with self.assertRaisesRegex(ValueError, '本地文件'):
             watcher.rebuild('behavior', 'tampered.py')
         self.assertFalse((self.main / 'build/behavior_pack/tampered.py').exists())
 
@@ -244,7 +402,7 @@ class GitProjects(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'Qt is Windows-only')
     def test_gui_raw_git_project_uses_same_service(self):
-        from PyQt5.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
         from mcpywrap.ui import project_ui as ui
         import time
         repo, rev = self.repository('gui-code', 'code')

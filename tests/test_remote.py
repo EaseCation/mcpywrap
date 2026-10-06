@@ -20,6 +20,9 @@ from mcpywrap.mcstudio.discovery import Engine
 
 class RemoteTests(unittest.TestCase):
     def setUp(self):
+        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host.start()
+        self.addCleanup(backend_host.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()

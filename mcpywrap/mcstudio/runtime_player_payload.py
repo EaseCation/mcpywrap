@@ -184,6 +184,35 @@ class PlayerController(UIController):
             op.update(state='unknown', error=as_text(exc))
         return self._view(op)
 
+    def _next_tick(self, op, action, before, callback, in_reach=False):
+        # JNI 回调可能早于游戏物品交互阶段；两端统一在脚本 tick 开始动作。
+        # 先占用输入，再次校验目标/物品，取消后定时器不得补发动作。
+        op.update(action=action, state='pending', backend='game-client', released=False,
+                  effect_verified=False, before=before, _release=[])
+        self._save(op)
+        self.active = op
+        def begin():
+            if self.active is not op or op.get('released'): return
+            try:
+                current = self._read()
+                require(self._hud() and all(current[k] == before[k] for k in
+                        ('player_id', 'dimension', 'selected_slot', 'carried')) and
+                        self._target_id(current['target']) == self._target_id(before['target']),
+                        'stale_snapshot', '等待游戏 tick 时目标或物品已变化；未执行动作')
+                if in_reach and current['target'].get('type') != 'None':
+                    require(current['target']['in_reach'], 'out_of_reach', '目标已离开交互距离')
+                callback()
+                if op['state'] != 'pending' and self.active is op:
+                    self._release(op, op['state'])
+            except Exception as exc:
+                self._failed(op, exc)
+        try:
+            timer = self._factory().CreateGame(self.api.GetLevelId()).AddTimer(0., begin)
+            require(timer is not None, 'timer_unavailable', '无法安排游戏 tick，未发送输入')
+        except Exception as exc:
+            self._failed(op, exc)
+        return self._view(op)
+
     def _lease(self, op, action, duration_ms, before=None):
         require(type(duration_ms) is int and 20 <= duration_ms <= 10000,
                 'invalid_argument', 'duration_ms/hold_ms 必须是 20–10000 整数')
@@ -347,7 +376,9 @@ class PlayerController(UIController):
         before = self._observed(snapshot)
         target = before['target']
         require(target.get('type') == 'Entity', 'wrong_target', 'attack 需要瞄准实体；方块请用 dig')
-        return self._instant(op, 'attack', lambda: self.native.local_player_attack_entity(target['entityId']), before)
+        return self._next_tick(op, 'attack', before,
+            lambda: self._instant(op, 'attack', lambda: self.native.local_player_attack_entity(target['entityId']), before),
+            in_reach=True)
 
     def use_item(self, snapshot, mode='auto', hold_ms=200, request_id=None):
         require(mode in ('auto','air','block'), 'invalid_argument', 'mode 为 auto/air/block')
@@ -362,13 +393,9 @@ class PlayerController(UIController):
         if mode=='block':
             require(target.get('type')=='Block', 'unsupported_target', '实体交互尚未适配；对空使用请显式 mode=air')
             args = [target[k] for k in ('x','y','z','face')]
-            return self._instant(op, 'use_item', lambda: self.native.local_player_build_block(*args), before)
-        if not self._lease(op, 'use_item', hold_ms, before): return self._view(op)
-        try:
-            op['_release'].append(('use', None))
-            self._begin_use(op)
-        except Exception as exc: return self._failed(op, exc)
-        return self._view(op)
+            return self._next_tick(op, 'use_item', before,
+                lambda: self._instant(op, 'use_item', lambda: self.native.local_player_build_block(*args), before), in_reach=True)
+        return self._next_tick(op, 'use_item', before, lambda: self._start_use(op, 'use_item', hold_ms, before))
 
     def _consume(self, action, snapshot, hold_ms, request_id):
         op, repeated = self._prepare(action,[snapshot,hold_ms],request_id,action)
@@ -380,6 +407,9 @@ class PlayerController(UIController):
             require(item.get('edible',False),'wrong_item','手持物品不是引擎识别的食物')
         else:
             require(item['name']=='minecraft:bow','unsupported_item','shoot 当前支持普通弓；弩的装填/发射流程尚未适配')
+        return self._next_tick(op, action, before, lambda: self._start_use(op, action, hold_ms, before))
+
+    def _start_use(self, op, action, hold_ms, before):
         if not self._lease(op,action,hold_ms,before): return self._view(op)
         try:
             op['_release'].append(('use',None))
@@ -407,6 +437,10 @@ class PlayerController(UIController):
         target = before['target']
         require(target.get('type')=='Block', 'wrong_target', 'dig 需要瞄准方块')
         args = [target[k] for k in ('x','y','z','face')]
+        return self._next_tick(op, 'dig', before,
+            lambda: self._start_dig(op, duration_ms, before, target, args), in_reach=True)
+
+    def _start_dig(self, op, duration_ms, before, target, args):
         if not self._lease(op, 'dig', duration_ms, before): return self._view(op)
         def tick():
             if self.active is not op or op.get('released'): return
@@ -424,6 +458,7 @@ class PlayerController(UIController):
                         'target_changed', '挖掘目标已变化或超出距离')
                 progressing, destroyed = self.native.local_player_continue_destroy_block(*args)
                 op['block_destroyed_reported'] = bool(destroyed)
+                if progressing or destroyed: self._dig_swing(op)
                 if destroyed or not progressing:
                     self._release(op, 'completed' if destroyed else 'cancelled')
                 else:
@@ -436,10 +471,19 @@ class PlayerController(UIController):
             accepted, destroyed = self.native.local_player_start_destroy_block(*args)
             op['block_destroyed_reported'] = bool(destroyed)
             require(accepted or destroyed, 'input_rejected', '引擎拒绝开始挖掘')
+            self._dig_swing(op)
             if destroyed: self._release(op)
             else: self._factory().CreateGame(self.api.GetLevelId()).AddTimer(.05,tick)
         except Exception as exc: return self._failed(op, exc)
         return self._view(op)
+
+    def _dig_swing(self, op):
+        # 挖掘进度接口不负责第一人称挥手；使用 ModSDK 的原版动作。
+        # 引擎负责正在播放时的节流，不创建独立动画定时器。
+        swing = getattr(self._factory().CreatePlayer(self.api.GetLocalPlayerId()), 'Swing', None)
+        op['swing_supported'] = callable(swing)
+        if callable(swing):
+            op['swing_requested'] = bool(swing())
 
     def stop(self):
         if self.active: self._release(self.active,'cancelled')
@@ -567,6 +611,17 @@ class PlayerController(UIController):
             if job['_waiting']:
                 child=self.operations[job['_waiting']]
                 if child['state']=='pending':self._schedule_sequence(job,.01);return
+                if child['action']=='move' and child['state']=='completed':
+                    # UnlockInputVector succeeds before GetInputVector reflects it
+                    # on a real engine tick. Do not start the next input early or
+                    # overwrite a user's movement if it remains nonzero.
+                    current=self._read()
+                    if any(abs(v)>.01 for v in current['input_vector']):
+                        deadline=job.setdefault('_move_release_deadline',self.clock()+1.)
+                        require(self.clock()<deadline,'input_busy','移动解锁后输入仍未归零，停止后续动作')
+                        self._schedule_sequence(job,.01);return
+                    job.pop('_move_release_deadline',None)
+                    child['after']=current
                 if child.get('expected_rotation') and child['state']=='completed':
                     current=self._read()['rotation'];expected=child['expected_rotation']
                     require(abs(current['pitch']-expected['pitch'])<=.2 and abs((current['yaw']-expected['yaw']+180)%360-180)<=.2,

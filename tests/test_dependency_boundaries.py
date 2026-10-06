@@ -21,6 +21,12 @@ DIST = 'mcpywrap.builders.dependency_manager.metadata.distribution'
 
 
 class Boundaries(ProjectFixture):
+    def setUp(self):
+        super().setUp()
+        host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        host.start()
+        self.addCleanup(host.stop)
+
     def call(self, *args):
         options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
         return CliRunner(**options).invoke(cli, ['--local', '--project', str(self.main), '--non-interactive', *args, '--json'])
@@ -208,11 +214,11 @@ class Boundaries(ProjectFixture):
                          {p.relative_to(full): p.read_bytes() for p in full.rglob('*') if p.is_file()})
 
     def test_gui_development_warning_does_not_block_and_native_does(self):
-        from PyQt5.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
         from mcpywrap.ui import project_ui as ui
         self.packages('click>=8')
         app = QApplication.instance() or QApplication([])
-        with patch.object(ui, 'find_all_mcpywrap_packages', return_value=[]), patch.object(ui, '_get_all_instances', return_value=[]):
+        with patch.object(ui, 'find_all_mcpywrap_packages', return_value=[]), patch('mcpywrap.engines.macos.MacOSBackend.instances', return_value=[]):
             window = ui.GameInstanceManager(str(self.main))
         try:
             self.assertIn('仅开发环境', window.dependency_list.item(0).text())

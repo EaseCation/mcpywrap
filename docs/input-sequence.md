@@ -20,5 +20,3 @@ Windows 使用绝对截止时间、较长空隙的短 sleep 和最后不超过�
 交互式 Windows 桌面可设置 `MCPY_NATIVE_TESTS=1`，运行 `tests/test_native_input_sequence.py`：只创建自己的惰性接收窗口，验证 0/1/5/10/20 ms 提交计划和接收顺序。可用 `MCPY_INPUT_TEST_REPORT` 指定尚不存在的 JSON 路径保存提交与接收时刻。测试不以固定精度断言掩盖系统抖动。
 
 真实游戏验收使用 `tests/manual_runtime_input.py --project <独立测试项目> --session <sid> --output <新JSON>`。要求已加载 HUD、快捷栏 8/9 为空并可看向无目标的天空；会占用游戏前台，使用空槽和对空右键，随后恢复原选槽和朝向。它同时验证游戏 Python 2 注入后的自动/显式时间计划；不会停止传入会话，创建者负责结束自己的测试游戏。
-
-2026-10-03 的 [本机验收记录](validation/input-timeline.json) 同时包含惰性接收窗口与网易 `3.9.0.401155` 的公开 CLI 实测。游戏内 0/1/5/10/20 ms 计划测得提交间隔约 0/1.49/5.01/10.03/20.04 ms；这是单次样本，不能作为调度精度保证。原槽位和朝向已恢复，测试会话已停止。

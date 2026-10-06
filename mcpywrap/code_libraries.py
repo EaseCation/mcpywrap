@@ -7,7 +7,7 @@ import re
 import tempfile
 
 from .dependencies import DependencyError, read_project, validate_game_files
-from .source_files import _relative, digest, long_path
+from .source_files import _relative, digest, long_path, windows_checkout_digest
 
 LOCK_FILE = 'mcpy-code-libraries.lock.json'
 
@@ -64,8 +64,8 @@ def prepare_sync(root, config=None):
     for entry in entries:
         key = identity(entry)
         installed = cache / key
-        if installed.is_dir() and key in expected and digest(installed) == expected[key]:
-            lock['libraries'].append({'declaration': entry, 'sha256': expected[key]})
+        if installed.is_dir() and key in expected and expected[key] in (digest(installed), windows_checkout_digest(installed, crlf=False)):
+            lock['libraries'].append({'declaration': entry, 'sha256': digest(installed)})
             continue
         # 临时仓库不检出文件、不运行依赖代码、hooks 或安装脚本。
         with tempfile.TemporaryDirectory(prefix='fetch-', dir=cache) as temporary:
@@ -83,7 +83,7 @@ def prepare_sync(root, config=None):
                     (content / ('MCPY_UPSTREAM_' + file.name)).write_bytes(file.read_bytes())
             validate_game_files(root, [content])
             value = digest(content)
-            if key in expected and expected[key] != value:
+            if key in expected and expected[key] not in (value, windows_checkout_digest(content, crlf=False)):
                 raise DependencyError('固定提交的代码库内容与锁文件摘要不符')
             if installed.exists():
                 # 回退到旧提交：用重新获取的内容验证旧缓存，而不是逐文件覆盖。
@@ -99,7 +99,7 @@ def write_lock(root, lock):
     root = Path(root)
     fd, filename = tempfile.mkstemp(prefix='.code-lock-', dir=root)
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='\n') as stream:
             json.dump(lock, stream, ensure_ascii=False, indent=2)
             stream.write('\n')
         os.replace(filename, root / LOCK_FILE)
@@ -128,7 +128,7 @@ def resolve_libraries(root, config=None, lock=None):
         result = []
         for entry, record in zip(entries, records):
             path = long_path(Path(root) / '.mcpy' / 'libraries' / identity(entry))
-            if not path.is_dir() or digest(path) != record['sha256']:
+            if not path.is_dir() or record['sha256'] not in (digest(path), windows_checkout_digest(path, crlf=False)):
                 raise ValueError(f"{entry['name']} 缓存缺失或内容已改变")
             validate_game_files(root, [path])
             result.append(dict(entry, source=path))

@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcpywrap"
-version = "0.3.19"
+version = "0.4.0"
 description = "A wrapper for Minecraft China Edition Addons management"
 readme = "README.md"
 authors = [{name = "boybook", email = "boybook@easecation.net"}]
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -25,7 +25,7 @@ dependencies = [
     "tomli-w",
     "setuptools",
     "packaging>=21",
-    "PyQt5>=5.15.0; sys_platform == 'win32'",
+    "PySide6-Essentials>=6.6,<7; sys_platform == 'win32' or sys_platform == 'darwin'",
     "psutil>=5.8.0",
     "rich>=10.0.0"
 ]

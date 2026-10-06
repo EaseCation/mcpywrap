@@ -86,6 +86,8 @@ class OperationCommand(click.Command):
 
     def invoke(self, ctx):
         ctx.params.pop('json_output', None)
+        if ctx.parent and ctx.parent.info_name == 'engine':
+            return super().invoke(ctx)
         from .remote.client import routed_command
         routed, result = routed_command(ctx.info_name, ctx.params)
         if routed:
@@ -111,7 +113,7 @@ class OperationGroup(click.Group):
                 except click.ClickException as exc:
                     code = exc.exit_code
                     result = {'ok': False, 'error': exc.format_message(),
-                              'hint': '使用 mcpy <命令> --help 查看所需参数。'}
+                              'hint': '使用 mcpy <命令> --help 查看所需参数。' if isinstance(exc, click.UsageError) else None}
                 except (KeyboardInterrupt, click.Abort):
                     code = 130
                     result = {'ok': False, 'error': '操作已中断', 'hint': None}
@@ -121,6 +123,8 @@ class OperationGroup(click.Group):
                               'hint': getattr(exc, 'hint', '请核对项目配置和相关文件路径。')}
                     if getattr(exc, 'code', None):
                         result['code'] = exc.code
+                    if getattr(exc, 'details', None):
+                        result.update(exc.details)
                 except Exception as exc:
                     code = 1
                     with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', prefix='mcpy-error-',

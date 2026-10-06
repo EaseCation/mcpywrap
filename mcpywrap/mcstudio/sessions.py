@@ -47,7 +47,7 @@ def read(project, session):
 
 
 def start(project, config_path=None, level_id=None, overrides=None, timeout=30, auth_context=None,
-          network=None, session_id=None, origin=None, request_id=None):
+          network=None, session_id=None, origin=None, request_id=None, backend=None, launch=None):
     root = Path(project).resolve()
     session = session_id or uuid.uuid4().hex
     directory = session_path(root, session)
@@ -59,6 +59,7 @@ def start(project, config_path=None, level_id=None, overrides=None, timeout=30, 
               'config_path': str(Path(config_path).resolve()) if config_path else str(directory / 'runtime.cppconfig'),
               'level_id': level_id, 'mode': 'network' if network else 'local',
               'network': network,
+              'backend': backend or 'windows', 'launch': launch,
               'engine_overrides': overrides or {}, 'mcs_auth': auth_context is not None,
               'mcs_pid': auth_context.mcs_pid if auth_context else None}
     save(directory / 'session.json', record)
@@ -101,6 +102,14 @@ def handoff(data):
               'engine_log_path': data.get('engine_log_path'),
               'mode': data.get('mode', 'local'),
               'window_title_hint': 'Minecraft', 'window_verified': False}
+    if data.get('mode', 'local') == 'local' and data.get('config_path'):
+        result['instance'] = data.get('level_id')
+        result['config_path'] = data['config_path']
+        if str(data['config_path']).endswith('.cppconfig'):
+            result['config_hint'] = ('需要自定义世界时，可手动编辑此文件，再用 run --new --cppconfig <该文件路径> 创建实例；'
+                                     '已有世界继续使用存档中的设置。')
+    from ..engines.backend import get_backend
+    result.update(get_backend(data.get('backend', 'windows')).handoff(data))
     if data.get('network'):
         target = data['network']['target']
         result.update(host=target['host'], port=target['port'], identity_source=target['auth'],
@@ -108,6 +117,14 @@ def handoff(data):
                       connection_verified=False, addons_assembled=False,
                       engine_version=data['network']['engine']['version'])
     return result
+
+
+def show_configuration(result):
+    """CLI presentation shared by foreground backends; JSON handoffs retain fields."""
+    import click
+    if result.get('config_path'):
+        click.echo('实例配置：' + result['config_path'])
+        if result.get('config_hint'): click.echo(result['config_hint'])
 
 
 def stop(project, session):

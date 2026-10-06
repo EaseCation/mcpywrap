@@ -9,7 +9,7 @@ mcpywrap 使用 `pyproject.toml` 管理开发侧依赖，复用本地 Addon 的�
 
 ## 安装
 
-需要 Python 3.9 或更高版本。游戏和编辑器启动功能需要 Windows、MC Studio 及已下载的游戏引擎。
+需要 Python 3.9 或更高版本。Windows 使用 MC Studio 引擎；Apple Silicon macOS 13.0+ 使用预构建启动器和开发者 APK，支持离线 Addon 世界。两端共用 PySide6 项目界面；MCEditor 仅支持 Windows。参见 [Qt6 开发界面](docs/qt6-development.md) 和 [GUI 依赖许可说明](THIRD_PARTY_NOTICES.md)。
 
 推荐通过 [uv](https://docs.astral.sh/uv/) 安装：
 
@@ -76,13 +76,13 @@ Git 项目使用 `[[tool.mcpywrap.git_dependencies]]` 声明，支持 Addon 与�
 | `mcpy build` | 将项目和依赖构建到配置的输出目录 |
 | `mcpy package` | 构建项目和依赖，在 `dist` 中生成可分发 ZIP |
 | `mcpy dev` | 监控 Addon 源码与依赖变化，持续更新构建结果 |
-| `mcpy mod` | 通过向导创建 Python Mod 框架 |
+| `mcpy mod` | 用参数或终端问答创建 Python Mod 框架 |
 | `mcpy modsdk` | 管理网易 ModSDK |
 | `mcpy run -n` | 创建新的游戏测试实例 |
 | `mcpy run -l` | 查看已有实例 |
 | `mcpy run -d <ID前缀>` | 删除指定实例 |
 
-本地世界模式下，`mcpy run` 默认复用最近创建的实例。构建时主项目内容优先于依赖；修改依赖声明后，请重新启动 `mcpy dev`。
+本地世界模式下，`mcpy run` 在终端准备资源，随后显示游戏和紧凑的调试小窗，默认复用最近创建的实例；没有实例时直接用默认配置创建。macOS 资源缺失会自动下载安装并显示进度，无需填写发布源或 APK。输出会提供实例 cppconfig 路径及修改方式。完整项目管理页通过 `mcpy ui` 打开；`run --no-gui` 不显示调试小窗。构建时主项目内容优先于依赖；修改依赖声明后，请重新启动 `mcpy dev`。
 
 ### 打包分发
 
@@ -98,10 +98,11 @@ Addon ZIP 内为 `<项目名>_bp/`、`<项目名>_rp/`（仅包含实际构建�
 
 ### 运行时 Python 与本地热更
 
-`runtime` 下的命令控制已启动的游戏会话，均需传入启动时返回的会话 ID。游戏内 Python 使用 MC Studio 自带的 Safaia 调试通道，无需安装调试 Mod：
+`runtime` 下的命令控制已启动的游戏会话，均需传入启动时返回的会话 ID。Windows 和 macOS 使用相同入口；Python 通道由后端负责，无需安装调试 Mod。AI/脚本使用 `--local --project <项目> --non-interactive` 前缀和 `run --no-gui --detach --json`，全程不操作 Qt/TUI；游戏仍需图形会话。详见[纯命令开发与验收](skills/mcpywrap/references/local-development.md)：
 
 ```powershell
 mcpy run --no-gui --detach --json
+mcpy runtime capabilities --session <id> --json
 mcpy runtime py --session <id> --side client --code "1+1" --json
 mcpy runtime py --session <id> --side server --file .\probe.py --json
 mcpy runtime reload python --session <id> --module MyMod.client.logic --json
@@ -111,7 +112,7 @@ mcpy runtime watch --session <id>
 
 本地世界支持客户端和服务端执行；联机会话只支持客户端。`py --file` 在调用端读取 UTF-8 内容，返回输出、表达式或 `_result` 的值及异常。执行超时的状态为 `unknown`，游戏内代码可能仍会运行，不应自动重试。
 
-`runtime reload` 支持 `python/ui/shader/material/particle`，资源类型通过 `--file` 指向项目包内目标；`runtime watch` 在成功构建后自动触发。本期热更仅支持 Windows 本地测试世界。推荐先使用 Python 和 JSON UI 热更：Python 要求模块已加载，现有对象或事件订阅不会自动重建；JSON UI 返回 `triggered` 仅表示快捷键已投递，需要用画面确认效果。3.9.0.401155 和 3.10.0.420447 的 Shader 重载已禁用，Material 在这两版没有对应接口。完整实机结果见[运行时调试参考](docs/runtime-debug.md)。
+`runtime reload` 支持 `python/ui/shader/material/particle`，资源类型通过 `--file` 指向项目包内目标；`runtime watch` 在成功构建后自动触发 Python 热更，资源变化提示手动重载。热更支持 Windows 和 Apple Silicon macOS 13.0+ 的本地测试世界。资源能力按后端区分：macOS 新运行包支持 JSON UI 定义重载，需重建自定义界面；旧运行包及当前材质、Shader 返回 unsupported，已有粒子文件更新已验证，详见 [macOS 资源热更参考](docs/macos-resource-reload.md)。Python 要求模块已加载，现有对象或事件订阅不会自动重建；JSON UI 返回 `triggered` 仅表示重载请求已投递，需要用画面确认效果。3.9.0.401155 和 3.10.0.420447 的 Shader 重载已禁用，Material 在这两版没有对应接口。接口与版本限制见[运行时调试参考](docs/runtime-debug.md)。
 
 通常不需要手动指定游戏路径。mcpywrap 会优先查找 MC Studio 登记的安装，必要时搜索固定磁盘中的标准下载目录，并跳过不完整的引擎版本。
 

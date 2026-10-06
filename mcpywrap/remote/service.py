@@ -43,12 +43,21 @@ def capabilities():
     from ..mcstudio.recordings import inspect_media
     media = inspect_media()
     extra = (['record'] if media['record_available'] else []) + (['record-frames'] if media['frames_available'] else [])
-    return {'protocol_version': PROTOCOL, 'version': __version__,
+    result = {'protocol_version': PROTOCOL, 'version': __version__,
             'capabilities': ACTIONS + ['mcs-auth'] + extra if windows else ['project', 'package', 'remote-client'],
             'media': media,
             'desktop': desktop_state(),
             'mcs_auth': inspect_bridge() if windows else {'component_available': False},
             'execution': 'local', 'platform': os.name}
+    from ..engines.backend import get_backend
+    from ..engines.host import describe
+    backend = get_backend()
+    result['host'] = describe()
+    result['capabilities'] = list(dict.fromkeys(result['capabilities'] + list(backend.capabilities)))
+    if backend.managed_install:
+        result['runtime'] = backend.diagnose()
+        result['resources_ready'] = result['runtime']['ok']
+    return result
 
 
 @contextmanager

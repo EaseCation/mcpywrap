@@ -5,13 +5,14 @@ import os
 from pathlib import Path
 import time
 
-from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QApplication, QWidget
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication, QWidget
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--state', type=Path, required=True)
+    parser.add_argument('--timeout-seconds', type=int, default=30)
     args = parser.parse_args()
     app = QApplication([])
     events = []
@@ -27,10 +28,10 @@ def main():
             self.record('key_up', event.key())
 
         def mousePressEvent(self, event):
-            self.record('mouse_down', int(event.button()))
+            self.record('mouse_down', event.button().value)
 
         def mouseReleaseEvent(self, event):
-            self.record('mouse_up', int(event.button()))
+            self.record('mouse_up', event.button().value)
 
     window = Receiver()
     window.setWindowTitle('mcpy input timing test (isolated receiver)')
@@ -52,8 +53,8 @@ def main():
     timer = QTimer()
     timer.timeout.connect(flush)
     timer.start(20)
-    QTimer.singleShot(30000, app.quit)
-    app.exec_()
+    QTimer.singleShot(args.timeout_seconds * 1000, app.quit)
+    app.exec()
     flush()
 
 

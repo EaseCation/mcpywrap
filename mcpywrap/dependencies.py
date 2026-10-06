@@ -16,7 +16,8 @@ from packaging.requirements import Requirement, InvalidRequirement
 
 
 class DependencyError(ValueError):
-    pass
+    # Messages carry their actionable recovery step; avoid a generic path hint.
+    hint = None
 
 
 @dataclass(frozen=True)

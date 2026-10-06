@@ -22,6 +22,9 @@ from mcpywrap.mcstudio.discovery import Engine, discovery_options
 
 class NetworkTests(unittest.TestCase):
     def setUp(self):
+        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host.start()
+        self.addCleanup(backend_host.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -101,7 +104,7 @@ class NetworkTests(unittest.TestCase):
 
     def test_cli_connect_ignores_project_and_requires_host(self):
         self.config('invalid = [')
-        with patch('mcpywrap.commands.connect_cmd.run_network', return_value={}) as launch:
+        with patch('mcpywrap.mcstudio.network.run_network', return_value={}) as launch:
             result = self.call('connect', 'localhost', '--port', '20000')
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertEqual(launch.call_args.args[0], n.ServerTarget('localhost', 20000))

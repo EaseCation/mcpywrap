@@ -29,6 +29,9 @@ def snapshot():
 
 class AuthTests(unittest.TestCase):
     def setUp(self):
+        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host.start()
+        self.addCleanup(backend_host.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
@@ -71,7 +74,7 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(path.read_text(), 'token=<redacted>')
 
     def test_explicit_auth_routing(self):
-        with patch('mcpywrap.commands.connect_cmd.run_network', return_value={}) as launch:
+        with patch('mcpywrap.mcstudio.network.run_network', return_value={}) as launch:
             result = self.runner.invoke(cli, ['connect', 'localhost', '--mcs-auth'])
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertEqual(launch.call_args.args[0].auth, 'mcs')
@@ -92,6 +95,7 @@ class AuthTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 1)
             capture.assert_not_called()
 
+    @unittest.skipUnless(os.name == 'nt', 'native identity capture requires Windows')
     def test_capture_uses_one_shot_request_and_hides_failure_output(self):
         for name in ('Injector.exe', 'Loader.dll', 'McpyMcsAuth.dll'):
             (self.root/name).touch()

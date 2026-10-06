@@ -1,4 +1,4 @@
-"""独立世界中的公开 CLI 验收：节点、后台交互、恢复；不会停止传入会话。"""
+"""可选实机测试：节点、交互、恢复；不参与默认 unittest，不停止传入会话。"""
 import argparse
 import ctypes
 from ctypes import wintypes
@@ -9,9 +9,12 @@ import sys
 import threading
 import time
 import uuid
+from manual.runtime_controls.support import invoke_json
 
 
 def foreground():
+    if sys.platform != 'win32':
+        return None  # Game-native actions still work; Windows foreground evidence does not.
     user = ctypes.WinDLL('user32')
     user.GetForegroundWindow.restype = wintypes.HWND
     user.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
@@ -29,6 +32,8 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--require-background', action='store_true')
     args = parser.parse_args()
+    if args.require_background and sys.platform != 'win32':
+        parser.error('--require-background 只验证 Windows 前台；macOS 请省略')
     output = Path(args.output).resolve()
     if output.exists():
         raise ValueError('验收输出必须是新文件')
@@ -37,11 +42,9 @@ def main():
 
     def call(*command, allow_failure=False):
         started = time.monotonic()
-        process = subprocess.run(prefix + list(command) + ['--session', args.session, '--json'],
-                                 capture_output=True, encoding='utf-8', timeout=25)
-        data = json.loads(process.stdout)
+        data, code = invoke_json(prefix + list(command) + ['--session', args.session, '--json'], timeout=60)
         history.append({'command': command, 'elapsed_seconds': time.monotonic()-started, 'result': data})
-        if not allow_failure and (process.returncode or not data.get('ok')):
+        if not allow_failure and (code or not data.get('ok')):
             raise RuntimeError(data)
         return data
 
@@ -51,7 +54,12 @@ def main():
         until=time.monotonic()+6
         while True:
             state=state or snapshot()
-            if predicate(state):return state
+            if predicate(state):
+                # The settings screen appears before its opening animation ends.
+                # Observe it again after settling; never replay an unconfirmed click.
+                time.sleep(.5)
+                state=snapshot()
+                if predicate(state):return state
             if time.monotonic()>=until:raise RuntimeError('UI 未在时限内达到预期状态；未重复发送点击')
             time.sleep(.15)
             state=None
@@ -92,12 +100,12 @@ def main():
             call('runtime', 'py', '--side', 'client', '--code', 'mcpy.api.OpenPauseGui()')
             state = snapshot()
         if state['screen'] == 'pause.pause_screen':
-            row = select(state, lambda r: r['role']=='button' and r['name']=='设置')
+            row = select(state, lambda r: r['role']=='button' and (r['name'] in ('设置', 'Settings') or r['path'].endswith('/settings_button')))
             action(state, row)
             state = wait_snapshot(lambda s:s['screen']=='settings.screen_world_controls_and_settings')
         assert state['screen'] == 'settings.screen_world_controls_and_settings'
         if not state['top'].endswith('game_tab'):
-            action(state, select(state, lambda r: r['role']=='toggle' and r['name']=='游戏'))
+            action(state, select(state, lambda r: r['role']=='toggle' and r['name'] in ('游戏', 'Game')))
             state = snapshot()
         scroll = select(state, lambda r: r['role']=='scroll' and '/content_area/' in r['path'])
         original_scroll = scroll['value']
@@ -110,30 +118,31 @@ def main():
         assert scroll['value'] == 50
         action(state, scroll, 'scroll', '--percent', str(original_scroll))
         state = snapshot()
-        audio = select(state, lambda r: r['role']=='toggle' and r['name']=='音频')
+        audio = select(state, lambda r: r['role']=='toggle' and r['name'] in ('音频', 'Audio'))
         rid = action(state, audio)
         repeated = ui('click', str(audio['id']), '--snapshot', state['snapshot'], '--request-id', rid)
         assert repeated['state'] == 'completed' and repeated['released']
         state = snapshot()
-        state = wait_snapshot(lambda s:s['top'].endswith('sound_tab') and any(r['name']=='音频设置' for r in s['nodes']),state)
-        volume = select(state, lambda r: r['role']=='slider' and r['name'].startswith('主音量：'))
+        state = wait_snapshot(lambda s:s['top'].endswith('sound_tab'),state)
+        def master_volume(r):
+            return r['role']=='slider' and (r['name'].startswith(('主音量', 'Main Volume', 'Master Volume')) or 'main_volume' in r['path'])
+        volume = select(state, master_volume)
         original_volume = volume['value']
         action(state, volume, 'slide', '--fraction', '0.25')
         state = snapshot()
-        volume = select(state, lambda r: r['role']=='slider' and r['name'].startswith('主音量：'))
-        assert abs(volume['value']-.25) < .02 and volume['name']=='主音量：25'
+        volume = select(state, master_volume)
+        assert abs(volume['value']-.25) < .02
     except Exception as exc:
         error = str(exc)
     finally:
         if original_volume is not None:
             try:
                 state = snapshot()
-                volume = select(state, lambda r: r['role']=='slider' and r['name'].startswith('主音量：'))
+                volume = select(state, master_volume)
                 action(state, volume, 'slide', '--fraction', str(original_volume))
                 restored = snapshot()
-                restored_volume = select(restored, lambda r: r['role']=='slider' and r['name'].startswith('主音量：'))
+                restored_volume = select(restored, master_volume)
                 assert abs(restored_volume['value']-original_volume) < .02
-                assert restored_volume['name'] == '主音量：' + str(round(original_volume*100))
             except Exception as exc:
                 error = (error or '') + '\n恢复失败: ' + str(exc)
         stop.set(); watcher.join()
@@ -141,6 +150,7 @@ def main():
             error = (error or '') + '\n验收期间游戏曾成为前台'
         result = {'ok': error is None, 'error': error, 'session': args.session,
                   'game_pid': game['pid'], 'observations': observations,
+                  'desktop_verification_supported': sys.platform == 'win32',
                   'original_volume': original_volume, 'history': history}
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')

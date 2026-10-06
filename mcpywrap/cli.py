@@ -20,6 +20,7 @@ from .commands.mod_cmd import mod_cmd
 from .commands.edit_cmd import edit_cmd
 from .commands.ui_cmd import ui_cmd
 from .commands.doctor_cmd import doctor_cmd
+from .commands.engine_cmd import engine_cmd
 from .commands.sync_cmd import sync_cmd
 from .commands.session_cmd import status_cmd, logs_cmd, stop_cmd
 from .commands.runtime_cmd import py_cmd, reload_cmd, runtime_cmd
@@ -59,6 +60,7 @@ cli.add_command(connect_cmd, name='connect')
 cli.add_command(edit_cmd, name='edit')
 cli.add_command(ui_cmd, name='ui')
 cli.add_command(doctor_cmd, name='doctor')
+cli.add_command(engine_cmd)
 cli.add_command(sync_cmd, name='sync')
 cli.add_command(status_cmd)
 cli.add_command(logs_cmd)

@@ -184,7 +184,7 @@ class QuModWorkflow(QuModFixture):
 @unittest.skipUnless(os.name == 'nt', 'Qt is Windows-only')
 class QuModGUI(QuModFixture):
     def test_shortcut_cancel_does_not_register_dependency(self):
-        from PyQt5.QtWidgets import QApplication
+        from PySide6.QtWidgets import QApplication
         from mcpywrap.ui import project_ui as ui
         app = QApplication.instance() or QApplication([])
         for name in ('A', 'B'):
@@ -205,7 +205,7 @@ class QuModGUI(QuModFixture):
             app.processEvents()
 
     def test_background_add_list_sync_and_remove(self):
-        from PyQt5.QtWidgets import QApplication, QMessageBox
+        from PySide6.QtWidgets import QApplication, QMessageBox
         from mcpywrap.ui import project_ui as ui
         app = QApplication.instance() or QApplication([])
         with patch.object(ui, 'find_all_mcpywrap_packages', return_value=[]):
@@ -228,7 +228,7 @@ class QuModGUI(QuModFixture):
             window.sync_dependencies()
             wait()
             window.dependency_list.setCurrentRow(0)
-            with patch.object(QMessageBox, 'question', return_value=QMessageBox.Yes):
+            with patch.object(QMessageBox, 'question', return_value=QMessageBox.StandardButton.Yes):
                 window.remove_selected_dependency()
             self.assertEqual(window.dependency_list.count(), 0)
         finally:

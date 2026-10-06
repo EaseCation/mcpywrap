@@ -11,7 +11,7 @@ import tarfile
 import tempfile
 import time
 
-from .source_files import _git, _relative, digest, long_path
+from .source_files import _git, _relative, digest, long_path, windows_checkout_digest
 from .dependencies import DependencyError
 
 
@@ -71,7 +71,8 @@ def _verified(container, url, commit):
     try:
         record = json.loads((container / 'source.json').read_text('utf-8'))
         content = container / 'content'
-        if record['git'] != url or record['rev'] != commit or digest(content) != record['sha256']:
+        if record['git'] != url or record['rev'] != commit or (digest(content) != record['sha256'] and
+                windows_checkout_digest(content, crlf=False) != record['sha256']):
             raise ValueError('源码摘要不符')
         if not content.is_dir() or content.is_symlink():
             raise ValueError('源码目录缺失或是链接')

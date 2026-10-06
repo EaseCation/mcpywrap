@@ -48,9 +48,18 @@ def recv_frame(sock):
     return kind, recv_exact(sock, size)
 
 
+def _process_udp_connections(pid):
+    process = psutil.Process(pid)
+    # net_connections is the new name; keep compatibility with psutil 5.x.
+    query = getattr(process, 'net_connections', None) or process.connections
+    return query(kind='udp')
+
+
 def owned_udp_ports(pid):
-    return {item.laddr.port for item in psutil.net_connections(kind='udp')
-            if item.pid == pid and item.laddr and item.laddr.port in DISCOVERY_PORTS}
+    # Per-process discovery preserves ownership checks and works on macOS
+    # without the root privilege required by psutil.net_connections().
+    return {item.laddr.port for item in _process_udp_connections(pid)
+            if item.laddr and item.laddr.port in DISCOVERY_PORTS}
 
 
 def owned_udp_endpoints(pid):
@@ -58,18 +67,18 @@ def owned_udp_endpoints(pid):
     addresses = {'127.0.0.1'}
     for items in psutil.net_if_addrs().values():
         addresses.update(item.address for item in items if item.family == socket.AF_INET)
-    for item in psutil.net_connections(kind='udp'):
-        if item.pid != pid or not item.laddr or item.laddr.port not in DISCOVERY_PORTS:
+    for item in _process_udp_connections(pid):
+        if not item.laddr or item.laddr.port not in DISCOVERY_PORTS:
             continue
         targets = addresses if item.laddr.ip == '0.0.0.0' else (item.laddr.ip,)
         endpoints.update((address, item.laddr.port) for address in targets)
     return endpoints
 
 
-def script_request(code, request_id):
+def script_request(code, request_id, emit_result=True):
     encoded = base64.b64encode(code.encode('utf-8')).decode('ascii')
     # The game runs Python 2. The single result line is independent of user print output.
-    return '''# coding: utf-8
+    source = '''# coding: utf-8
 import base64 as _m_b64, json as _m_json, sys as _m_sys, traceback as _m_tb
 class _McpyCapture(object):
     def __init__(self): self.parts = []
@@ -83,13 +92,15 @@ def _m_text(parts):
     return u''.join([part if isinstance(part, unicode) else part.decode('utf-8', 'replace') for part in parts])
 try:
     _m_sys.stdout, _m_sys.stderr = _m_out, _m_err
-    _m_code = _m_b64.b64decode('%s')
+    _m_code = '# coding: utf-8' + chr(10) + _m_b64.b64decode('%s')
     try:
-        _m_value = eval(compile(_m_code, '<mcpy>', 'eval'), _m_scope, _m_scope)
+        _m_compiled = compile(_m_code, '<mcpy>', 'eval')
     except SyntaxError:
         _m_scope.pop('_result', None)
         exec compile(_m_code, '<mcpy>', 'exec') in _m_scope, _m_scope
         _m_value = _m_scope.pop('_result', None)
+    else:
+        _m_value = eval(_m_compiled, _m_scope, _m_scope)
 except BaseException:
     _m_error = _m_tb.format_exc()
 finally:
@@ -106,11 +117,13 @@ if len(_m_serialized) > 180000:
                                   'error': 'result_too_large'})
 print('__MCPY_RESULT_%s__' + _m_b64.b64encode(_m_serialized))
 ''' % (encoded, request_id)
+    return source if emit_result else source.rsplit("print('__MCPY_RESULT_", 1)[0]
 
 
 class SafaiaChannel:
-    def __init__(self, log_write):
+    def __init__(self, log_write, ready=None):
         self.log_write = log_write
+        self.ready = ready
         self.listener = socket.socket()
         self.listener.bind(('127.0.0.1', 0))
         self.listener.listen(2)
@@ -224,6 +237,11 @@ class SafaiaChannel:
             raise ValueError('执行侧必须为 client 或 server')
         if not isinstance(code, str) or not code.strip() or len(code.encode('utf-8')) > MAX_CODE:
             raise ValueError('代码必须是非空 UTF-8 文本且不超过 32 KiB')
+        # Safaia connects before the Windows game Python systems initialize.
+        # Sending then can lose the result and permanently occupy this channel.
+        if self.ready is not None and not self.ready():
+            return {'state': 'unavailable', 'side': side,
+                    'error': '世界尚未就绪，请等待加载完成；此请求未发送到游戏'}
         if not self.serial.acquire(blocking=False):
             raise ValueError('已有游戏脚本正在执行')
         try:
@@ -297,7 +315,22 @@ class _ControlHandler(socketserver.BaseRequestHandler):
             if request.get('token') != self.server.token:
                 raise ValueError('会话控制凭据无效')
             if request.get('action') == 'execute':
-                result = self.server.channel.execute(request.get('code'), request.get('side', 'client'))
+                options = {'condition': request['condition']} if request.get('condition') is not None else {}
+                if options and not hasattr(self.server.channel, 'submit'):
+                    raise ValueError('此会话不支持客户端 Python 等待条件')
+                result = self.server.channel.execute(request.get('code'), request.get('side', 'client'), **options)
+            elif request.get('action') in ('submit', 'python-result', 'python-cancel', 'python-status'):
+                channel = self.server.channel
+                if not hasattr(channel, 'submit'):
+                    raise ValueError('此会话没有启动器客户端 Python 请求通道')
+                if request.get('side', 'client') != 'client':
+                    raise ValueError('请求队列只支持客户端，服务端请使用原有 runtime py --side server')
+                if request['action'] == 'submit':
+                    result = channel.submit(request.get('code'), request.get('condition'), request.get('request_id'))
+                elif request['action'] == 'python-status':
+                    result = channel.status()
+                else:
+                    result = channel.request(request.get('request_id'), cancel=request['action'] == 'python-cancel')
             elif request.get('action') == 'reload':
                 from .hot_reload import reload_code
                 source = request.get('source')
