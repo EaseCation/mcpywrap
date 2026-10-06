@@ -66,6 +66,10 @@ class BackendTests(unittest.TestCase):
 
     def test_tty_install_progress_cleanup_and_actionable_error(self):
         from rich.console import Console
+        from rich.progress import Progress
+        progress_views = []
+        def create_progress(*args, **kwargs):
+            view = Progress(*args, **kwargs); progress_views.append(view); return view
         backend = Mock(spec=GameBackend)
         stream = io.StringIO()
         def failed(catalog, apk, progress):
@@ -73,13 +77,14 @@ class BackendTests(unittest.TestCase):
             raise EngineError('连接中断', 'download_failed', '重新运行即可续传。')
         backend.install.side_effect = failed
         with patch('mcpywrap.commands.engine_cmd.get_backend', return_value=backend), \
-                patch('mcpywrap.commands.engine_cmd.Console', return_value=Console(file=stream, force_terminal=True, force_interactive=True)):
+                patch('mcpywrap.commands.engine_cmd.Console', return_value=Console(file=stream, force_terminal=True, force_interactive=True)), \
+                patch('mcpywrap.commands.engine_cmd.Progress', side_effect=create_progress):
             result = self.runner.invoke(cli, ['--local', '--project', str(self.root), 'engine', 'install'])
         self.assertEqual(result.exit_code, 1)
         self.assertIn('连接中断', result.stderr)
         self.assertIn('重新运行即可续传', result.stderr)
         self.assertIn('下载游戏资源', stream.getvalue())
-        self.assertTrue(stream.getvalue().endswith('\n'))
+        self.assertFalse(progress_views[0].live.is_started)
 
     def test_official_version_discovery_uses_both_channels_without_guessing(self):
         from mcpywrap.engines import official
