@@ -1,14 +1,14 @@
-# 0.4.0 候选版验收与发布门槛
+# 0.4.0 发行与验收记录
 
-本分支用于 Windows 全功能复测，不会自动发布 PyPI。Python 包版本为 0.4.0；原生 macOS 运行包使用单独的不可变版本号。mcpy 安装、项目初始化与游戏资源准备是三个阶段，CLI/Qt 共用同一个后端。
+发行通过 main 上的版本标签触发 PyPI 发布。Python 包版本为 0.4.0；原生 macOS 运行包使用单独的不可变版本号。mcpy 安装、项目初始化与游戏资源准备是三个阶段，CLI/Qt 共用同一个后端。
 
 ## 完成度结论
 
 - Windows：用户手动安装 MC Studio 并在其中下载引擎，这是正式设计。mcpy 负责发现、诊断和接入，不自动安装 MC Studio。新 PySide6 UI 和共用命令需要在真实 Windows 桌面复测。
 - macOS：mcpy run 从内置固定 HTTPS 发行目录自动下载原生运行包及网易开发者 APK，校验、提取后继续运行；用户无需填写 catalog/APK 路径。
 - 原生启动器适配位于独立的 launcher/submodule 工作区，不包含在本 mcpy Git 分支；发布前需将对应源码/构建引用固定并推送，或分发已校验的完整对应源码归档。
-- 原生运行包公开分发于 EaseCation/mcpelauncher-manifest 的 mcpy-runtime-v0.4.0-preview.1 Release，附带对应源码、catalog 和摘要；Python 0.4.0 的 PyPI 发布仍是单独步骤。
-- macOS 运行包当前 ad-hoc 签名，公开下载后的 Gatekeeper 行为和最低实际系统尚未验收。编译目标 11.0 不等于完整 Qt GUI 支持 11.0，Qt wheel 的系统/Python 要求以解析结果为准。
+- 原生运行包公开分发于 EaseCation/mcpelauncher-manifest 的 mcpy-runtime-v0.4.0 Release，附带对应源码、catalog 和摘要；Python 0.4.0 的 PyPI 发布仍是单独步骤。
+- macOS 运行包当前 ad-hoc 签名，公开下载后的 Gatekeeper 行为和最低实际系统尚未验收。正式最低版本统一为 macOS 13.0，实际游戏验收环境为 26.6.2。
 - macOS 离线 Addon 范围内工作；MCEditor、本地 Map、联网/身份登录以及 Windows 桌面截图/录制不伪装为可用。JSON UI 热更更新定义，需要重新注册/创建业务 UI 和回调。
 
 ## 包管理安装
@@ -20,7 +20,7 @@ uv tool install --python 3.12 mcpywrap==0.4.0
 mcpy --help
 ```
 
-候选版尚未上传 PyPI。Windows 优先下载本分支 Actions 的 `distributions` artifact，解压后在 PowerShell 执行（替换为实际路径）：
+正式版使用上面的包管理安装命令。发布前候选验收可下载 Actions 的 `distributions` artifact，解压后在 PowerShell 执行（替换为实际路径）：
 
 ```powershell
 uv tool install --force --python 3.12 .\mcpywrap-0.4.0-py3-none-any.whl

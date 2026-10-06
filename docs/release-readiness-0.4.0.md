@@ -1,6 +1,8 @@
 # 0.4.0 正式发布核查与合并计划
 
-核查日期：2026-10-06（Asia/Shanghai）。本次核查不执行合并、正式 Release 或 PyPI 发布。
+核查日期：2026-10-06（Asia/Shanghai）。核查后用户已授权正式发布；最低 macOS 统一调整为 13.0。
+
+后续执行：原生运行包以 `mcpy-runtime-v0.4.0` 发布，mcpy 默认目录切换到正式 URL，PR #3 合入 main 后由 v0.4.0 标签发布。以下核查条目保留原始背景；正式结果以 GitHub Release、PR 和 PyPI 为准。
 
 ## 发行物与自动化
 

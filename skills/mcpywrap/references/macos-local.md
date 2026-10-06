@@ -26,14 +26,14 @@ mcpy --local --project <项目> stop --session <sid> --json
 
 暂不支持本地 Map、联机服务器、MCS 身份、MCEditor 及 Windows screenshot/key/mouse/input-sequence/record。需要它们时使用显式 Windows --remote，不静默回退或尝试登录。macOS 前台 run 的 Ctrl+C 请求保存退出；一次性测试结束必须 stop 并确认进程退出，关闭自己创建的窗口。
 
-编译目标为 macOS 11.0，游戏实测仅 26.6.2；包目前 ad-hoc 签名，未公证，不宣称已验证最低系统或 Gatekeeper。失败时提供实际错误及日志，不能建议全局关闭系统保护。
+最低版本为 macOS 13.0，游戏实测仅 26.6.2；包目前 ad-hoc 签名，未公证，不宣称已验证最低系统或 Gatekeeper。失败时提供实际错误及日志，不能建议全局关闭系统保护。
 
 
 Windows 与 macOS 共用 PySide6 界面：人工使用 `mcpy --local --project <项目> ui`；人工 run 默认只显示游戏和紧凑调试小窗，Agent 使用 --non-interactive run --no-gui --detach --json。界面提供依赖管理、Mod 模板、实例、运行资源引导、Debug 日志、双端 Python、文件热更、自动监控、保存退出和重新部署重载世界。MCEditor 在 macOS 明确禁用。
 
 `runtime watch --session <sid> --side client|server|both` 与 GUI 共用监控服务，停止监控保留游戏。模块热更只对已加载模块执行源码，修改实例方法、事件注册、新增入口或资源应保存重载世界，避免重复注册。both 仅适合可安全重复执行的公共模块。
 
-新运行包声明 addon_link_protocol=1 时，行为包/资源包软链接到实例 assembled 目录，多依赖仍由统一组装器合并；不复制第二份运行包。旧运行包固定在原实例，保留复制兼容流程。Qt 与原生启动器有各自的系统下限：本机 Qt 6.11.2 的 Mach-O 最低 macOS 13.0，原生运行组件构建目标仍为 11.0，不能据此承诺整个 GUI 支持 11.0。
+新运行包声明 addon_link_protocol=1 时，行为包/资源包软链接到实例 assembled 目录，多依赖仍由统一组装器合并；不复制第二份运行包。旧运行包固定在原实例，保留复制兼容流程。Qt 与原生启动器有各自的系统下限：本机 Qt 6.11.2 的 Mach-O 最低 macOS 13.0，正式原生运行包也统一要求 macOS 13.0；最低版本的实际游戏表现仍需单独验证。
 
 人工交互式 mcpy run 或通过 mcpy ui 启动游戏后自动出现可折叠、可置顶的彩色日志小窗，与主界面共享会话、日志和监控。关闭小窗只隐藏视图；结束测试仍使用 stop 或“保存退出”，不能把小窗消失当成游戏已退出。新会话不要另起 studio_server_ui --port 监听器。
 

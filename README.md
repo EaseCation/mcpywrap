@@ -9,7 +9,7 @@ mcpywrap 使用 `pyproject.toml` 管理开发侧依赖，复用本地 Addon 的�
 
 ## 安装
 
-需要 Python 3.9 或更高版本。Windows 使用 MC Studio 引擎；Apple Silicon macOS 使用预构建启动器和开发者 APK，支持离线 Addon 世界。两端共用 PySide6 项目界面；MCEditor 仅支持 Windows。参见 [Qt6 开发界面](docs/qt6-development.md) 和 [GUI 依赖许可说明](THIRD_PARTY_NOTICES.md)。
+需要 Python 3.9 或更高版本。Windows 使用 MC Studio 引擎；Apple Silicon macOS 13.0+ 使用预构建启动器和开发者 APK，支持离线 Addon 世界。两端共用 PySide6 项目界面；MCEditor 仅支持 Windows。参见 [Qt6 开发界面](docs/qt6-development.md) 和 [GUI 依赖许可说明](THIRD_PARTY_NOTICES.md)。
 
 推荐通过 [uv](https://docs.astral.sh/uv/) 安装：
 
@@ -112,7 +112,7 @@ mcpy runtime watch --session <id>
 
 本地世界支持客户端和服务端执行；联机会话只支持客户端。`py --file` 在调用端读取 UTF-8 内容，返回输出、表达式或 `_result` 的值及异常。执行超时的状态为 `unknown`，游戏内代码可能仍会运行，不应自动重试。
 
-`runtime reload` 支持 `python/ui/shader/material/particle`，资源类型通过 `--file` 指向项目包内目标；`runtime watch` 在成功构建后自动触发 Python 热更，资源变化提示手动重载。热更支持 Windows 和 Apple Silicon macOS 的本地测试世界。资源能力按后端区分：macOS 新运行包支持 JSON UI 定义重载，需重建自定义界面；旧运行包及当前材质、Shader 返回 unsupported，已有粒子文件更新已验证，详见 [macOS 资源热更参考](docs/macos-resource-reload.md)。Python 要求模块已加载，现有对象或事件订阅不会自动重建；JSON UI 返回 `triggered` 仅表示重载请求已投递，需要用画面确认效果。3.9.0.401155 和 3.10.0.420447 的 Shader 重载已禁用，Material 在这两版没有对应接口。接口与版本限制见[运行时调试参考](docs/runtime-debug.md)。
+`runtime reload` 支持 `python/ui/shader/material/particle`，资源类型通过 `--file` 指向项目包内目标；`runtime watch` 在成功构建后自动触发 Python 热更，资源变化提示手动重载。热更支持 Windows 和 Apple Silicon macOS 13.0+ 的本地测试世界。资源能力按后端区分：macOS 新运行包支持 JSON UI 定义重载，需重建自定义界面；旧运行包及当前材质、Shader 返回 unsupported，已有粒子文件更新已验证，详见 [macOS 资源热更参考](docs/macos-resource-reload.md)。Python 要求模块已加载，现有对象或事件订阅不会自动重建；JSON UI 返回 `triggered` 仅表示重载请求已投递，需要用画面确认效果。3.9.0.401155 和 3.10.0.420447 的 Shader 重载已禁用，Material 在这两版没有对应接口。接口与版本限制见[运行时调试参考](docs/runtime-debug.md)。
 
 通常不需要手动指定游戏路径。mcpywrap 会优先查找 MC Studio 登记的安装，必要时搜索固定磁盘中的标准下载目录，并跳过不完整的引擎版本。
 
