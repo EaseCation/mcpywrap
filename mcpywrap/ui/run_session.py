@@ -64,7 +64,7 @@ def show_session_window(project, backend, result):
         click.echo('调试小窗已打开；Ctrl+C 退出游戏，或在小窗中选择“保存退出”。')
         app.exec()
         data = sessions.read(project, view.controller.data.get('session', result['session']))
-        if data.get('state') == 'failed' or data.get('exit_code', 0):
+        if sessions.failed_exit(project, data.get('session', result['session']), data):
             raise click.ClickException(data.get('error') or '游戏异常退出，请查看会话日志。')
         return {'session': data.get('session', result['session']), 'state': 'exited', 'backend': backend.id}
     finally:

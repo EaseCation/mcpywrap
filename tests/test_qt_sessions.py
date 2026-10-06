@@ -225,6 +225,28 @@ class GuiTests(unittest.TestCase):
             stop.assert_called_once_with(str(self.root), 'b'*32)
             view.dispose()
 
+    def test_requested_nonzero_exit_is_success_but_crashes_remain_errors(self):
+        import click
+        from mcpywrap.ui.run_session import show_session_window
+        from mcpywrap.mcstudio import sessions
+        sid = 'c'*32
+        directory = sessions.session_path(self.root, sid)
+        directory.mkdir(parents=True)
+        marker = directory/'stop'
+        for requested, state, code in ((True, 'exited', 15), (False, 'exited', 15),
+                                       (True, 'failed', 0)):
+            with self.subTest(requested=requested, state=state):
+                if requested: marker.touch()
+                else: marker.unlink(missing_ok=True)
+                record = {'session': sid, 'state': state, 'game': None, 'exit_code': code}
+                with patch.object(sessions, 'read', return_value=record):
+                    if requested and state == 'exited':
+                        result = show_session_window(self.root, self.backend, {'session': sid})
+                        self.assertEqual(result['state'], 'exited')
+                    else:
+                        with self.assertRaises(click.ClickException):
+                            show_session_window(self.root, self.backend, {'session': sid})
+
     def test_install_failure_keeps_gui_open_and_retry_can_continue(self):
         from mcpywrap.engines.host import EngineError
         backend = Mock(spec=GameBackend, setup_description='fixture')

@@ -246,5 +246,19 @@ class BackendTests(unittest.TestCase):
         stop.assert_called_once_with(self.root, 'a'*32)
         self.assertEqual(result['state'], 'exited')
 
+    def test_tui_requested_stop_accepts_nonzero_termination_but_not_failure(self):
+        import click
+        from mcpywrap.engines.tui import watch_session
+        from mcpywrap.mcstudio import sessions
+        sid = 'd'*32
+        directory = sessions.session_path(self.root, sid)
+        directory.mkdir(parents=True)
+        (directory/'stop').touch()
+        with patch.object(sessions, 'read', return_value={'state': 'exited', 'exit_code': 15}):
+            self.assertEqual(watch_session(self.root, sid)['state'], 'exited')
+        with patch.object(sessions, 'read', return_value={'state': 'failed', 'exit_code': 0, 'error': 'save failed'}):
+            with self.assertRaisesRegex(click.ClickException, 'save failed'):
+                watch_session(self.root, sid)
+
 
 if __name__ == '__main__': unittest.main()

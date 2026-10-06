@@ -608,7 +608,7 @@ def _run_windows(base_dir, *, new=False, listing=False, delete=None, force=False
             click.echo('游戏继续运行；使用 stop --session ' + data['session'] + ' 停止。', err=True)
             raise
         final = sessions.read(base_dir, data['session'])
-        if final['state'] == 'failed' or final.get('exit_code', 0) != 0:
+        if sessions.failed_exit(base_dir, data['session'], final):
             raise click.ClickException(final.get('error') or '游戏异常退出，请查看会话日志')
         return result
     success, _ = _run_game_with_instance(config_path, level_id, all_packs,

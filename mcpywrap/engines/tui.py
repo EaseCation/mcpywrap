@@ -28,7 +28,7 @@ def watch_session(project, session):
         console.print('正在保存世界并关闭窗口…')
         sessions.stop(project, session)
     data = sessions.read(project, session)
-    if data['state'] == 'failed' or data.get('exit_code', 0):
+    if sessions.failed_exit(project, session, data):
         raise click.ClickException(data.get('error') or '游戏异常退出；请查看 logs --source engine')
     return {'session': session, 'state': 'exited', 'backend': data.get('backend', 'windows')}
 

@@ -90,6 +90,16 @@ class NetworkSessions(unittest.TestCase):
                 network.run_network(network.ServerTarget('localhost'))
         self.assertEqual(error.exception.exit_code, 1)
 
+    def test_frontend_requested_termination_preserves_code_without_failing(self):
+        directory = sessions.session_path(self.root, self.data['session'])
+        directory.mkdir(parents=True)
+        (directory/'stop').touch()
+        with project_scope(self.root), patch.object(sessions, 'read', return_value={
+                'state': 'exited', 'exit_code': 15}):
+            result = network.run_network(network.ServerTarget('localhost'))
+        self.assertEqual(result['state'], 'exited')
+        self.assertEqual(result['exit_code'], 15)
+
     def test_start_failure_does_not_return_handoff(self):
         self.start.side_effect = ValueError('启动等待超时')
         result = self.call('connect', 'localhost', '--detach')

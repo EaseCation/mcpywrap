@@ -154,6 +154,13 @@ def stop(project, session):
     return {'session': session, 'state': 'exited'}
 
 
+def failed_exit(project, session, data):
+    """Requested termination may be nonzero; worker failures are never masked."""
+    if data.get('state') == 'failed':
+        return True
+    return bool(data.get('exit_code', 0)) and not (session_path(project, session)/'stop').is_file()
+
+
 def logs(project, session, tail=100, source='game'):
     from collections import deque
     if source not in ('game', 'engine', 'worker') or type(tail) is not int or not 1 <= tail <= 10000:

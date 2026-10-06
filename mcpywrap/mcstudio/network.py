@@ -169,7 +169,7 @@ def run_network(target, *, project_dir=None, packs=(), engine_overrides=None, de
         finally:
             for stream, _ in tails:
                 stream.close()
-    if final['state'] == 'failed' or final.get('exit_code', 0):
+    if sessions.failed_exit(root, data['session'], final):
         raise click.ClickException(final.get('error') or f"游戏退出码 {final['exit_code']}；日志: {data['log_path']}")
     result.update(state=final['state'], exit_code=final.get('exit_code', 0))
     return result
