@@ -12,7 +12,7 @@
 | Windows 登录桥接、截图/录制程序 | CI 用 MSVC 编译；登录桥接在 main/tag 使用已配置的项目证书签名 | 包含在 wheel/sdist；普通候选分支产物未签名 |
 | macOS ARM64 运行包、完整对应源码、catalog、SHA256SUMS | manifest 的 mcpy-runtime.yml；手动启动 CI 后自动构建/审计/打包 | publish=false 仅 artifact；publish=true 且 prerelease=false 创建正式 GitHub Release |
 | ANGLE 和 Android 支持库 | 复用上游固定版本预构建内容，ANGLE 下载有 SHA-256 校验；不依赖本机 Launcher | 集成到 macOS 运行包，保留许可证与来源 |
-| 网易开发者 APK | 客户端从网易官方 CDN 获取固定版本并验证摘要 | 不上传到我们的 GitHub/PyPI |
+| 网易开发者 APK | 首次安装通过官方 pe 发现最新版并下载，校验实际 APK 与结构兼容性 | 不上传到我们的 GitHub/PyPI |
 | PySide6/Qt6 | 由 Python 包管理器安装兼容的官方 wheel | 不打入 mcpy wheel，不需要自编译 Qt |
 
 当前公开运行包是 `mcpy-runtime-v0.4.0-preview.1`，含 3.10.100.299889 profile。目录和原生包可匿名下载，对应源码和摘要已公开。Python 0.4.0 尚未上传 PyPI；当前正式版为 0.3.19。默认安装入口仍固定到该 preview，正式发行前需选择最终运行包版本并更新 DEFAULT_CATALOG。

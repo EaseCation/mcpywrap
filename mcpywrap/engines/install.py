@@ -109,6 +109,7 @@ def catalog(location=None):
 def validate_catalog(data):
     try:
         runtime, profile = data['runtime'], data['profile']
+        if data.get('apk_source') not in (None, 'netease-pe'): raise ValueError('不支持的 APK 发现来源')
         if data['schema'] != 1 or runtime['platform'] != 'darwin-arm64':
             raise ValueError('平台或 schema 不兼容')
         if not re.fullmatch('[A-Za-z0-9_.-]{1,100}', runtime['id']) or runtime['id'] in ('.', '..'):
@@ -222,7 +223,7 @@ def fetch(source, target, expected, size, progress=None):
 
 
 
-def _fetch_ranges(source, target, expected, size, progress=None, *, chunk_size=16*1024*1024, workers=8):
+def _fetch_ranges(source, target, expected, size, progress=None, *, chunk_size=16*1024*1024, workers=8, source_identity=None):
     """Resume verified-size CDN ranges, adapted from the validated APK downloader."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     import threading
@@ -230,6 +231,7 @@ def _fetch_ranges(source, target, expected, size, progress=None, *, chunk_size=1
     ledger = target.with_suffix(target.suffix + '.ranges.json')
     count = (size + chunk_size - 1) // chunk_size
     identity = {'sha256': expected, 'size': size, 'chunk_size': chunk_size}
+    if source_identity: identity['source'] = source_identity
     done = set()
     if ledger.is_file():
         try:
@@ -245,7 +247,7 @@ def _fetch_ranges(source, target, expected, size, progress=None, *, chunk_size=1
             done = set(state.get('done', []))
             length = part.stat().st_size if part.is_file() else 0
             done = {i for i in done if min(size, (i+1)*chunk_size) <= length}
-    elif part.is_file():
+    elif part.is_file() and expected is not None:
         length = part.stat().st_size
         if length == size and digest(part) == expected:
             part.replace(target); return target
@@ -271,7 +273,9 @@ def _fetch_ranges(source, target, expected, size, progress=None, *, chunk_size=1
             if cancelled.is_set(): return None
             update(index, 0)
             try:
-                request = Request(source, headers={'Range': 'bytes=%d-%d' % (start, end), 'User-Agent': 'mcpywrap'})
+                headers = {'Range': 'bytes=%d-%d' % (start, end), 'User-Agent': 'mcpywrap'}
+                if source_identity: headers['If-Range'] = source_identity['validator']
+                request = Request(source, headers=headers)
                 with urlopen(request, timeout=30) as response:
                     if response.status != 206 or response.headers.get('Content-Range') != 'bytes %d-%d/%d' % (start, end, size):
                         raise EngineError('网易 CDN 分段响应与清单不匹配', 'download_changed')
@@ -316,7 +320,7 @@ def _fetch_ranges(source, target, expected, size, progress=None, *, chunk_size=1
         raise
     finally:
         pool.shutdown(wait=True)
-    if digest(part) != expected:
+    if expected is not None and digest(part) != expected:
         part.unlink(missing_ok=True); ledger.unlink(missing_ok=True)
         raise EngineError('下载文件 SHA-256 不匹配；未安装该文件。', 'integrity_error')
     part.replace(target); ledger.unlink(missing_ok=True)
@@ -325,15 +329,13 @@ def _fetch_ranges(source, target, expected, size, progress=None, *, chunk_size=1
 
 
 def official_apk_url(profile):
-    # The verified profile already names the official CDN object. pe/pe_old are
-    # moving discovery channels and must not gate downloading a pinned version.
-    filename = profile['apk']['filename']
-    if not re.fullmatch(r'dev_launcher_[0-9.]+\.apk', filename):
-        raise EngineError('无效的官方 APK 文件名', 'invalid_catalog')
-    path = '/' + filename
-    expiry = format(int(time.time()) + 43200, 'x')
-    key = hashlib.md5((CDN_CONSTANT + path + expiry).encode()).hexdigest()
-    return 'https://g79.gdl.netease.com' + path + '?' + urlencode({'key1': key, 'key2': expiry})
+    from .official import discover, signed_url
+    for channel in ('pe', 'pe_old'):
+        item = discover(channel)
+        if item['version'] == profile['apk']['version']:
+            return signed_url(item['url'])
+    raise EngineError('此旧版本已不在网易下载频道中。', 'version_unavailable',
+                      '可继续使用本地已有版本；新安装请使用当前官方版本。')
 
 
 def verify_runtime(app, integrity, profile=None):
@@ -582,6 +584,12 @@ def install(location=None, apk=None, progress=None):
     root = home(); root.mkdir(parents=True, exist_ok=True)
     from ..remote.service import directory_lock
     with directory_lock(root/'install-lock'):
+        if cat.get('apk_source') == 'netease-pe' and not apk:
+            from .official import prepare_latest
+            import copy
+            profile, downloaded = prepare_latest(root, progress)
+            cat = copy.deepcopy(cat); cat['profile'] = profile
+            apk = str(downloaded)
         destination = root/'runtimes'/runtime['id']
         game = root/'engines'/profile['apk']['sha256']/'game'
         marker = destination/'release.json'

@@ -9,7 +9,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 
 ## Windows/macOS 共用的纯命令开发入口
 
-本地 Addon 开发默认采用同一套命令，不按平台编写两份启动/调试/热更流程。AI 使用 `--local --project <目录> --non-interactive`，启动必须显式使用 `run --no-gui --detach --json`。人工交互式 `run` 默认显示日志和热更调试小窗；AI 使用 --no-gui 明确抑制小窗。macOS 首次运行自动安装资源并在 stderr 显示进度；`mcpy ui` 打开完整项目管理页。无需操作 Qt/TUI 或原生窗口；游戏仍需要图形会话和 GPU，这不是无显示服务运行。
+本地 Addon 开发默认采用同一套命令，不按平台编写两份启动/调试/热更流程。AI 使用 `--local --project <目录> --non-interactive`，启动必须显式使用 `run --no-gui --detach --json`。人工交互式 `run` 默认显示日志和热更调试小窗；AI 使用 --no-gui 明确抑制小窗。macOS 首次运行通过网易 pe 动态发现最新开发者资源，校验和结构检查后安装，并在 stderr 显示进度；`mcpy ui` 打开完整项目管理页。无需操作 Qt/TUI 或原生窗口；游戏仍需要图形会话和 GPU，这不是无显示服务运行。
 
 先读 [本地无交互开发与验收](references/local-development.md)：涵盖会话能力查询、就绪检查、双端 Python、JSON UI 重载、日志及保存退出。`runtime capabilities --session <sid> --json` 返回当前实例的能力，不能仅从宿主平台推断；旧实例固定旧运行包。优先公共 CLI，不直接调用 `_mcpy_launcher`、JNI、Safaia 或读取控制凭据。
 

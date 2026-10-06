@@ -8,9 +8,9 @@ mcpy --local --non-interactive engine install --json  # 可选：提前准备；
 mcpy --local --project <Addon项目> --non-interactive run --no-gui --detach --json
 ```
 
-mcpy 内置 EaseCation 的固定 HTTPS 发布源；普通 run 自动下载已适配的运行包和网易官方开发者 APK，不向用户索要 catalog 或 APK 路径。显式 --catalog、MCPY_RUNTIME_CATALOG 和已保存来源优先于默认值，适合开发者覆盖；--apk 只用于已有匹配 APK 的离线导入。下载和提取进度在 stderr，--json 的 stdout 保持单个结果对象。失败时按实际网络/校验/空间错误处理，不反复猜 URL 或改用未经适配的上游启动器。
+mcpy 内置 EaseCation 的固定 HTTPS 启动器发布源；首次 run 自动通过网易 pe 发现并下载最新开发者 APK，不向用户索要 catalog 或 APK 路径。显式 --catalog、MCPY_RUNTIME_CATALOG 和已保存来源优先于默认值，适合开发者覆盖；--apk 只用于已有匹配 APK 的离线导入。下载和提取进度在 stderr，--json 的 stdout 保持单个结果对象。失败时按实际网络/校验/空间错误处理，不反复猜 URL 或改用未经适配的上游启动器。
 
-默认资源目录为 ~/Library/Application Support/mcpy，MCPY_ENGINE_HOME 可隔离。无需 Homebrew、Wine、已安装的 Launcher 或 MPay 账号。发布目录固定 APK 的完整版本和摘要，最新版或正式 APK 不能直接冒充匹配资源。
+默认资源目录为 ~/Library/Application Support/mcpy，MCPY_ENGINE_HOME 可隔离。无需 Homebrew、Wine、已安装的 Launcher 或 MPay 账号。发布目录中的 APK profile 只是构建验收基线。正式目录声明 apk_source=netease-pe；首次安装动态发现完整版本和 URL，从实际 APK 校验开发者身份与 ARM64 核心、计算摘要，再做结构兼容检查。官方首次下载没有预先发布的可信 SHA-256；HTTPS 来源、ETag 分段一致性、ZIP 校验和结构检查通过后记录摘要，后续缓存/运行按该摘要校验。
 
 支持离线 Addon 世界和源码 Python Mod，使用既有项目构建/依赖能力。支持 cppconfig_protocol=1 的新运行包可按实例选择地形、模式、难度、种子及规则，见[实例世界设置](instance-world-settings.md)；旧运行包仍使用原来的平坦创造启动参数。默认重开最新实例，--new 新建；run --list 列出，run <ID前缀> 指定。项目 .runtime/macos/instances 保存世界，每个实例固定运行包与 APK。安装新版不会迁移原世界；发现版本不匹配时说明原因，不自动删除/重建。已有实例的 Mod 修改需先 stop 再 run，运行中再次 run 只返回现有会话。
 
@@ -43,4 +43,4 @@ Windows 与 macOS 共用 PySide6 界面：人工使用 `mcpy --local --project <
 
 FPS/VSync、画质、GUI 缩放、音量和输入偏好由 mcpy worker 按用户保存并在新会话导入，位置是引擎资源根目录下的 `preferences/macos`。这些不是 cppconfig 世界设置；不要为每个新实例重新配置。运行中的其他实例不会即时跟随，重开时读取最新值；先正常保存退出以确保游戏完成原生配置写入。
 
-版本发现使用 `mcpy --local engine check-updates --json`：实时查询网易 pe/pe_old，返回真实完整版本和 URL；不得递增版本号或猜测 CDN 路径。该命令只检查，不下载或替换实例。新版本 compatibility=not_checked 需实际 APK 校验与结构兼容检查，不能把“发现版本”当作“可运行”。已锁定版本的安装继续使用发布清单中的确切文件名和 SHA-256，不受移动频道变更影响。
+版本发现使用 `mcpy --local engine check-updates --json`：实时查询网易 pe/pe_old，返回真实完整版本和 URL；不得递增版本号或猜测 CDN 路径。该命令只检查，不下载或替换实例。新版本 compatibility=not_checked 需实际 APK 校验与结构兼容检查，不能把“发现版本”当作“可运行”。无需先执行此命令：首次 run 的自动安装已经查询 pe。已有本地版本/实例继续运行；缺失的旧版本若不在官方频道中则不可下载，不猜 CDN 路径。

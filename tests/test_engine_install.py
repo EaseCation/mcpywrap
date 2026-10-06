@@ -60,14 +60,29 @@ class InstallerTests(unittest.TestCase):
         download.assert_called_once_with(installer.DEFAULT_CATALOG, timeout=20)
         self.assertFalse(installer.home().exists())
 
-    def test_pinned_apk_download_does_not_depend_on_moving_discovery_channels(self):
-        from urllib.parse import urlsplit, parse_qs
-        with patch.object(installer, 'urlopen', side_effect=AssertionError('discovery request')):
-            url = installer.official_apk_url(self.profile)
-        parsed = urlsplit(url)
-        self.assertEqual(parsed.netloc, 'g79.gdl.netease.com')
-        self.assertEqual(parsed.path, '/' + self.apk.name)
-        self.assertEqual(set(parse_qs(parsed.query)), {'key1', 'key2'})
+    def test_old_missing_version_is_not_guessed_on_cdn(self):
+        from mcpywrap.engines import official
+        with patch.object(official, 'discover', return_value={'version':'9.9', 'url':'https://g79.gdl.netease.com/dev_launcher_9.9.apk'}) as discover:
+            with self.assertRaises(EngineError) as caught:
+                installer.official_apk_url(self.profile)
+        self.assertEqual(caught.exception.code, 'version_unavailable')
+        self.assertEqual([c.args[0] for c in discover.call_args_list], ['pe','pe_old'])
+
+    def test_automatic_install_discovers_profile_before_installing(self):
+        self.cat['apk_source'] = 'netease-pe'; self.catalog.write_text(json.dumps(self.cat))
+        with patch('mcpywrap.engines.official.prepare_latest', return_value=(self.profile, self.apk)) as latest:
+            result = installer.install(str(self.catalog))
+        self.assertTrue(result['ok']); latest.assert_called_once()
+        self.assertEqual(installer.selected()['catalog']['apk_source'], 'netease-pe')
+
+    def test_discovery_failure_keeps_current_installation(self):
+        installer.install(str(self.catalog), str(self.apk))
+        before = (installer.home()/'current.json').read_bytes()
+        self.cat['apk_source'] = 'netease-pe'; self.catalog.write_text(json.dumps(self.cat))
+        with patch('mcpywrap.engines.official.prepare_latest', side_effect=EngineError('offline','version_check_failed')):
+            with self.assertRaises(EngineError): installer.install(str(self.catalog))
+        self.assertEqual((installer.home()/'current.json').read_bytes(), before)
+        self.assertTrue(installer.diagnose(check_files=True)['ok'])
 
     def test_catalog_network_failure_does_not_request_manual_configuration(self):
         from urllib.error import URLError
@@ -285,6 +300,64 @@ class InstallerTests(unittest.TestCase):
                     hashlib.sha256(b'right').hexdigest(), 5, chunk_size=5, workers=1)
         self.assertFalse(target.exists())
         self.assertFalse(target.with_suffix('.bin.part').exists())
+
+    def test_profile_is_derived_from_actual_future_apk(self):
+        from mcpywrap.engines.apk_profile import inspect_apk
+        apk = self.root/'dev_launcher_3.11.777.123456.apk'
+        elf = bytearray(64); elf[:6] = b'\x7fELF\x02\x01'; struct.pack_into('<H', elf, 18, 183)
+        with zipfile.ZipFile(apk, 'w') as archive:
+            archive.writestr('AndroidManifest.xml', b'<manifest package="com.netease.mctest"/>')
+            archive.writestr('lib/arm64-v8a/libminecraftpe.so', elf)
+            archive.writestr('assets/assets/vanilla.mcp', b'fixture')
+            archive.writestr('assets/new-resource.json', b'{}')
+        profile = inspect_apk(apk, '3.11.777.123456')
+        self.assertEqual(profile['apk']['version'], '3.11.777.123456')
+        self.assertEqual(profile['file_count'], 4)
+        self.assertEqual(profile['apk']['sha256'], installer.digest(apk))
+        destination = self.root/'new-game'; destination.mkdir()
+        installer.extract_apk(apk, destination, profile)
+        self.assertEqual((destination/'assets/new-resource.json').read_bytes(), b'{}')
+
+    def test_dynamic_download_uses_discovered_url_and_reuses_verified_receipt(self):
+        from mcpywrap.engines import official
+        apk = self.root/'latest.apk'; apk.write_bytes(b'official bytes')
+        item = {'channel':'pe','version':'8.2.123.456789','url':'https://g79.gdl.netease.com/dev_launcher_8.2.123.456789.apk'}
+        def probe(request, **kwargs):
+            self.assertTrue(request.full_url.startswith(item['url']+'?'))
+            response = io.BytesIO(b'x'); response.status=206
+            response.headers={'Content-Range':'bytes 0-0/14','ETag':'"revision-one"'}
+            return response
+        def download(url, target, expected, size, progress, **kwargs):
+            self.assertIsNone(expected)
+            self.assertEqual(kwargs['source_identity']['validator'], '"revision-one"')
+            target.write_bytes(apk.read_bytes())
+        def inspect(path, version):
+            return {'apk':{'sha256':installer.digest(path), 'version':version}}
+        with patch.object(official, 'discover', return_value=item) as discover, \
+                patch.object(official, 'urlopen', side_effect=probe), \
+                patch.object(installer, '_fetch_ranges', side_effect=download) as fetch, \
+                patch('mcpywrap.engines.apk_profile.inspect_apk', side_effect=inspect):
+            first, target = official.prepare_latest(installer.home())
+            second, reused = official.prepare_latest(installer.home())
+        self.assertEqual(fetch.call_count,1)
+        self.assertEqual(discover.call_count,2)
+        self.assertEqual(first['apk']['version'], item['version'])
+        self.assertEqual(target, reused)
+        self.assertEqual(first, second)
+
+    def test_cdn_changed_identity_does_not_reuse_completed_ranges(self):
+        target = self.root/'changed.bin'; content = b'newdata!'
+        target.with_suffix('.bin.part').write_bytes(b'olddata!')
+        target.with_suffix('.bin.ranges.json').write_text(json.dumps({
+            'sha256':None,'size':8,'chunk_size':8,'done':[0],
+            'source':{'url':'https://g79.gdl.netease.com/a','validator':'old'}}))
+        response = io.BytesIO(content); response.status=206
+        response.headers={'Content-Range':'bytes 0-7/8'}
+        with patch.object(installer, 'urlopen', return_value=response) as download:
+            installer._fetch_ranges('https://g79.gdl.netease.com/a',target,None,8,
+                chunk_size=8,workers=1,source_identity={'url':'https://g79.gdl.netease.com/a','validator':'new'})
+        self.assertEqual(download.call_args.args[0].get_header('If-range'), 'new')
+        self.assertEqual(target.read_bytes(),content)
 
     def test_os_floor_fails_before_creating_home(self):
         self.cat['runtime']['minimum_macos'] = '99.0'; self.catalog.write_text(json.dumps(self.cat))
