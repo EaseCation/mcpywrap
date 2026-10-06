@@ -34,3 +34,5 @@ Windows/macOS 共同基线是 `--local --project <目录> --non-interactive run 
 smoke.py 的 --client-file/--server-file 通过同一 CLI 等待世界/HUD、分别执行一次脚本、收集 JSON/日志，并停止自己创建的游戏。可选 UI/玩家与服务端配套测试见 [手动测试入口](../tests/manual/runtime_controls/README.md)。
 
 两端单人实例共用 cppconfig 的 world_info；存储、启动转换、保存优先级和创建参数见[实例世界设置](instance-world-settings.md)。
+
+版本发现使用 `mcpy --local engine check-updates --json`：实时查询网易 pe/pe_old，返回真实完整版本和 URL；不得递增版本号或猜测 CDN 路径。该命令只检查，不下载或替换实例。新版本 compatibility=not_checked 需实际 APK 校验与结构兼容检查，不能把“发现版本”当作“可运行”。已锁定版本的安装继续使用发布清单中的确切文件名和 SHA-256，不受移动频道变更影响。

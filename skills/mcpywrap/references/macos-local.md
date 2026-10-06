@@ -42,3 +42,5 @@ Windows 与 macOS 共用 PySide6 界面：人工使用 `mcpy --local --project <
 日常开发和 AI 操作遵循 [Windows/macOS 公共无交互流程](local-development.md)，不需要编写平台专用脚本。上述安装与引擎限制是后端差异，run/status/logs/runtime/stop 的调用方式相同。
 
 FPS/VSync、画质、GUI 缩放、音量和输入偏好由 mcpy worker 按用户保存并在新会话导入，位置是引擎资源根目录下的 `preferences/macos`。这些不是 cppconfig 世界设置；不要为每个新实例重新配置。运行中的其他实例不会即时跟随，重开时读取最新值；先正常保存退出以确保游戏完成原生配置写入。
+
+版本发现使用 `mcpy --local engine check-updates --json`：实时查询网易 pe/pe_old，返回真实完整版本和 URL；不得递增版本号或猜测 CDN 路径。该命令只检查，不下载或替换实例。新版本 compatibility=not_checked 需实际 APK 校验与结构兼容检查，不能把“发现版本”当作“可运行”。已锁定版本的安装继续使用发布清单中的确切文件名和 SHA-256，不受移动频道变更影响。

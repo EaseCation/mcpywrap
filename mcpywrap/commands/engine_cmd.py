@@ -4,7 +4,7 @@ from rich.console import Console
 from rich.panel import Panel
 import time
 from rich.progress import Progress, BarColumn, TextColumn, DownloadColumn, TaskProgressColumn, TransferSpeedColumn, TimeRemainingColumn
-from ..command_context import OperationCommand, human_interaction
+from ..command_context import OperationCommand, human_interaction, json_output
 from ..engines.backend import get_backend
 
 
@@ -18,11 +18,17 @@ def perform_install(catalog=None, apk=None):
             if total != last[1] or now-last[0] >= 2 or done == total:
                 click.echo('下载／提取：%.1f / %.1f MiB' % (done/1048576, total/1048576), err=True)
                 last[:] = [now, total]
+        def phase_plain(label):
+            last[:] = [0.0, None]
+            click.echo(label + '…', err=True)
+        update_plain.phase = phase_plain
         return get_backend().install(catalog, apk, update_plain)
     with Progress(TextColumn('{task.description}'), BarColumn(), TaskProgressColumn(),
                   DownloadColumn(), TransferSpeedColumn(), TimeRemainingColumn(), console=console) as progress:
         task = progress.add_task('准备运行资源', total=None)
         def update(done, total): progress.update(task, completed=done, total=total)
+        def phase(label): progress.reset(task, description=label, total=None, completed=0)
+        update.phase = phase
         result = get_backend().install(catalog, apk, update)
     return result
 
@@ -66,3 +72,19 @@ def engine_install(catalog, apk):
 
 engine_cmd.add_command(engine_doctor)
 engine_cmd.add_command(engine_install)
+
+
+@click.command(cls=OperationCommand, name='check-updates')
+def engine_check_updates():
+    """查询网易 pe/pe_old 的实际版本；不下载、不切换当前游戏。"""
+    result = get_backend().check_updates()
+    if json_output(): return result
+    click.echo('当前版本：' + (result['installed_version'] or '尚未安装'))
+    for item in result['versions']:
+        suffix = ' · 可发现的新版本，兼容性待检查' if item['newer_than_installed'] else ''
+        click.echo(item['channel'] + '：' + item['version'] + suffix)
+    if not result['ok']:
+        raise click.ClickException(result['error'] + ' ' + result['hint'])
+
+
+engine_cmd.add_command(engine_check_updates)

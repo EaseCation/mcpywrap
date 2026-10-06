@@ -566,8 +566,15 @@ def _remaining_download(target, expected, size):
     return max(0, size - min(info.st_size, allocated))
 
 
+def _phase(progress, label):
+    callback = getattr(progress, 'phase', None)
+    if callback:
+        callback(label)
+
+
 def install(location=None, apk=None, progress=None):
     host = require_macos()
+    _phase(progress, '获取版本信息')
     cat, base = catalog(location); validate_catalog(cat)
     runtime, profile = cat['runtime'], cat['profile']
     if _version(host['macos_version']) < _version(runtime['minimum_macos']):
@@ -580,6 +587,7 @@ def install(location=None, apk=None, progress=None):
         marker = destination/'release.json'
         if marker.is_file() and read_json(marker)['sha256'] != runtime['sha256']:
             raise EngineError('同一运行包 ID 的内容发生变化，拒绝覆盖。', 'release_changed', '发行方应为每次构建使用新的不可变版本号。')
+        _phase(progress, '检查本地资源')
         runtime_valid = _valid(verify_runtime, destination/'McpyRuntime.app', destination/'McpyRuntime.integrity.json', profile)
         game_valid = _valid(verify_game, game, profile)
         if not runtime_valid: _require_idle(destination)
@@ -596,10 +604,12 @@ def install(location=None, apk=None, progress=None):
         # Retain a failed first installation's source for deterministic retry/resume.
         write_json(root/'install-plan.json', {'catalog': cat, 'catalog_base': base})
         if not runtime_valid:
+            _phase(progress, '下载启动器')
             source = fetch(locate(base, runtime['url']), root/'cache'/runtime['sha256'], runtime['sha256'], runtime['size'], progress)
             destination.parent.mkdir(parents=True, exist_ok=True)
             stage = Path(tempfile.mkdtemp(prefix='.runtime-', dir=destination.parent))
             try:
+                _phase(progress, '校验并安装启动器')
                 extract_runtime(source, stage)
                 meta = verify_runtime(stage/'McpyRuntime.app', stage/'McpyRuntime.integrity.json', profile)
                 if meta['minimum_macos'] != runtime['minimum_macos']:
@@ -621,18 +631,23 @@ def install(location=None, apk=None, progress=None):
             if cached.is_file() and cached.stat().st_size == apk_meta['size'] and digest(cached) == apk_meta['sha256']:
                 apk_path = cached
             else:
+                _phase(progress, '下载游戏资源')
                 apk_path = fetch(official_apk_url(profile), cached, apk_meta['sha256'], apk_meta['size'], progress)
         if not game_valid:
             game.parent.mkdir(parents=True, exist_ok=True)
             stage = Path(tempfile.mkdtemp(prefix='.apk-', dir=game.parent))
             try:
+                _phase(progress, '提取游戏资源')
                 extract_apk(apk_path, stage, profile, progress)
                 write_json(stage/'installed.json', {'profile': profile, 'apk_sha256': apk_meta['sha256']})
                 _replace(stage, game)
             finally:
                 if stage.exists(): shutil.rmtree(stage)
+        _phase(progress, '检查运行兼容性')
         metadata = verify_runtime(destination/'McpyRuntime.app', destination/'McpyRuntime.integrity.json', profile)
         preflight_runtime(destination/'McpyRuntime.app', game, profile, metadata, runtime['id'])
         write_json(root/'current.json', {'catalog': cat, 'catalog_base': base})
         (root/'install-plan.json').unlink(missing_ok=True)
-    return diagnose()
+    result = diagnose()
+    if result.get('ok'): _phase(progress, '游戏环境已就绪')
+    return result

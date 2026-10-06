@@ -1,6 +1,8 @@
 """Backend contracts, setup behavior and platform selection without a real game."""
 import importlib
 import json
+import inspect
+import io
 import os
 from pathlib import Path
 import tempfile
@@ -39,10 +41,74 @@ class BackendTests(unittest.TestCase):
         (self.root/'pyproject.toml').write_text('[project]\nname="test"\nversion="0.0.0"\n[tool.mcpywrap]\nproject_type="addon"\n')
         self.env = patch.dict(os.environ, {'MCPY_ENGINE_HOME': str(self.root/'engine'), 'MCPY_RUNTIME_CATALOG': ''})
         self.env.start(); self.addCleanup(self.env.stop)
-        self.runner = CliRunner()
+        options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
+        self.runner = CliRunner(**options)
 
     def call(self, *args):
         return self.runner.invoke(cli, ['--project', str(self.root), '--local', '--non-interactive', *args, '--json'])
+
+    def test_install_json_keeps_progress_and_errors_on_correct_streams(self):
+        backend = Mock(spec=GameBackend)
+        def failed(catalog, apk, progress):
+            progress.phase('下载游戏资源')
+            progress(1024*1024, 4*1024*1024)
+            raise EngineError('连接中断', 'download_failed', '重新运行即可续传。')
+        backend.install.side_effect = failed
+        with patch('mcpywrap.commands.engine_cmd.get_backend', return_value=backend):
+            result = self.call('engine', 'install')
+        self.assertEqual(result.exit_code, 1)
+        data = json.loads(result.stdout)
+        self.assertEqual(data['code'], 'download_failed')
+        self.assertEqual(data['hint'], '重新运行即可续传。')
+        self.assertIn('下载游戏资源', result.stderr)
+        self.assertIn('1.0 / 4.0 MiB', result.stderr)
+        self.assertNotIn('下载游戏资源', result.stdout)
+
+    def test_tty_install_progress_cleanup_and_actionable_error(self):
+        from rich.console import Console
+        backend = Mock(spec=GameBackend)
+        stream = io.StringIO()
+        def failed(catalog, apk, progress):
+            progress.phase('下载游戏资源'); progress(1, 2)
+            raise EngineError('连接中断', 'download_failed', '重新运行即可续传。')
+        backend.install.side_effect = failed
+        with patch('mcpywrap.commands.engine_cmd.get_backend', return_value=backend), \
+                patch('mcpywrap.commands.engine_cmd.Console', return_value=Console(file=stream, force_terminal=True, force_interactive=True)):
+            result = self.runner.invoke(cli, ['--local', '--project', str(self.root), 'engine', 'install'])
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn('连接中断', result.stderr)
+        self.assertIn('重新运行即可续传', result.stderr)
+        self.assertIn('下载游戏资源', stream.getvalue())
+        self.assertTrue(stream.getvalue().endswith('\n'))
+
+    def test_official_version_discovery_uses_both_channels_without_guessing(self):
+        from mcpywrap.engines import official
+        urls = []
+        def response(url, **kwargs):
+            urls.append(url)
+            version = '3.11.123.456789' if url.endswith('/pe') else '3.10.100.299889'
+            return io.BytesIO(json.dumps({'status':'ok','data':{'url':
+                'https://g79.gdl.netease.com/dev_launcher_'+version+'.apk'}}).encode())
+        with patch.object(official, 'urlopen', side_effect=response):
+            result = official.check_updates()
+        self.assertTrue(result['ok'])
+        self.assertEqual(urls, [official.ENDPOINT+x for x in ('pe','pe_old')])
+        self.assertEqual(result['versions'][0]['version'], '3.11.123.456789')
+        self.assertEqual(result['versions'][0]['compatibility'], 'not_checked')
+        self.assertFalse((self.root/'engine').exists())
+
+    def test_official_channel_failure_does_not_claim_no_updates(self):
+        from mcpywrap.engines import official
+        from urllib.error import URLError
+        good = io.BytesIO(json.dumps({'status':'ok','data':{'url':
+            'https://g79.gdl.netease.com/dev_launcher_3.10.100.299889.apk'}}).encode())
+        with patch.object(official, 'urlopen', side_effect=[URLError('offline'), good]):
+            result = official.check_updates()
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['channel_errors'][0]['channel'], 'pe')
+        with patch.object(official, 'urlopen', side_effect=URLError('offline')):
+            with self.assertRaises(EngineError) as caught: official.check_updates()
+        self.assertEqual(caught.exception.code, 'version_check_failed')
 
     def test_single_selection_point_and_explicit_resume(self):
         for selected, expected in [('windows', WindowsBackend), ('macos-arm64', MacOSBackend), (None, GameBackend)]:

@@ -34,6 +34,7 @@ class EngineSetupDialog(QDialog):
         self.progress = QProgressBar(); self.progress.setRange(0, 100)
         layout.addWidget(self.progress)
         self.status = QLabel('首次安装需要下载并提取资源；已有世界不会被删除。'); self.status.setWordWrap(True)
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.status)
         self.install_button = QPushButton('安装／修复'); self.install_button.clicked.connect(self.install)
         layout.addWidget(self.install_button)
@@ -53,24 +54,48 @@ class EngineSetupDialog(QDialog):
         if self.task and self.task.isRunning(): return
         location, apk = self.catalog.text().strip() or None, self.apk.text().strip() or None
         # A single install is serialized by the engine service. No game/GUI-specific downloader.
-        self.task = TaskThread(lambda: self.backend.install(location, apk, self.update_progress), self)
+        if self.task: self.task.deleteLater()
+        def update(done, total): self.update_progress(done, total)
+        update.phase = lambda label: self.task.phase.emit(label)
+        self.task = TaskThread(lambda: self.backend.install(location, apk, update), self)
         self.task.progress.connect(self.show_progress)
         self.task.result.connect(self.show_result)
-        self.task.failed.connect(self.status.setText)
+        self.task.failed.connect(self.show_failure)
+        self.task.phase.connect(self.show_phase)
         self.task.finished.connect(self.install_finished)
         self.ready = False
         self.install_button.setEnabled(False); self.advanced.setEnabled(False)
+        self.progress.setRange(0, 0)
+        self.install_button.setText('安装／修复')
         self.status.setText('正在自动下载并准备游戏环境…')
         self.task.start()
 
     @Slot(int, int)
     def show_progress(self, done, total):
+        self.progress.setRange(0, 100)
         self.progress.setValue(done * 100 // max(1, total))
+        self.progress.setFormat('%.1f / %.1f MiB · %%p%%' % (done/1024, total/1024))
+
+    @Slot(str)
+    def show_phase(self, label):
+        self.status.setText(label + '…')
+        self.progress.setRange(0, 0)
+
+    @Slot(str)
+    def show_failure(self, message):
+        self.ready = False
+        self.status.setText('安装未完成：' + message)
+        self.progress.setRange(0, 100)
+        self.install_button.setText('重试')
 
     @Slot(object)
     def show_result(self, result):
         self.ready = bool(result.get('ok'))
-        self.status.setText('资源已就绪。' if self.ready else str(result))
+        if self.ready:
+            self.progress.setRange(0, 100); self.progress.setValue(100); self.progress.setFormat('%p%')
+            self.status.setText('资源已就绪。')
+        else:
+            self.show_failure(str(result.get('error') or '请检查运行环境。') + ('\n' + str(result['hint']) if result.get('hint') else ''))
 
     @Slot()
     def install_finished(self):

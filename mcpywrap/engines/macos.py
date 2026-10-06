@@ -336,6 +336,10 @@ else:
     def install(self, catalog=None, apk=None, progress=None):
         return install.install(catalog, apk, progress)
 
+    def check_updates(self):
+        from .official import check_updates
+        return check_updates()
+
     def installation_choice(self):
         cat, _ = install.catalog()
         return cat['runtime']['id'] + ' / ' + cat['profile']['apk']['version']

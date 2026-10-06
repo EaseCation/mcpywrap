@@ -8,6 +8,7 @@ class TaskThread(QThread):
     result = Signal(object)
     failed = Signal(str)
     progress = Signal(int, int)
+    phase = Signal(str)
 
     def __init__(self, function, parent=None):
         super().__init__(parent)

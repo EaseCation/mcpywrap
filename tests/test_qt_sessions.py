@@ -225,6 +225,32 @@ class GuiTests(unittest.TestCase):
             stop.assert_called_once_with(str(self.root), 'b'*32)
             view.dispose()
 
+    def test_install_failure_keeps_gui_open_and_retry_can_continue(self):
+        from mcpywrap.engines.host import EngineError
+        backend = Mock(spec=GameBackend, setup_description='fixture')
+        attempt = []
+        def install(catalog, apk, progress):
+            attempt.append(True)
+            progress.phase('下载游戏资源')
+            progress(1024*1024, 4*1024*1024)
+            if len(attempt) == 1:
+                raise EngineError('连接中断', 'download_failed', '重新运行即可续传。')
+            return {'ok': True}
+        backend.install.side_effect = install
+        dialog = EngineSetupDialog(backend, auto_install=True); dialog.show()
+        self.wait(lambda: len(attempt) == 1 and dialog.install_button.isEnabled())
+        self.assertTrue(dialog.isVisible())
+        self.assertFalse(dialog.ready)
+        self.assertIn('连接中断', dialog.status.text())
+        self.assertIn('重新运行即可续传', dialog.status.text())
+        self.assertEqual(dialog.install_button.text(), '重试')
+        self.assertEqual(dialog.progress.value(), 25)
+        self.assertIn('1.0 / 4.0 MiB', dialog.progress.format())
+        dialog.install_button.click()
+        self.wait(lambda: dialog.ready and not dialog.isVisible())
+        self.assertEqual(len(attempt), 2)
+        dialog.close()
+
     def test_ui_setup_defaults_are_hidden_and_auto_setup_continues(self):
         backend = Mock(spec=GameBackend, setup_description='fixture')
         backend.install.return_value = {'ok': True}

@@ -83,6 +83,9 @@ _result = {'ok': True}
     def install(self, catalog=None, apk=None, progress=None):
         return self.unsupported('自动安装')
 
+    def check_updates(self):
+        return self.unsupported('在线版本检查；Windows 请在 MC Studio 中管理引擎')
+
     def installation_choice(self):
         return None
 
