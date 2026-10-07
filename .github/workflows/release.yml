@@ -146,6 +146,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_qt_sessions.py -v
         env:
           QT_QPA_PLATFORM: offscreen
+      - run: python -m unittest discover -s tests -p test_macos_network.py -v
       - run: python -m unittest discover -s tests -p test_engine_backends.py -v
       - run: python -m unittest discover -s tests -p test_engine_install.py -v
       - run: python -m unittest discover -s tests -p test_launcher_python.py -v

@@ -114,7 +114,7 @@ def handoff(data):
         target = data['network']['target']
         result.update(host=target['host'], port=target['port'], identity_source=target['auth'],
                       identity_provided=data['mcs_auth'], authenticated=False,
-                      connection_verified=False, addons_assembled=False,
+                      connection_verified=data.get('connection_verified', False), addons_assembled=False,
                       engine_version=data['network']['engine']['version'])
     return result
 

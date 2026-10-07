@@ -314,6 +314,8 @@ class _ControlHandler(socketserver.BaseRequestHandler):
             request = json.loads(recv_exact(self.request, size).decode('utf-8'))
             if request.get('token') != self.server.token:
                 raise ValueError('会话控制凭据无效')
+            if self.server.mode == 'network' and (request.get('side', 'client') != 'client' or request.get('action') == 'reload'):
+                raise ValueError('网络会话仅支持客户端调试，不支持服务端 Python 或本地 Mod 热更')
             if request.get('action') == 'execute':
                 options = {'condition': request['condition']} if request.get('condition') is not None else {}
                 if options and not hasattr(self.server.channel, 'submit'):
@@ -357,8 +359,8 @@ class RuntimeControlServer(socketserver.ThreadingTCPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, channel, token, project=None, session=None):
-        self.channel, self.token = channel, token
+    def __init__(self, channel, token, project=None, session=None, mode='local'):
+        self.channel, self.token, self.mode = channel, token, mode
         self.input_manager = None
         if project is not None and session is not None:
             from .host_input import HostInputManager

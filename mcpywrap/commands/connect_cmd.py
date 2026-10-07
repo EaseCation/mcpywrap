@@ -22,5 +22,14 @@ def connect_cmd(host, port, mcs_auth=False, detach=False, request_id=None, **eng
     if request_id:
         raise click.UsageError('--request-id 仅用于远程启动')
     from ..engines.backend import get_backend
-    return get_backend().connect(ServerTarget(host, port, 'mcs' if mcs_auth else 'none'),
-                                 engine_overrides=engine_overrides, detach=detach)
+    from ..engines.host import EngineError
+    backend = get_backend()
+    target = ServerTarget(host, port, 'mcs' if mcs_auth else 'none')
+    try:
+        return backend.connect(target, engine_overrides=engine_overrides, detach=detach)
+    except EngineError as error:
+        if error.code != 'setup_required' or not backend.managed_install: raise
+        from .engine_cmd import perform_install
+        click.echo('首次运行：自动下载并准备本地游戏环境…', err=True)
+        perform_install()
+        return backend.connect(target, engine_overrides=engine_overrides, detach=detach)

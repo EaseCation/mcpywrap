@@ -19,7 +19,7 @@ WindowsBackend 调用原有 MC Studio 发现、cppconfig 和 Safaia 流程，保
 
 macOS 首次 mcpy run 自动从内置发布源安装原生运行包和官方 APK，进度在 stderr；也可提前执行 mcpy engine install。--catalog / --apk 是高级覆盖选项。交互式 run 显示共用调试小窗，ui 打开完整管理页；--no-gui / --detach / --json / --non-interactive 抑制调试小窗；Windows 保持手动安装 MC Studio。默认资源目录 ~/Library/Application Support/mcpy，可设置 MCPY_ENGINE_HOME、MCPY_RUNTIME_CATALOG。
 
-macOS 当前只支持离线 Addon 世界，不支持 Map、服务器连接、MCS 登录或 Windows 桌面截图/键鼠/录像；需要这些能力时显式使用 Windows 远程端。最低 macOS 13.0，实际游戏只在 26.6.2 验证。运行包尚为 ad-hoc 签名、公证待完成。
+macOS 支持离线 Addon 世界；无认证服务器连接需 CLI 0.4.3+ 与运行包 0.4.3+ 配套，运行包须声明 network_connect_protocol=1（旧 0.4.0 运行包需要显式升级）。connect 与配置了 server 的 run 共用 cppconfig、会话、日志及退出；网络会话仅支持客户端调试，不装配本地 Mod。macOS 不支持 Map、MCS 登录或 Windows 桌面截图/键鼠/录像；需要这些能力时显式使用 Windows 远程端。最低 macOS 13.0，实际游戏只在 26.6.2 验证。运行包尚为 ad-hoc 签名、公证待完成。
 
 图形界面的会话操作集中在 ui/session_controller.py；主界面和小窗仅使用共用 SessionControls/PythonConsole 与 LogView。小窗不再另起 Studio TCP 接收器，详见 [共用日志界面](shared-log-ui.md)。
 

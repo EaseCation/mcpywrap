@@ -24,7 +24,7 @@ mcpy --local --project <项目> stop --session <sid> --json
 
 客户端使用 launcher-jni，启动期间可以 --no-wait 提交并用 runtime py-result 按 request_id 查询；--wait-until 是无副作用的客户端 Python 就绪表达式。超时先查原请求，勿重复提交有副作用代码。服务端仍走原有 Safaia，仅进入世界后可用，不给服务端加客户端队列参数。runtime install/ui/player 继续通过公共客户端通道工作；注入的 mcpy.* 仍严格仅用于临时调试。
 
-暂不支持本地 Map、联机服务器、MCS 身份、MCEditor 及 Windows screenshot/key/mouse/input-sequence/record。需要它们时使用显式 Windows --remote，不静默回退或尝试登录。macOS 前台 run 的 Ctrl+C 请求保存退出；一次性测试结束必须 stop 并确认进程退出，关闭自己创建的窗口。
+暂不支持本地 Map、MCS 身份、MCEditor 及 Windows screenshot/key/mouse/input-sequence/record。需要它们时使用显式 Windows --remote，不静默回退或尝试登录。macOS 前台 run 的 Ctrl+C 请求保存退出；一次性测试结束必须 stop 并确认进程退出，关闭自己创建的窗口。
 
 最低版本为 macOS 13.0，游戏实测仅 26.6.2；包目前 ad-hoc 签名，未公证，不宣称已验证最低系统或 Gatekeeper。失败时提供实际错误及日志，不能建议全局关闭系统保护。
 
@@ -44,3 +44,28 @@ Windows 与 macOS 共用 PySide6 界面：人工使用 `mcpy --local --project <
 FPS/VSync、画质、GUI 缩放、音量和输入偏好由 mcpy worker 按用户保存并在新会话导入，位置是引擎资源根目录下的 `preferences/macos`。这些不是 cppconfig 世界设置；不要为每个新实例重新配置。运行中的其他实例不会即时跟随，重开时读取最新值；先正常保存退出以确保游戏完成原生配置写入。
 
 版本发现使用 `mcpy --local engine check-updates --json`：实时查询网易 pe/pe_old，返回真实完整版本和 URL；不得递增版本号或猜测 CDN 路径。该命令只检查，不下载或替换实例。新版本 compatibility=not_checked 需实际 APK 校验与结构兼容检查，不能把“发现版本”当作“可运行”。无需先执行此命令：首次 run 的自动安装已经查询 pe。已有本地版本/实例继续运行；缺失的旧版本若不在官方频道中则不可下载，不猜 CDN 路径。
+
+## 无认证服务器连接
+
+已安装旧运行包时，先正常结束自己的会话，再升级资源并重新 connect：
+
+```sh
+mcpy --local engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.3/catalog.json
+```
+
+此命令仍通过网易 pe 发现当前 APK；保留旧资源和原世界绑定。connect 使用当前已选资源，旧单人实例继续使用原运行包。
+
+需要 CLI 0.4.3+ 和原生运行包 0.4.3+（声明 `network_connect_protocol=1`）。首次安装使用配套运行包；旧 0.4.0 运行包需要显式升级，更新 CLI 不会替换已有世界的绑定。`doctor --capabilities` 的 network-sessions 表示后端入口，实际 connect 还会核对运行包；旧包返回 runtime_incompatible，不切换到单人世界。
+
+```sh
+mcpy --local --project <已有会话目录> --non-interactive connect 127.0.0.1 --port 19132 --detach --json
+mcpy --local --project <同一目录> status --session <sid> --json
+mcpy --local --project <同一目录> runtime py --session <sid> --side client --code "print('network client')" --json
+mcpy --local --project <同一目录> stop --session <sid> --json
+```
+
+connect 不读取项目配置；固定目标可以在项目 `[tool.mcpywrap.server]` 中设置 host/port，再使用同一套 `run --no-gui --detach --json`。网络会话不会创建世界实例或装配本地 Mod；不能组合 --new/实例 ID/世界选项。每次连接独立保存数据和日志，共享用户画面及输入偏好。
+
+`running` 仅表示进程已启动。macOS `connection_verified=true` 表示此会话曾观察到进入 HUD，并非持续在线探活，也不表示已通过身份认证；需要当前状态时用客户端 Python/日志验证。90 秒未进入 HUD 会失败并关闭本次游戏。失败后检查 logs --source engine/worker、服务端日志、协议版本及离线配置，不尝试账号登录。
+
+仅支持客户端 Python 与 runtime install；游戏内输入另查当前会话 capabilities（旧 C++ 运行包可能缺少统一输入所需的单调时钟），不因注入成功就断言输入可用。服务端 Python 与本地 Mod 热更禁用，服务端逻辑仍由服务器管理。3.10.100.299889 已用本机 Nemisys + SynapseAPI + Nukkit 验证无认证进服；测试端须关闭 Nemisys xbox-auth 并按 SynapseAPI 的调试开关强制 NetEase 玩家。不能推断公开服务器或其他版本一定接受连接。当前网络策略允许目标 UDP 端口和 DNS，不包含外部 HTTP 资源包下载；需要这种资源分发的服务器尚未验收。

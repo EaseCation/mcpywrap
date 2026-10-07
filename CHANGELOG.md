@@ -1,5 +1,12 @@
 # 更新记录
 
+## 0.4.3
+
+- macOS 新增无认证服务器连接，复用 `mcpy connect` 与项目 `[tool.mcpywrap.server]` 的 `run` 入口、cppconfig、日志、偏好和退出机制，不装配本地 Mod 或创建本地世界实例。
+- 配套 macOS 运行包 0.4.3 使用现有引擎 Python 入口进服，无新增游戏二进制补丁；首次安装自动取得配套运行包，旧包给出明确升级命令，保留已有世界绑定。
+- 网络会话仅开放客户端 Python；在 worker 中拒绝服务端 Python 和本地 Mod 热更。macOS 初次连接超时会提示失败并回收游戏，进入 HUD 后记录连接验证结果。
+- Skill 补充离线服务器条件、旧运行包升级、状态验证及客户端调试边界。已在 macOS 26.6.2 / APK 3.10.100.299889 上通过本机 Nemisys + SynapseAPI + Nukkit 验证 connect、项目 run、Python 与失败清理；不包含 MCS/MPay 登录、外部 HTTP 资源包或新版统一输入的验收。
+
 ## 0.4.2
 
 - 新增统一 `runtime input capabilities/observe/run/status/cancel/stop` 与 `mcpy.input`。键盘组合、独立边沿、玩家与单节点 UI 操作共用 JSON steps、动作注册表、排时和清理；单次 key 快捷命令只生成同一份计划。

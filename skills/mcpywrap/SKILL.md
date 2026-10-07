@@ -1,6 +1,6 @@
 ---
 name: mcpywrap
-description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、依赖和 QuMod，并在 Windows 本机/远程或 Apple Silicon macOS 本地离线会话中调试、读取 UI 节点和操控玩家；桌面截图/输入/录制仅 Windows。注入的 mcpy.* 仅限调试，禁止用于业务代码。
+description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、依赖和 QuMod，并在 Windows 本机/远程或 Apple Silicon macOS 本地世界及无认证联机会话中调试、读取 UI 节点和操控玩家；桌面截图/输入/录制仅 Windows。注入的 mcpy.* 仅限调试，禁止用于业务代码。
 ---
 
 # mcpywrap
@@ -107,8 +107,11 @@ Windows 用户在专用、已登录未锁屏的桌面设置 `MCPY_REMOTE_TOKEN` 
 | 目标 | 启动命令 |
 |---|---|
 | Windows/macOS 本地 Addon 世界（先准备资源） | `mcpy --local --project "<项目>" --non-interactive run --no-gui --detach --json` |
+| Windows/macOS 本机临时服务器 | `mcpy --local --project "<会话目录>" --non-interactive connect <游戏服务器地址> --port 19132 --detach --json` |
 | 远程临时服务器 | `mcpy --remote <Windows服务地址> --non-interactive connect <游戏服务器地址> --port 19132 --detach --json` |
 | 远程项目目标 | `mcpy --remote <地址> --project "<调用端项目>" --non-interactive run --detach --json` |
+
+macOS 联机要求 CLI 0.4.3+ 和运行包 0.4.3+（声明 `network_connect_protocol=1`）；仅支持允许无认证中国版客户端的服务器。旧 0.4.0 运行包不具备此能力，更新 Skill 或 CLI 不等于运行包升级。具体检查见 [macOS 本地测试](references/macos-local.md)。
 
 固定游戏目标在项目 `[tool.mcpywrap.server]` 填 `host/port`。连接不装配本地 Mod，网络模式不支持 Map、`--new` 或世界实例 ID。
 远程机器路径只在 Windows serve 参数中配置，客户端仅可覆盖 `--engine-version`；本机 connect 可使用原有引擎覆盖参数。

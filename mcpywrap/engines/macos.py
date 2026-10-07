@@ -65,7 +65,8 @@ def pinned_runtime(item):
     install.verify_game(game, plan['profile'])
     compatibility = install.preflight_runtime(app, game, plan['profile'], meta, plan['runtime_id'])
     return {'runtime': str(app), 'game': str(game), 'profile': plan['profile'], 'runtime_id': plan['runtime_id'],
-            'compat_report': compatibility, 'cppconfig_protocol': meta.get('cppconfig_protocol')}
+            'compat_report': compatibility, 'cppconfig_protocol': meta.get('cppconfig_protocol'),
+            'network_connect_protocol': meta.get('network_connect_protocol')}
 
 
 def run(project, *, new=False, listing=False, delete=None, clean_all=False, force=False,
@@ -85,9 +86,15 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
         raise EngineError('MC Studio 身份、EXE 和下载目录参数仅适用于 Windows。', 'unsupported_option',
                           'macOS 当前使用开发者 APK 的离线模式；资源由 mcpy engine 管理。')
     config = read_project(project)
-    if config.get('tool', {}).get('mcpywrap', {}).get('server'):
-        raise EngineError('macOS 本地后端当前只支持离线世界。', 'unsupported_feature',
-                          '连接服务器请配置 --remote <Windows 服务地址>。')
+    if not (listing or delete or clean_all):
+        from ..mcstudio.network import configured_target, prepare_project
+        target = configured_target(config)
+        if target is not None:
+            if new or instance_prefix or world_config is not None:
+                raise click.UsageError('网络模式不支持 --new 或本地世界实例 ID')
+            packs = prepare_project(project, config)
+            from .macos_network import connect
+            return connect(target, project_dir=project, packs=packs, engine_overrides=overrides, detach=detach)
     if config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
         raise EngineError('macOS 首版支持 Addon 测试，Map 项目尚未接入。', 'unsupported_feature',
                           '地图项目请在 Windows 本机运行。')
@@ -192,6 +199,13 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
 
 def launch_session(data):
     plan = data['launch']
+    if data.get('mode') == 'network':
+        from types import SimpleNamespace
+        from ..mcstudio.network import ServerTarget, unauthenticated_config
+        config = unauthenticated_config(
+            SimpleNamespace(version=plan['engine_version'], download_dir=plan['game']),
+            ServerTarget(**data['network']['target']))
+        install.write_json(Path(plan['cppconfig']), config)
     app = Path(plan['runtime'])
     helper = app/'Contents/Resources/launcher/run_netease_dev.py'
     if not helper.is_file():
@@ -228,7 +242,7 @@ class MacOSBackend(GameBackend):
     label = 'macOS · Apple Silicon · Metal'
     capabilities = ('local-worlds', 'macos-local-worlds', 'engine-install', 'macos-engine-install',
                     'status', 'logs', 'stop', 'py', 'runtime', 'runtime-ui', 'runtime-player',
-                    'client-python-requests', 'project-ui', 'reload', 'watch')
+                    'client-python-requests', 'project-ui', 'reload', 'watch', 'network-sessions')
     managed_install = True
     setup_description = ('在 Apple Silicon Mac 上运行本地 Addon 测试。\n'
                          '首次运行会自动下载原生启动器和网易开发者版资源，并在本机完成安装。\n'
@@ -249,6 +263,10 @@ class MacOSBackend(GameBackend):
                 raise EngineError(reason, 'unsupported_world_option', field=field)
         options.pop('no_gui', None)
         return run(project, **options)
+
+    def connect(self, target, **options):
+        from .macos_network import connect
+        return connect(target, **options)
 
     def watch_directory(self, project, data):
         return Path(data['config_path']).parent/'assembled'
@@ -380,7 +398,9 @@ else:
                 request_id = 'startup-' + str(index)
                 result = channel._rpc('result', {'request_id': request_id})
                 if result.get('request_id') == request_id and result.get('state') in ('failed', 'cancelled'):
-                    raise EngineError('世界启动步骤失败：' + str(result.get('error', result['state'])), 'world_start_failed')
+                    raise EngineError(('服务器连接未完成：' if data.get('mode') == 'network' else '世界启动步骤失败：')
+                                      + str(result.get('error', result['state'])),
+                                      'connection_failed' if data.get('mode') == 'network' else 'world_start_failed')
         except (OSError, ConnectionError):
             pass
         try:
@@ -389,9 +409,13 @@ else:
                 stream.seek(max(0, stream.tell() - 65536))
                 if b'"top_screen":"hud_screen"' in stream.read():
                     data['world_ready'] = True
+                    if data.get('mode') == 'network': data['connection_verified'] = True
                     return True
         except OSError:
             pass
+        if data.get('mode') == 'network' and time.time() - data['created_at'] > 90:
+            raise EngineError('90 秒内未进入服务器；请检查地址、端口、协议版本以及服务器是否允许无认证的中国版客户端。',
+                              'connection_timeout')
         return False
 
     def handoff(self, data):

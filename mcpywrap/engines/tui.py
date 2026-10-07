@@ -19,10 +19,12 @@ def watch_session(project, session):
                 backend = get_backend(data.get('backend', 'windows'))
                 table = Table.grid(padding=(0, 2))
                 table.add_row('平台', backend.label)
-                table.add_row('状态', '世界已就绪' if data.get('world_ready') else '引擎已启动，正在准备世界…')
+                network = data.get('mode') == 'network'
+                table.add_row('状态', ('已进入服务器' if data.get('connection_verified') else '正在连接服务器…')
+                              if network else ('世界已就绪' if data.get('world_ready') else '引擎已启动，正在准备世界…'))
                 table.add_row('会话', session)
                 table.add_row('操作', 'Ctrl+C 保存退出；其他终端可使用 logs / runtime py')
-                live.update(Panel(table, title='mcpy 本地测试'))
+                live.update(Panel(table, title='mcpy 服务器测试' if network else 'mcpy 本地测试'))
                 time.sleep(.25)
     except KeyboardInterrupt:
         console.print('正在保存世界并关闭窗口…')

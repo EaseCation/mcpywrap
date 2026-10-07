@@ -24,7 +24,7 @@ from .host import EngineError, describe, require_macos
 
 CATALOG_ENV = 'MCPY_RUNTIME_CATALOG'
 DEFAULT_CATALOG = ('https://github.com/EaseCation/mcpelauncher-manifest/releases/download/'
-                   'mcpy-runtime-v0.4.0/catalog.json')
+                   'mcpy-runtime-v0.4.3/catalog.json')
 # Public constant from the official ApkDownload component, verified 2026-10-05.
 # https://mcdev.webapp.163.com/static/js/4.05713153ba17aea6db53.js
 CDN_CONSTANT = 'mEE7Cot48r9j2AvEL2N6jpXEc'
