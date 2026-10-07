@@ -15,23 +15,19 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 
 ## 强制边界：mcpy.* 仅限临时调试
 
-**严禁在任何业务代码中使用或依赖 `mcpy.*`，包括 `mcpy.ui`、`mcpy.player`、`mcpy.api` 及其别名、封装或间接调用。** 这些能力仅在执行 `runtime install` 后临时注入当前调试会话；正常启动或发布后的游戏运行环境中不存在，不是 ModSDK，也不是可分发的游戏依赖。
+**严禁在任何业务代码中使用或依赖 `mcpy.*`，包括 `mcpy.input`、`mcpy.ui`、`mcpy.player`、`mcpy.api` 及其别名、封装或间接调用。** 这些能力仅在执行 `runtime install` 后临时注入当前调试会话；正常启动或发布后的游戏运行环境中不存在，不是 ModSDK，也不是可分发的游戏依赖。
 
 本文及参考文档中的 `mcpy.*` 示例只供 Agent 通过 `runtime py` 执行临时探针、观察和测试操作。不得复制进 Mod、Addon、客户端/服务端业务模块或任何随游戏发布的脚本，也不得把注入或安装控制层作为业务运行的前置条件。业务功能必须使用目标引擎正式支持的 ModSDK 或项目已有框架；例如 `mcpy.api` 的调用须改为正式导入相应端的 SDK。提交或打包业务改动前，检查新增代码未引入上述调试依赖。命令行工具 `mcpy` 不受此 Python 命名空间限制。
 
 ## 按任务选择控制入口
 
-| 当前任务 | 入口与下一步 | 前台要求 |
-|---|---|---|
-| 理解界面、点按钮、滚动或调滑块 | `runtime ui snapshot` → 阅读节点树 → 单次节点动作 → 新快照；[UI 说明](references/runtime-ui.md) | 后台可用 |
-| 移动、看向、切槽、攻击、进食、射箭 | `runtime player snapshot`；已知连续动作优先 `runtime player sequence`，见下方方法表 | 后台可用 |
-| 测量 Windows 键鼠快切的 0–20 ms 提交间隔 | `input-sequence --file <计划.json>`；读 [时间编排](references/input-sequence.md) | 会激活游戏，须允许占用前台 |
-| 只需一次 Windows 按键或鼠标动作 | `key` / `mouse`；不能用多次 CLI 调用代替毫秒编排 | 会激活游戏 |
-| 节点无法表达当前画面（如 HBUI） | `screenshot --background-only` 补图；不足时报告限制 | 不自动抢焦点 |
+普通输入只有一条推荐流程：`runtime install` → `runtime input capabilities` → `runtime input observe` → `runtime input run --file <plan.json>` → `runtime input status/cancel`。所有键盘、玩家与节点动作使用同一份 steps 计划，自动/显式排时共用规则，不选择 sequence/timeline。详见 [统一输入协议](references/runtime-input.md)。
 
-`runtime ui/player` 需先 `runtime install`，Windows `input-sequence/key/mouse` 不需注入。两种序列共用排时规则，但 API 动作不等于 Windows 键鼠事件。`completed / accepted / sent` 说明调用或提交状态，业务效果仍须用新快照、日志或录像验证。
+游戏内能力按当前会话查询，不自动安装或改用桌面后端。观察返回玩家目标或当前UI节点，页面改变后重新观察；HBUI节点不可读时用严格后台截图补图。需要原始设备测试才显式选择计划 backend=windows-sendinput，它会占用Windows前台。
 
 ## 安装与前置检查
+
+- 统一输入入口要求 CLI 0.4.2+。bootstrap 可要求调用端 unified-input；随后以当前会话 runtime input capabilities 的动作/时钟支持为准。已有会话重新 runtime install 更新游戏控制层；显式 Windows 设备后端还要求新worker，更新Skill或CLI不会替换既有worker。
 
 - macOS 后端、Qt6 和会话能力查询要求 CLI 0.4.0+；候选版未上 PyPI 时按仓库验收文档安装对应 wheel，不把已更新的 Skill 当作 CLI 已升级。
 - Skill 文件夹和 CLI 分别安装，更新一端不会自动更新另一端。两台机器都复制完整 Skill，并在各自机器上检查 CLI。
@@ -40,7 +36,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 - 使用本机 bootstrap 返回的 `command` 执行后续 CLI；示例中的 `mcpy` 均指这个路径，不跨机器复用它。
 - Windows 服务端：bootstrap 加 `--local --require-capability serve`，再用 `mcpy --local doctor --capabilities --json`。需要登录时额外检查 `mcs-auth` 组件并由用户登录 MCS。
 - Apple Silicon macOS 本地：bootstrap 加 `--local --require-capability macos-local-worlds`，再用 `mcpy --local engine doctor --json` 检查资源。安装和限制见 [macOS 本地测试](references/macos-local.md)。资源未就绪时 run 会从内置发行源自动安装；也可提前执行 engine install。安装成功仍须验证游戏就绪。
-- macOS 远程端：bootstrap 加 `--remote <地址> --require-capability remote-client --require-capability network-sessions`；后台操作再要求调用端 `runtime-ui/runtime-player` 与执行端 `py`，截图要求 `screenshot`。桌面单次输入要求 `key/mouse`，Windows 编排要求 `input-sequence`，可重复传入 `--require-capability`。
+- macOS 远程端：bootstrap加 `--remote <地址> --require-capability remote-client --require-capability network-sessions --require-capability unified-input --require-capability py`；截图另查screenshot。调用端需要统一协议，执行端游戏操作复用py；原始Windows后端另需执行端新worker。只在继续旧脚本时检查runtime-ui/runtime-player、key/mouse/input-sequence兼容能力。
 - 本机能力看 `local_capabilities`，Windows 服务能力看 `remote.capabilities`。`remote.ok=false` 时停止远程流程；组件具备不表示已登录、窗口已就绪或已进服。
 - `bootstrap --remote` 只做检测，不保存路由。每次远程调用明确传 `--remote <endpoint>`，或确认当前进程确实继承了 `MCPY_REMOTE`；不依赖上一次终端调用的 export。
 - 先检查相关 `--help` 和能力；不要把新版 Skill 配上旧 CLI 后猜参数。统一注入、UI/玩家封装和严格后台截图需调用端 CLI 0.3.17+；执行端须支持 `py`，远程严格后台截图还须执行端 0.3.17+。局域网细节见[远程测试](references/remote-testing.md)。
@@ -126,62 +122,30 @@ Windows 用户在专用、已登录未锁屏的桌面设置 `MCPY_REMOTE_TOKEN` 
 启动响应丢失用相同 endpoint 的 `status --list --json` 找回；输入超时不盲目重试。
 人工交互式本地 run 默认显示紧凑的彩色日志与热更小窗，Windows/macOS 共用同一控制器；不弹出项目管理页或世界设置确认框。AI 始终显式使用 --non-interactive run --no-gui --detach --json。--no-gui、--detach、--json 和非交互输入均抑制调试小窗；不隐藏游戏。小窗关闭只隐藏视图，游戏结束会清理小窗。带小窗的前台运行 Ctrl+C 调用同一 stop 流程；Windows 保存保证仍以平台能力为准。远程始终用 detach。
 
-## 统一运行时与玩家操作
+## 统一输入：观察、提交、查询
 
-游戏加载完成后执行 `runtime install --session <sid> --json`，一次注入 `mcpy.ui`、`mcpy.player` 和 `mcpy.api`。本地显式 `--local --project <项目>`，远程显式 `--remote <endpoint>`。bootstrap 可要求 `runtime-player`（调用端）和 `py`（执行端）。0.3.18 起不按引擎版本号限制，按实际 API 能力执行；接口错误中的 `engine / compatibility_hint` 提示可能的版本差异。以返回的 `player_capabilities` 为准，普通操作优先使用下表，无需重新查询原版 SDK。
+游戏就绪后执行 `runtime install --session <sid> --json`，注入临时 `mcpy.input`、玩家/UI适配与客户端API。默认用公开CLI，所有 mcpy.* 严格只限临时调试。安装不把这些能力加入业务包。
 
-这些 Python 方法通过同一会话的 `runtime py --side client` 调用；也有 `runtime player <动作>` CLI。先 `snapshot()` 读取位置、朝向、快捷栏、手持物品、饥饿值、箭数和瞄准目标。
-
-| 目的 | 简写 |
-|---|---|
-| 观察玩家 | `mcpy.player.snapshot()` |
-| 向前/侧向移动 | `mcpy.player.move(forward=1, right=0, duration_ms=500, sprint=False)` |
-| 按角度看向 | `mcpy.player.look(pitch=0, yaw=90)` |
-| 看向世界坐标 | `mcpy.player.look_at(x, y, z)` |
-| 切换快捷栏 | `mcpy.player.select_slot(1)`，槽位统一为 **1–9** |
-| 跳跃/限时潜行 | `mcpy.player.jump()` / `mcpy.player.sneak(duration_ms=500)` |
-| 游戏内组合键 | `mcpy.player.key("CTRL+W", hold_ms=500)`，按当前游戏键位解释 |
-| 攻击准星实体 | `mcpy.player.attack(snapshot=s["snapshot"])` |
-| 挖掘准星方块 | `mcpy.player.dig(snapshot=s["snapshot"], duration_ms=1500)` |
-| 使用手持物品 | `mcpy.player.use_item(snapshot=s["snapshot"], mode="auto", hold_ms=200)` |
-| 吃手持食物 | `mcpy.player.eat(snapshot=s["snapshot"], hold_ms=2000)` |
-| 普通弓蓄力射箭 | `mcpy.player.shoot(snapshot=s["snapshot"], hold_ms=1200)` |
-| 批量连续动作 | `mcpy.player.sequence(steps)`，省略 `at_ms` 自动编排，支持 `delay_ms` 和 `wait` |
-| 进度/停止自己的输入 | `mcpy.player.status(operation_id)` / `mcpy.player.stop()` |
-
-`s` 必须来自当前玩家快照。攻击、挖掘和使用前会重新核对目标、槽位、手持物品和距离；界面打开时拒绝玩家动作。`right>0` 向右，`forward>0` 向前；它们是方向而不是速度。pitch 负值向上、正值向下；yaw 0 为南/+Z、90 为西/-X、-90 为东/+X。持续动作 20–10000ms，自动释放；发生移动不等于走到了指定坐标。
-
-有已知连续步骤时优先一次提交队列，见 [玩家动作与连续计划](references/runtime-player.md) 的可直接使用示例；不要为了切换物品、等待、吃东西和射箭逐条消耗 Agent 往返。队列自动在每步重新观察，支持手持物品/目标断言，失败或界面变化后停止，不自动回滚已完成效果。未完成/结果未知时查 status，不重新提交。控制层没有桌面输入回退；弩和实体喂食/交易暂未适配，不能假装成功。
-
-## 游戏内 UI：先读节点，再操作
-
-涉及界面自动化时，先检查 `runtime ui --help`。统一 `runtime install` 已包含 UI；旧入口 `runtime ui install --session <id> --json` 也保留，重复安装同一版本不会重复监听。bootstrap 可要求调用端 `--require-capability runtime-ui` 和执行端 `--require-capability py`，不要仅凭工具版本推断支持。
-
-按 [运行时 UI 操作](references/runtime-ui.md) 使用 `snapshot → 查看浅层语义树 → 单次节点动作 → snapshot`。树会合并重复标签、折叠布局容器，按区域与小组摆放相关控件；分组标题提供上下文，不能代替数字节点 ID 操作。优先采用游戏内节点操作；按返回的 `capabilities`、节点 `actions` 和实际引擎能力选择动作。每次刷新都会更换 snapshot，编号不可跨快照复用；布局或界面变化时重新观察，不猜路径和坐标。
-
-`click` / `slide` 通过游戏内部触控事件触发正常交互，自动抬起，不发送桌面键鼠；`scroll` 直接操作滚动容器。`set-control-value` 仅写控件状态，不保证业务回调，不能用它的成功返回证明设置或交易已生效。操作后核对文字、值及实际目标状态；`pending` 查询 status，结果未知先找回动作，不重复点击。
-
-节点信息不足时用 `screenshot --background-only` 补图。失败即停止截图，不回退抢焦点。需要桌面输入时明确判断用户是否允许游戏占用前台，再使用下面的键鼠流程；不要把私有引擎接口缺失默默转成前台输入。
-
-## 桌面键鼠与验证脚本（需允许占用前台）
-
-连续执行都先编排：省略 `at_ms` 时按前一步**计划结束**加本步 `delay_ms` 自动生成；指定 `at_ms` 也进入同一计划，不另设快速模式。详细例子及时间戳解释见 [连续动作编排](references/input-sequence.md)。Windows 序列返回部分失败记录，但没有持久化动作 status 或幂等重放；超时后先观察游戏，不能套用玩家队列的重查流程。
-
-```bash
-mcpy --remote <endpoint> screenshot --session <id> --output ./captures/before.png --json
-mcpy --remote <endpoint> key --session <id> SHIFT+W --hold-ms 2000 --json
-mcpy --remote <endpoint> mouse click --session <id> --x 400 --y 300 --width 1280 --height 720 --json
+```text
+mcpy --local --project <项目> runtime input capabilities --session <sid> --json
+mcpy --local --project <项目> runtime input observe --session <sid> --json
+mcpy --local --project <项目> runtime input run --session <sid> --file <plan.json> --request-id <32位小写hex> --json
+mcpy --local --project <项目> runtime input status --session <sid> --operation <operation_id> --details --json
+mcpy --local --project <项目> runtime input cancel --session <sid> --operation <operation_id> --json
 ```
 
-本机操作把 remote 改成 `--local --project "<Windows项目>"`。兼容脚本 [game_window.py](scripts/game_window.py) 的 `--remote/--local/--project/--command` 放在 screenshot/key/mouse 之前。
-截图保存到调用端、不覆盖文件；查看 `image` 确认画面。绝对坐标对应截图客户区宽高，尺寸变化后重新截图。
-键盘支持组合与 VK/SC/E0；鼠标支持点击、双击、滚轮、拖拽和 relative。相对位移不保证触屏模式转向，必要时在视角区域拖拽；均以截图验证效果。
-世界准星已瞄准时，可用`mouse click-current --width <截图宽> --height <截图高> --button right`避免绝对鼠标移动带动视角。此操作仍核验会话、前台、画布大小、鼠标位于客户区且没有其他窗口遮挡；不是后台点击。组合点击先让修饰键状态同步，再发送鼠标按下，发送成功仍需检查游戏实际状态。
-**F11** 切换鼠标／触屏模式，**F3** 循环调试层。切换后确认画面，测试结束恢复原状态，除非用户要求保留。
-失焦、遮挡或释放失败时按[故障排查](references/troubleshooting.md)处理；不连续猜测输入。所有持有操作有时限并释放本次按键／按钮。
-[smoke.py](scripts/smoke.py) 默认检查并打包；Windows/macOS 本地世界用 `--local --game`，远端用 `--remote <地址> --connect <服务器>`，均可显式加 `--mcs-auth`。
-`--expect-log` 可重复；`--client-file` / `--server-file` 在世界就绪后执行一次 Python 2 验收脚本（服务端仅本地世界）。没有日志标记和脚本时只报告启动；默认等待期限 90 秒。脚本停止自己创建的会话，不用于需要保留游戏窗口的任务。
-远程桌面交互由 Agent 查看下载的图，再调用远程键鼠；macOS Computer Use 不会自动看到 Windows。Windows 本机需占用前台的复杂操作可按需使用环境已有的 Computer Use，Qt 页和编辑器仍留给人工。
+计划顶层schema_version=1、steps列表，backend默认game；JSON组合keys为有序数组。步骤action为key/key_down/key_up/wait、player.*、ui.*或pointer.*，公共时序只有at_ms/delay_ms/duration_ms。详细动作参数、默认值、键支持与限制由capabilities同一注册表给出；示例与失败处理见 [统一输入协议](references/runtime-input.md)。人工单次组合可用 `runtime input key "CTRL+W" --duration-ms 500`，它生成同一计划，不是另一执行模式。
+
+先读capabilities返回的参数schema，再按observe返回的有效目标/节点构造计划。新JSON不接受旧hold_ms、type、at、clock或顶层事件列表；不要为了“兼容”自行改写输入后端。session绑定游戏会话，UI snapshot绑定本次节点观察，operation_id/request_id绑定输入操作；transport.request_id只表示RPC传输。原始鼠标按钮写pointer.down/up，不能作为负键码填进key。
+
+
+省略at_ms时按前一步计划结束加delay_ms编译，delay不是实际结束后的固定sleep；需要实际等待用wait。完整key从实际按下后保持duration_ms并释放，边沿down/up可在同一计划独立重叠。所有步骤按列表，组合按数组，不自动修饰键排序。迟到默认继续记录，可设max_lateness_ms中止；没有模拟tick对齐。
+
+每个会话只有一个写操作，包括计划等待区间；允许observe/status。玩家动作执行时观察目标并检查expect；UI计划首版每次一个节点动作，绑定当前快照，页面变化后重新observe。返回pending后查原operation_id；传输请求ID在transport，不能用它代替输入操作ID。unknown不重发，释放未确认保持busy并用input stop重试。input stop不退出游戏，顶层stop才结束会话。
+
+游戏内动作不等于原始键鼠设备事件。player.look/选槽/攻击不能冒充原始mouse/wheel边沿；只有原始设备测试显式设置windows-sendinput。缺能力直接报告，不自动安装、切版本、改模式或抢前台。Mac旧运行包缺可靠单调时钟时明确不支持新计划，不用time.clock/墙上时间或30Hz回调计数兜底。
+
+旧player/ui、顶层key/mouse/input-sequence和相应Python方法仍保留兼容行为，从默认帮助隐藏。需要继续旧脚本时读 [兼容输入写法](references/input-writing.md)、[旧UI参考](references/runtime-ui.md)、[旧玩家参考](references/runtime-player.md)，日常Agent不必学习这些入口。
 
 ## 视频录制与逐帧分析
 
@@ -189,13 +153,13 @@ mcpy --remote <endpoint> mouse click --session <id> --x 400 --y 300 --width 1280
 
 ```bash
 mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record start --session <sid> --duration 10 --fps 30 --json
-mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive runtime player move --session <sid> --forward 1 --duration-ms 2000 --json
+mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive runtime input run --session <sid> --file <移动计划.json> --json
 mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record status --session <sid> --recording <rid> --json
 mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record download --session <sid> --recording <rid> --output ./captures/clip.mp4 --json
 mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record frames --session <sid> --recording <rid> --frame 0 --frame 30 --output ./captures/frames --json
 ```
 
-示例中的玩家操作需先完成 `runtime install` 并确认 HUD 与玩家状态。保存 start 返回的 `recording` 作为 rid，保持同一 endpoint、project 和 session。start 在首帧写入后返回，随后可同时执行运行时动作；查询至 `completed` 再下载／提帧。返回 `video/images/manifest` 是调用端路径。Windows 本机将全局路由替换为 `--local --project "<Windows项目>"`，其余参数相同。
+移动计划使用 steps=[{"action":"player.move","forward":1,"duration_ms":2000}]；先完成 runtime install，再input observe确认HUD与玩家状态。保存 start 返回的 `recording` 作为 rid，保持同一 endpoint、project 和 session。start 在首帧写入后返回，随后可同时执行运行时动作；查询至 `completed` 再下载／提帧。返回 `video/images/manifest` 是调用端路径。Windows 本机将全局路由替换为 `--local --project "<Windows项目>"`，其余参数相同。
 
 时长为整数 1–300 秒，帧率为整数 1–60 FPS，默认 10 秒／30 FPS，无音频。每个会话一次录制。固定视频帧可能重复源画面或跳过游戏呈现画面，不能据此保证完整捕获游戏每一帧；PNG 是编码后画面。检查清单中的 `frame/time/source_time/repeated`，查看下载的 PNG，再结合日志判断逻辑是否通过。
 

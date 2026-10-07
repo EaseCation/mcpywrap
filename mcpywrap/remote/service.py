@@ -15,7 +15,7 @@ from ..mcstudio.network import ServerTarget, prepare_network
 from ..mcstudio.processes import checked_process
 
 PROTOCOL = 1
-ACTIONS = ['doctor', 'network-sessions', 'status', 'logs', 'stop', 'screenshot', 'key', 'mouse', 'py', 'input-sequence']
+ACTIONS = ['doctor', 'network-sessions', 'status', 'logs', 'stop', 'screenshot', 'key', 'mouse', 'py', 'input-sequence', 'unified-input']
 ID = re.compile(r'^[0-9a-f]{32}$')
 
 
@@ -314,6 +314,12 @@ class GameService:
         finally:
             self.desktop_session = None
             self.desktop_lock.release()
+
+    def unified_input(self, session, data):
+        fields(data, ('method', 'parameters'))
+        self.record(session)
+        from ..mcstudio.runtime_debug import control_request
+        return self.context(control_request(self.root, session, 'input', method=data.get('method'), parameters=data.get('parameters', {})))
 
     def close(self):
         self.closing.set()

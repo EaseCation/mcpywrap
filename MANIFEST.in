@@ -3,6 +3,7 @@ include docs/releasing.md
 include docs/runtime-debug.md
 include docs/runtime-ui.md docs/runtime-player.md
 include docs/input-sequence.md
+include docs/runtime-input.md
 include docs/local-dependencies.md docs/engine-discovery.md docs/development.md
 include docs/mcs-auth.md
 include docs/code-libraries.md docs/git-dependencies.md docs/qumod.md
@@ -18,6 +19,7 @@ recursive-include native/mcs_auth *.cs *.c *.cer *.json
 recursive-include mcpywrap/mcstudio/bridge_payload *.exe *.dll *.cer *.json
 recursive-include mcpywrap/mcstudio/window_capture *.exe *.json
 recursive-include native/window_capture *.cpp *.h
+recursive-include native/runtime_input *.h *.md *.patch
 prune test
 prune .git
 global-exclude __pycache__ *.py[cod] *.cppconfig *.log

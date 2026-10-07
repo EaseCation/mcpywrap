@@ -73,6 +73,7 @@ for old_command in (py_cmd, reload_cmd):
     cli.add_command(alias)
 
 from .commands.desktop_cmd import screenshot_cmd, key_cmd, mouse_cmd, input_sequence_cmd
+key_cmd.hidden = mouse_cmd.hidden = input_sequence_cmd.hidden = True
 from .commands.serve_cmd import serve_cmd
 cli.add_command(screenshot_cmd, 'screenshot')
 cli.add_command(key_cmd, 'key')

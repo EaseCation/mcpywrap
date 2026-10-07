@@ -153,6 +153,8 @@ class Handler(BaseHTTPRequestHandler):
                     result = service.logs(session, query.get('source', ['game'])[0], int(query.get('tail', ['100'])[0]))
                 elif action == 'py' and self.command == 'POST':
                     result = service.execute_python(session, data)
+                elif action == 'input' and self.command == 'POST':
+                    result = service.unified_input(session, data)
                 elif action == 'stop' and self.command == 'POST':
                     fields(data, ())
                     result = service.stop(session)

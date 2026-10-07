@@ -13,6 +13,11 @@ try:
 except NameError:
     from ..timeline import compile_timeline
 
+try:
+    KeyTimelineMixin
+except NameError:
+    from .runtime_key_timeline_payload import KeyTimelineMixin, key_timeline_clock
+
 
 HUD_TOPS = ('hud_screen', 'ui://./hbui/gameplay.html')
 
@@ -21,8 +26,8 @@ def finite(value):
     return type(value) in (int, float) and not math.isnan(value) and not math.isinf(value)
 
 
-class PlayerController(UIController):
-    def __init__(self, ui, native=None):
+class PlayerController(KeyTimelineMixin, UIController):
+    def __init__(self, ui, native=None, timeline_clock=None):
         self.ui, self.api, self.gui, self.native = ui, ui.api, ui.gui, native
         self.engine, self.clock = ui.engine, ui.clock
         self.closed = False
@@ -30,6 +35,9 @@ class PlayerController(UIController):
         self.operations, self.operation_order = {}, []
         self.sequence_job = None
         self._in_sequence = False
+        self.timeline_clock, self.timeline_clock_source = key_timeline_clock()
+        if timeline_clock is not None:
+            self.timeline_clock, self.timeline_clock_source = timeline_clock, 'injected-monotonic'
 
     def capabilities(self):
         available = not self.closed and not self.ui.closed
@@ -58,9 +66,17 @@ class PlayerController(UIController):
                     'eat': has('local_player_use_item', 'local_player_release_using_item', 'local_player_is_using_item'),
                     'shoot': has('local_player_use_item', 'local_player_release_using_item', 'local_player_is_using_item'),
                     'sequence': available,
+                    'timeline': self._timeline_available(),
                     'interact_entity': False},
                 'limits': {'duration_ms': [20, 10000], 'slot': [1, 9], 'snapshot_seconds': 30,
-                           'sequence_steps':32, 'sequence_ms':120000, 'sequence_timeout_ms':125000},
+                           'sequence_steps':32, 'sequence_ms':120000, 'sequence_timeout_ms':125000,
+                           'timeline_events':256, 'timeline_ms':120000, 'timeline_timeout_ms':125000,
+                           'timeline_log_bytes':96*1024, 'timeline_cleanup_events':512},
+                'timeline': {'schema_versions': [1], 'clocks': ['monotonic_ms'] if self._timeline_available() else [],
+                             'clock_source': self.timeline_clock_source, 'key_edges': ['key_down', 'key_up'],
+                             'order': 'list', 'default_lateness_policy': 'continue',
+                             'dispatch_phase': 'unknown', 'input_consumption_verified': False,
+                             'limitations': ['game_callback_scheduling', 'pause_may_block_cleanup', 'manual_input_ownership_unknown']},
                 'limitations': ['private_client_api', 'effect_requires_verification', 'hud_only']}
 
     def _alive(self):
@@ -71,6 +87,9 @@ class PlayerController(UIController):
 
     def _ready(self, capability):
         pid = self._alive()
+        unified = getattr(self.ui, 'input', None)
+        require(unified is None or unified._calling or (unified.active is None and unified.external_operation is None),
+                'busy', '统一输入正在执行，请查询 runtime input status 或 stop')
         require(self.active is None and self.ui.active is None, 'busy', '上一动作尚未释放，请查询 status 或 stop')
         require(not self.sequence_busy() or self._in_sequence, 'busy', '连续动作正在执行，请查询 status 或 stop')
         require(self._hud(), 'menu_open', '请先关闭菜单并重新观察玩家状态')
@@ -135,8 +154,11 @@ class PlayerController(UIController):
         state = self._read()
         token = uuid.uuid4().hex
         self.observation = {'token': token, 'created': self.clock(), 'generation': self.ui.generation, 'state': state}
-        return dict(state, ok=True, snapshot=token, active=operation_view(self.active), last_action=operation_view(self.last_action),
+        return dict(state, ok=True, snapshot=token, active=self._action_view(self.active), last_action=self._action_view(self.last_action),
                     sequence=self._summary(self.sequence_job))
+
+    def _action_view(self, op):
+        return self._summary(op) if op and op.get('action') == 'timeline' else operation_view(op)
 
     @staticmethod
     def _target_id(target):
@@ -229,6 +251,8 @@ class PlayerController(UIController):
         return op['state'] == 'pending'
 
     def _release(self, op, state='completed'):
+        if op.get('action') == 'timeline':
+            return self._release_key_timeline(op, state)
         if op.get('released') or op.get('_releasing'):
             return
         if state != 'completed':
@@ -276,6 +300,8 @@ class PlayerController(UIController):
         self.observation = None
         if self.active:
             self.active['end_reason'] = 'ui_changed'
+            if self.active['action'] == 'timeline':
+                self.active['code'] = 'menu_open'
             self._release(self.active, 'completed' if self.active['action']=='key' else 'cancelled')
         if self.sequence_busy():
             self.sequence_job.update(state='cancelled',end_reason='ui_changed')
@@ -488,7 +514,7 @@ class PlayerController(UIController):
     def stop(self):
         if self.active: self._release(self.active,'cancelled')
         if self.sequence_busy(): self.sequence_job.update(state='cancelled',end_reason='requested_stop')
-        return {'ok': self.active is None, 'active':operation_view(self.active), 'last_action':operation_view(self.last_action),
+        return {'ok': self.active is None, 'active':self._action_view(self.active), 'last_action':self._action_view(self.last_action),
                 'sequence':self._summary(self.sequence_job)}
 
     def sequence_busy(self):
@@ -506,6 +532,10 @@ class PlayerController(UIController):
     def _summary(op,details=False):
         value=operation_view(op)
         if value is None or details:return value
+        if value.get('action') == 'timeline':
+            for key in ('plan', 'events', 'cleanup_events'):
+                value.pop(key, None)
+            return value
         records=value.get('results',[value])
         for record in records:
             before=record.pop('before',None) or {}
@@ -673,7 +703,7 @@ class PlayerController(UIController):
 
     def dispatch(self, action, **parameters):
         try:
-            require(action in ('snapshot','look','look_at','select_slot','move','jump','sneak','key','attack','use_item','dig','eat','shoot','sequence','status','cancel','stop'),
+            require(action in ('snapshot','look','look_at','select_slot','move','jump','sneak','key','attack','use_item','dig','eat','shoot','sequence','timeline','status','cancel','stop'),
                     'unknown_action','未知玩家动作')
             result = getattr(self,action)(**parameters)
         except (UIError,TypeError,ValueError) as exc:

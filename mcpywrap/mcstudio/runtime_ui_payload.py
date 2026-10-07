@@ -94,12 +94,20 @@ class UIController(object):
     def _changed(self, args=None):
         self.generation += 1
         self.observation = None
+        unified = getattr(self, 'input', None)
+        if unified is not None:
+            unified.changed()
         player = getattr(self, 'player', None)
         if player is not None:
             player._changed()
 
     def _ready(self):
         require(not self.closed, 'not_installed', 'UI 控制层已卸载，请重新 install')
+        unified = getattr(self, 'input', None)
+        if unified is not None and unified._observing:
+            return
+        require(unified is None or unified._calling or (unified.active is None and unified.external_operation is None),
+                'busy', '统一输入正在执行，请查询 runtime input status 或 stop')
         require(self.active is None, 'busy', '交互尚未释放，请查询 status 或 cancel')
         player = getattr(self, 'player', None)
         require(player is None or player.active is None, 'busy', '玩家动作尚未释放，请查询 player status 或 stop')
@@ -326,7 +334,7 @@ class UIController(object):
         self.last_action = op
         self.observation = None
 
-    def _pointer(self, node, snapshot, fraction, request_id, action):
+    def _pointer(self, node, snapshot, fraction, request_id, action, hold_ms=80):
         require(self.capabilities()['capabilities']['click'], 'unsupported_capability',
                 '当前引擎缺少内部触控接口或生命周期监听；不回退到桌面输入')
         op, repeated = self._operation(request_id, [action, node, snapshot, fraction])
@@ -354,7 +362,7 @@ class UIController(object):
         try:
             # 先注册自动抬起；调用方断连也不依赖下一条请求释放。
             game = self.api.GetEngineCompFactory().CreateGame(self.api.GetLevelId())
-            timer = game.AddTimer(.08, lambda: self._release(op))
+            timer = game.AddTimer(hold_ms/1000., lambda: self._release(op))
             require(timer is not None, 'timer_unavailable', '无法安排自动释放，未发送输入')
             op['sent'] = bool(self.gui.simulate_button_event(px, py, 0))
             if not op['sent']:
@@ -461,6 +469,9 @@ class UIController(object):
         return self.status(operation)
 
     def close(self):
+        unified = getattr(self, 'input', None)
+        if unified is not None:
+            unified.close()
         player = getattr(self, 'player', None)
         if player is not None:
             player.close()
@@ -514,20 +525,36 @@ def attach_events(controller, module_name):
             if self.owner is not None:
                 self.owner._changed(args)
 
+        def unloading(self, args=None):
+            if self.owner is not None:
+                unified = getattr(self.owner, 'input', None)
+                if unified is not None and unified.active is not None:
+                    unified._finish(unified.active, 'cancelled', 'world_unloaded')
+                player = getattr(self.owner, 'player', None)
+                if player is not None:
+                    player._timeline_unload()
+
         def bind(self, owner):
             ns, system = api.GetEngineNamespace(), api.GetEngineSystemName()
             if self.owner is not None:
                 for event in EVENTS:
                     self.UnListenForEvent(ns, system, event, self, self.changed)
+                self.UnListenForEvent(ns, system, 'UnLoadClientAddonScriptsBefore', self, self.unloading)
             self.owner = owner
             if owner is not None:
                 for event in EVENTS:
                     self.ListenForEvent(ns, system, event, self, self.changed)
+                self.ListenForEvent(ns, system, 'UnLoadClientAddonScriptsBefore', self, self.unloading)
 
     setattr(sys.modules[module_name], 'RuntimeEvents', RuntimeEvents)
     events = api.GetSystem('mcpywrap_runtime', 'ui_events')
     if events is None:
         events = api.RegisterSystem('mcpywrap_runtime', 'ui_events', module_name + '.RuntimeEvents')
     require(events is not None and hasattr(events, 'bind'), 'lifecycle_unavailable', '无法建立 UI 生命周期监听')
+    # 升级时引擎保留旧系统实例，更新其类方法才能增加新的生命周期监听。
+    for method in ('changed', 'unloading', 'bind'):
+        function = getattr(RuntimeEvents, method)
+        # Python 2 类属性是携带原类约束的 unbound method；只转移原始函数。
+        setattr(events.__class__, method, getattr(function, 'im_func', function))
     events.bind(controller)
     controller.events = events

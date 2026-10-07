@@ -27,12 +27,13 @@ Git／可编辑安装可能缺少 CI 生成的桥接组件；使用包含组件�
 只需要 uv、CLI 和 Skill，不安装 MC Studio、游戏或 Qt。下列路径都是 macOS 路径；mcpy 代表本机 bootstrap 返回的 command。
 
 ```bash
-uv run --no-project --python 3.12 "<skill>/scripts/bootstrap.py" --remote http://192.168.1.20:18765 --require-capability remote-client --require-capability network-sessions --require-capability runtime-ui --require-capability runtime-player --require-capability py --require-capability screenshot
+uv run --no-project --python 3.12 "<skill>/scripts/bootstrap.py" --remote http://192.168.1.20:18765 --require-capability remote-client --require-capability network-sessions --require-capability unified-input --require-capability py --require-capability screenshot
 mcpy --remote http://192.168.1.20:18765 doctor --capabilities --json
 mcpy --remote http://192.168.1.20:18765 --non-interactive connect 192.168.1.10 --port 19132 --detach --json
 mcpy --remote http://192.168.1.20:18765 logs --session <id> --source game --tail 100 --json
 mcpy --remote http://192.168.1.20:18765 runtime install --session <id> --json
-mcpy --remote http://192.168.1.20:18765 runtime ui snapshot --session <id> --json
+mcpy --remote http://192.168.1.20:18765 runtime input capabilities --session <id> --json
+mcpy --remote http://192.168.1.20:18765 runtime input observe --session <id> --json
 mcpy --remote http://192.168.1.20:18765 screenshot --background-only --session <id> --output ./captures/game.png --json
 mcpy --remote http://192.168.1.20:18765 stop --session <id> --json
 ```
@@ -44,7 +45,7 @@ bootstrap 的 --remote 只检查，不保存设置；上述每条命令显式携
 init/add/build/package 仍操作 macOS 项目；只有配置 `[tool.mcpywrap.server] host/port` 的 run 可以远程执行，不上传或装配本地 Mod。
 远程联机会话可用 `mcpy --remote <地址> runtime py --session <id> --code "1+1" --json` 执行客户端 Python；不支持服务端执行或远程热更。超时是结果未知，不自动重发。
 
-Windows 毫秒键鼠编排使用两端 0.3.19+ 的 `input-sequence`，只向执行端发送调用端 JSON 文件的内容。能力与 [编排说明](input-sequence.md) 一致；返回的计时属于 Windows 执行端，不能拿 macOS 的本地时钟相减。它会占用游戏前台，不与后台运行时动作混用来测同一段输入。
+新任务的所有输入使用调用端0.4.2+的 runtime input run --file，游戏内步骤通过执行端py通道完成；文件只在调用端读取。原始Windows设备测试显式设置backend=windows-sendinput，并要求执行端新worker；不会改用调用端桌面或另一后端。操作ID与transport请求ID分开，未知结果查原operation_id。时间属于执行端，不能与Mac本地时钟相减。旧input-sequence保留原提交日志与无持久查询语义，仅用于兼容脚本，见[旧编排说明](input-sequence.md)。
 
 ## 返回字段与脚本参数
 
@@ -71,7 +72,7 @@ uv run --no-project --python 3.12 "<skill>/scripts/game_window.py" --project "/�
 
 两端使用包含 record 命令的 CLI，Windows 必须安装新版原生组件、具备 WGC 与系统 H.264 编解码器，并保持登录未锁屏。先运行 `doctor --capabilities --json`，检查 `record/record-frames` 和 `media`；组件文件存在不代表窗口已就绪。
 
-录制从首帧写入后返回任务 ID，在后台独立执行；期间可继续 runtime ui/player，允许占用前台时也可 key/mouse。按 Skill 主文档的 start → input → status → download → frames 流程操作，不需要读取源码。兼容入口支持：
+录制从首帧写入后返回任务 ID，在后台独立执行；期间输入使用统一runtime input计划，原始设备计划仅在允许占用前台时显式选择。按 Skill 主文档的 start → input → status → download → frames 流程操作，不需要读取源码。兼容入口支持：
 
 ```bash
 uv run --no-project --python 3.12 "<skill>/scripts/game_window.py" --project "<调用端项目>" --remote <endpoint> --session <sid> --command "<bootstrap返回的command>" record start --duration 10 --fps 30
@@ -84,7 +85,7 @@ uv run --no-project --python 3.12 "<skill>/scripts/game_window.py" --project "<�
 
 ## 鼠标与截图
 
-以下鼠标和窗口恢复流程仅用于允许占用前台的任务；后台操作遵循 runtime ui/player 参考，后台截图失败不通过激活游戏来绕过。
+以下鼠标和窗口恢复流程仅用于允许占用前台的任务；后台操作遵循 [统一输入协议](runtime-input.md)，后台截图失败不通过激活游戏来绕过。
 
 - 截图是可见游戏客户区的物理像素，不包含标题栏；点击、移动、滚轮和拖拽需 --x/--y/--width/--height，参考最近截图。
 - drag 增加 --to-x/--to-y/--duration-ms；--keys SHIFT 等修饰键在动作结束后释放。--button right/middle 选择按钮，默认 left；double-click 为双击。
@@ -95,7 +96,7 @@ uv run --no-project --python 3.12 "<skill>/scripts/game_window.py" --project "<�
 ## 找回与自动验证
 
 busy 时用相同 endpoint 的 status --list 查询，不停止无关任务。启动超时可通过请求 ID 找回；`connect --request-id <原 ID>` 必须保持完全相同参数。
-输入超时视为结果未知：runtime ui/player 先用对应 status 找回动作，再刷新快照；桌面输入按允许的截图方式确认，不盲目重发。客户端断线后可重连查询；服务异常退出后，用相同 data-dir 重启可以找回所属会话。
+输入超时视为结果未知：runtime input先用原operation_id查status，再observe刷新观察；旧runtime ui/player仅按兼容语义查询；桌面输入按允许的截图方式确认，不盲目重发。客户端断线后可重连查询；服务异常退出后，用相同 data-dir 重启可以找回所属会话。
 会话／日志实际保存在 Windows data-dir。删除前停止游戏；PID 身份不匹配时拒绝操作，不改成按进程名终止。
 远程自动验证用 `smoke.py --project <调用端目录> --remote <地址> --connect <服务器> --expect-log <标记>`，需要时追加 --mcs-auth。
 Windows 本地世界用 `smoke.py --local --project <Windows项目> --game`；不要在远程配置下用 --game，也不要把纯连接目录用于默认打包流程。

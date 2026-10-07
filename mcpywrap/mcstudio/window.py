@@ -10,6 +10,7 @@ import subprocess
 import struct
 import time
 import zlib
+import uuid
 from typing import NamedTuple
 
 
@@ -722,7 +723,27 @@ def operate(project, session, action, parameters=None, cancel=None):
         from .input_sequence import validate_events
         validate_events(**(parameters or {}))
     with desktop_input_lock() if action in ('key', 'mouse', 'input-sequence') else nullcontext():
-        return _operate(project, session, action, parameters, cancel)
+        # 新 worker 中旧桌面入口也尊重统一游戏写锁；未安装控制层仍保留旧入口能力。
+        reservation = None
+        path = Path(project)/'.runtime/sessions'/session/'control.json'
+        if action in ('key', 'mouse', 'input-sequence') and path.is_file():
+            metadata = json.loads(path.read_text(encoding='utf-8'))
+            if metadata.get('unified_input_worker'):
+                from .runtime_ui import execute as game_input
+                reservation = uuid.uuid4().hex
+                response = game_input(project, session, '_reserve', {'operation': reservation}, family='input')
+                if response.get('code') == 'not_installed': reservation = None
+                elif not response.get('ok'):
+                    error = ValueError(response.get('error') or '无法预留游戏输入')
+                    error.code = response.get('code', 'busy')
+                    raise error
+        try:
+            return _operate(project, session, action, parameters, cancel)
+        finally:
+            if reservation is not None:
+                response = game_input(project, session, '_unreserve', {'operation': reservation}, family='input')
+                if not response.get('ok'):
+                    raise ValueError('桌面输入已结束，但控制层预留释放未确认；停止新增输入')
 
 
 def _operate(project, session, action, parameters=None, cancel=None):

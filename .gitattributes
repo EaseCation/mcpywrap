@@ -1,0 +1,2 @@
+# 原生集成补丁保持 LF，避免 Windows 检出改变补丁上下文。
+native/runtime_input/*.patch text eol=lf

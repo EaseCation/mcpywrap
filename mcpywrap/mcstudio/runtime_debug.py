@@ -340,6 +340,8 @@ class _ControlHandler(socketserver.BaseRequestHandler):
                 if side == 'server' and request.get('kind') != 'python':
                     raise ValueError('服务端热更仅支持 Python 模块')
                 result = self.server.channel.execute(code, side)
+            elif request.get('action') == 'input' and self.server.input_manager is not None:
+                result = self.server.input_manager.dispatch(request.get('method'), request.get('parameters', {}))
             else:
                 raise ValueError('未知的会话操作')
         except (OSError, ValueError, KeyError, UnicodeError) as exc:
@@ -355,8 +357,12 @@ class RuntimeControlServer(socketserver.ThreadingTCPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, channel, token):
+    def __init__(self, channel, token, project=None, session=None):
         self.channel, self.token = channel, token
+        self.input_manager = None
+        if project is not None and session is not None:
+            from .host_input import HostInputManager
+            self.input_manager = HostInputManager(channel, project, session)
         super().__init__(('127.0.0.1', 0), _ControlHandler)
         self.thread = threading.Thread(target=self.serve_forever, kwargs={'poll_interval': .1}, daemon=True)
 
@@ -364,6 +370,8 @@ class RuntimeControlServer(socketserver.ThreadingTCPServer):
         self.thread.start()
 
     def close(self):
+        if self.input_manager is not None:
+            self.input_manager.close()
         self.shutdown()
         self.server_close()
         self.thread.join(timeout=1)

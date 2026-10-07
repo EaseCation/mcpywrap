@@ -57,10 +57,11 @@ def run(project, session):
         debug_channel = backend.debug_channel(data, receiver._write)
         debug_channel.start(process.pid)
         token = uuid.uuid4().hex
-        control_server = RuntimeControlServer(debug_channel, token)
+        control_server = RuntimeControlServer(debug_channel, token, project, session)
         control_server.start()
         sessions.save(directory/'control.json', {'port': control_server.server_address[1],
                                                  'token': token,
+                                                 'unified_input_worker': True,
                                                  'python_reload_sides': ['client', 'server'],
                                                  'client_python_queue': callable(getattr(debug_channel, 'submit', None))})
         data.update(state='running', game=identity(process.pid))

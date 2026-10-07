@@ -23,9 +23,9 @@
 
 ## 截图与键盘输入
 
-`input-sequence` 的迟到、批次部分提交与释放结果见 [编排失败处理](input-sequence.md#读结果与处理失败)。它没有玩家队列的动作 status；远程超时后不重复提交。
+新协议的迟到、unknown、busy与释放重试见 [统一输入](runtime-input.md#目标界面与清理)。以下仅为旧接口兼容处理：`input-sequence` 的迟到、批次部分提交与释放结果见 [编排失败处理](input-sequence.md#读结果与处理失败)。它没有玩家队列的动作 status；远程超时后不重复提交。
 
-游戏操作优先使用 runtime ui/player，按各自 status 和新快照判断效果；需要补图时用 `screenshot --background-only`。后台能力不可用时报告限制，不自动改用桌面键鼠。
+新游戏操作使用runtime input，按原operation_id查询status，并用observe判断实际效果；需要补图时用 `screenshot --background-only`。后台能力不可用时报告限制，不自动改用桌面键鼠。
 以下 key/mouse 故障处理仅适用于用户允许占用前台的桌面输入任务：兼容脚本传入本机 project、同一远端 endpoint 和 session，不能直接指定任意 PID。焦点失败时激活游戏；遮挡或屏幕外错误时调整窗口。游戏启动加载期可能暂时没有窗口，等待后重试。
 截图默认先尝试 Windows Graphics Capture 的后台客户区捕获；系统、窗口或游戏渲染不支持时会自动回退到可见客户区捕获，并在 JSON 中标记 `capture_fallback`。后台捕获不承诺最小化、锁屏、遮挡停止渲染或独占全屏场景；全黑时在 Windows 改用窗口化模式。本机可按环境能力使用 Computer Use，不能让 macOS 工具操作不可见的远端桌面。
 需要保持后台时必须保留 `--background-only`；捕获失败不移除该参数重试，也不激活或调整游戏窗口来绕过约束。

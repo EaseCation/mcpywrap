@@ -137,6 +137,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_qumod_workflow.py -v
       - run: python -m unittest discover -s tests -p test_recordings.py -v
       - run: python -m unittest discover -s tests -p 'test_runtime*.py' -v
+      - run: python -m unittest discover -s tests -p test_host_input.py -v
       - run: python -m unittest discover -s tests -p test_resource_reload.py -v
       - run: python -m unittest discover -s tests -p test_session_capabilities.py -v
       - run: python -m unittest discover -s tests -p test_skill_workflows.py -v
@@ -204,6 +205,8 @@ jobs:
           wheel-smoke/bin/mcpy connect --help
           wheel-smoke/bin/mcpy runtime ui --help
           wheel-smoke/bin/mcpy runtime player --help
+          wheel-smoke/bin/mcpy runtime input --help
+          wheel-smoke/bin/mcpy runtime input run --help
           wheel-smoke/bin/mcpy input-sequence --help
           wheel-smoke/bin/python -m pip check
           mkdir wheel-cli-project

@@ -47,12 +47,18 @@ def capabilities(command, remote=None, local=False):
         for name in ('py', 'reload', 'watch'):
             if re.search(r'^\s+'+name+r'\s', runtime_help, re.M):
                 features.append(name)
-        if re.search(r'^\s+ui\s', runtime_help, re.M):
+        if re.search(r'^\s+input\s', runtime_help, re.M):
+            input_help = invoke([command, 'runtime', 'input', '--help'])
+            if input_help.returncode == 0 and all(re.search(r'^\s+'+name+r'\s', input_help.stdout, re.M)
+                                               for name in ('capabilities', 'observe', 'run', 'status', 'cancel', 'stop')):
+                features.append('unified-input')
+        # 兼容入口从默认帮助隐藏，但直接帮助仍可检验其协议。
+        if re.search(r'^\s+(ui|input)\s', runtime_help, re.M):
             ui_help = invoke([command, 'runtime', 'ui', '--help'])
             if ui_help.returncode == 0 and all(re.search(r'^\s+'+name+r'\s', ui_help.stdout, re.M)
                                               for name in ('install', 'snapshot', 'click', 'status')):
                 features.append('runtime-ui')
-        if re.search(r'^\s+player\s', runtime_help, re.M):
+        if re.search(r'^\s+(player|input)\s', runtime_help, re.M):
             player_help = invoke([command, 'runtime', 'player', '--help'])
             if player_help.returncode == 0 and all(re.search(r'^\s+'+name+r'\s', player_help.stdout, re.M)
                                                   for name in ('snapshot','move','eat','shoot','sequence')):
@@ -83,6 +89,9 @@ def capabilities(command, remote=None, local=False):
                 local_data = result_data
                 media = result_data.get('media')
                 for feature in ('record', 'record-frames'):
+                    if feature in result_data.get('capabilities', []):
+                        features.append(feature)
+                for feature in ('key', 'mouse', 'input-sequence'):
                     if feature in result_data.get('capabilities', []):
                         features.append(feature)
             if remote_info:

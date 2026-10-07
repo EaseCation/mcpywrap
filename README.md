@@ -187,11 +187,12 @@ mcpy --project D:\tests\server stop --session <id> --json
 - “启动这个项目，不弹日志界面，检查客户端和服务端的加载日志。”
 - “启动游戏并截图，模拟组合按键移动，检查 F11 输入模式和 F3 调试信息层。”
 
-Agent 通过 CLI 管理项目和操作游戏。连接后用 `runtime install` 一次注入 `mcpy.ui` / `mcpy.player` / `mcpy.api`：UI 支持文字节点观察与操作，玩家层封装移动、转向、攻击、物品使用、吃东西、射箭和带延迟的连续动作。实际支持能力以安装返回结果为准。详见[游戏内 UI 自动化](docs/runtime-ui.md)和[玩家动作与队列](docs/runtime-player.md)。需要补图且不能占用前台时使用 `screenshot --background-only`。Qt 管理与模板界面用于人工操作。
+Agent通过CLI管理项目和操作游戏。0.4.2起只有一条日常输入流程：runtime install → runtime input capabilities/observe → run --file → status/cancel。键盘组合、独立边沿、玩家与单节点UI操作共用JSON steps与生命周期，实际支持以当前会话能力为准，见[统一输入](docs/runtime-input.md)。需要补图且不能占用前台时用screenshot --background-only；Qt管理界面用于人工操作。
 
-严禁业务代码依赖 `mcpy.*`：这些方法仅存在于临时注入的调试会话，正常游戏运行环境不提供它们；业务实现须使用正式 ModSDK 或项目框架。
+严禁业务代码依赖mcpy.*：这些方法只存在于临时注入的调试会话。默认backend=game；原始设备测试显式设置windows-sendinput。旧player/ui、key/mouse/input-sequence入口仍兼容，但从默认帮助隐藏。
 
-连续执行统一先生成时间计划，`at_ms` 可省略并按动作时长与 `delay_ms` 自动计算。允许占用游戏前台的 Windows 键鼠快切测试使用 `input-sequence --file <计划.json>`，一次请求返回输入提交时间与实际偏差；后台游戏语义动作继续使用 `runtime player sequence`。详见 [连续动作编排与输入计时](docs/input-sequence.md)。
+时间规划中at_ms可省略，按前一步计划结束加delay_ms编译；真正的实际停顿用wait。Mac旧运行包缺单调时钟时新计划明确不支持，不自动切后端或回退CPU时间。
+
 常用入口：`mcpy --project <目录> --non-interactive <命令> --json`。
 
 ## 视频录制与提帧

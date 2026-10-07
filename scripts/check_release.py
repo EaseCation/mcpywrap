@@ -38,7 +38,11 @@ with tarfile.open(sdist) as archive:
     assert expected <= sdist_names, f'Sdist missing modules: {expected - sdist_names}'
     assert 'tests/test_local_dependencies.py' in sdist_names
     assert {'docs/code-libraries.md', 'docs/git-dependencies.md', 'docs/qumod.md', 'docs/runtime-debug.md'} <= sdist_names
-    runtime_files = {'docs/runtime-ui.md', 'docs/runtime-player.md', 'docs/input-sequence.md',
+    runtime_files = {'docs/runtime-ui.md', 'docs/runtime-player.md', 'docs/input-sequence.md', 'docs/runtime-input.md',
+                     'tests/test_runtime_input.py', 'tests/test_host_input.py', 'tests/test_runtime_key_timeline.py',
+                     'tests/manual_runtime_input_unified.py', 'tests/manual_runtime_key_timeline.py',
+                     'native/runtime_input/README.md', 'native/runtime_input/steady_clock.h',
+                     'native/runtime_input/launcher-monotonic.patch',
                      'tests/test_runtime_ui.py', 'tests/test_runtime_ui_outline.py',
                      'tests/test_runtime_player.py', 'tests/manual_runtime_ui.py', 'tests/manual_runtime_player.py',
                      'tests/test_input_sequence.py', 'tests/test_native_input_sequence.py',
@@ -55,6 +59,9 @@ with tarfile.open(sdist) as archive:
             f'Sdist has stale optional manual test: {name}'
     skill_files = {p.relative_to(root).as_posix() for p in (root / 'skills').rglob('*') if p.is_file() and '__pycache__' not in p.parts}
     assert skill_files <= sdist_names, f'Sdist missing skill files: {skill_files - sdist_names}'
+    for name in skill_files:
+        assert archive.extractfile(f'mcpywrap-{version}/{name}').read() == (root/name).read_bytes(), \
+            f'Sdist has stale skill: {name}'
     assert bridge_files <= sdist_names, 'Sdist missing signed bridge payload'
     assert 'native/mcs_auth/Bridge.cs' in sdist_names
     assert capture_files <= sdist_names, 'Sdist missing window capture helper'

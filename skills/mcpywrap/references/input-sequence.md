@@ -1,5 +1,9 @@
 # 连续动作的时间编排
 
+本页为旧入口兼容参考。日常新任务统一使用 [runtime input](runtime-input.md)；旧行为仍保留，不自动更换后端。
+
+键名、别名、VK/SC/E0 格式以及游戏内/桌面的兼容区别见 [按键写法与兼容对照](input-writing.md)。
+
 所有连续执行都先生成计划，没有“普通”和“精确”两种模式。Windows 的 `input-sequence` 和游戏内部的 `runtime player sequence` 共用时间编排规则；只按任务选择输入后端。
 
 - `at_ms` 是相对序列起点的计划开始时间，整数毫秒，可省略。
@@ -13,6 +17,7 @@
 | 任务 | 入口 | 执行时钟与限制 |
 |---|---|---|
 | 移动、进食、射箭等游戏语义操作，需要后台执行 | `runtime player sequence` | 游戏定时器/tick；每步观察与释放校验，不能保证 0–20 ms 精度 |
+| 后台保持一个键，同时独立按放其他键 | `runtime player timeline` | 单调毫秒计划；严格列表顺序、迟到默认继续，详见 [按键时间线](runtime-key-timeline.md)；不提供模拟 tick 对齐 |
 | Windows 真实键鼠快切、输入竞态和 0–20 ms 时序测试 | `input-sequence` | Windows `SendInput`；会激活并占用游戏前台，返回输入提交时间 |
 
 只有任务允许游戏占用前台时才用 Windows 入口。它不需要 `runtime install`。调用端及远程 Windows 执行端均需 CLI 0.3.19+；先检查 `input-sequence --help`，bootstrap 可要求 `input-sequence` 能力，远程执行端也必须报告该能力。旧 CLI/服务缺少入口时明确报错，不拆成多个 key/mouse 调用或回退本机。现有单次 `key` / `mouse` 保持原有参数、最低时长及返回字段。

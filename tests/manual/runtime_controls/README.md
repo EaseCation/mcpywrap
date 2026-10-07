@@ -15,6 +15,10 @@
 | `movement.json` | 十步游戏内移动、疾跑、按键、潜行、跳跃及朝向队列 |
 | `../../manual_runtime_ui.py` | UI 点击、滚动、音量滑块、旧快照拒绝、重复请求及音量恢复 |
 | `../../manual_runtime_player.py` | 进食/射箭、幂等请求、朝向/槽位恢复；可单独对已准备的测试世界使用 |
+| `../../manual_runtime_key_timeline.py` | Windows 专用平坦世界的后台按键重叠、固定顺序、取消和菜单释放；显式运行，输出新的证据目录 |
+| `../../manual_runtime_input_unified.py` | 新统一协议的观察、三次独立重叠、持键攻击、菜单和UI修饰键；显式 --prepare-fixture，Windows设备测试另加 --windows-device |
+| `input_probe.py` | 新统一操作的有界位置/输入与键盘事件观测；不计数模拟tick |
+| `key_timeline_probe.py` | 临时客户端有界观测：实际位置、输入向量与键盘事件；不计数或断言模拟 tick |
 
 安装的临时客户端扩展来自产品的 `mcpywrap/mcstudio/runtime_ui_payload.py`、`runtime_ui_outline.py`、`runtime_player_payload.py`，由 `runtime install` 注入，不在此目录复制一份实现。**`mcpy.*` 只供调试，不能成为业务 Addon 的依赖。** 服务端夹具同样不属于业务包，不需要复制到行为包中。
 

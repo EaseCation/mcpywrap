@@ -121,8 +121,13 @@ runtime_cmd.add_command(reload_cmd)
 runtime_cmd.add_command(watch_cmd)
 
 from .runtime_ui_cmd import ui_cmd
+ui_cmd.hidden = True
 runtime_cmd.add_command(ui_cmd)
 
 from .runtime_player_cmd import player_cmd, install_cmd as install_runtime_cmd
+player_cmd.hidden = True
 runtime_cmd.add_command(player_cmd)
 runtime_cmd.add_command(install_runtime_cmd, 'install')
+
+from .runtime_input_cmd import input_cmd
+runtime_cmd.add_command(input_cmd)

@@ -1,5 +1,7 @@
 # 玩家动作与连续计划
 
+本页为旧入口兼容参考。日常新任务统一使用 [runtime input](runtime-input.md)；旧行为仍保留，不自动更换后端。
+
 **仅限临时调试：严禁在任何业务代码中使用或依赖本页的 `mcpy.*`。** 它们只存在于已注入的调试会话，正常游戏运行时不存在；以下 Python 示例仅通过 `runtime py` 执行，不可复制到随游戏发布的脚本。业务实现须使用正式 ModSDK 或项目框架，完整边界见 [主 Skill](../SKILL.md#强制边界mcpy-仅限临时调试)。
 
 统一安装：`mcpy --local --project <项目> runtime install --session <sid> --json`。远程换成 `--remote <endpoint>`。安装只在游戏内注入客户端函数，不要求控制服务器；UI、玩家层共享会话与输入互斥。0.3.18 起不按引擎版本号限制，按实际原生函数及 SDK 方法是否存在报告能力；存在接口仍需核对实际效果。
@@ -45,6 +47,8 @@ mcpy --local --project <项目> runtime player status --session <sid> --operatio
 - 队列执行期间拒绝新的玩家/UI 写操作；可查询状态和玩家快照。看向指定方向后会再次核对角度，若被其他控制逻辑改变则停止后续步骤，避免朝错误方向射箭。`runtime player stop` 停止本控制层的输入与队列，**不会退出游戏**；顶层 `mcpy stop` 才会结束游戏会话。
 
 ## 各动作的实际语义
+
+需要持续 W 同时独立切换 SPACE、A/D 或修饰键时，使用 [后台按键时间线](runtime-key-timeline.md)。新入口接受 key_down/key_up 事件计划，同一时刻严格按列表顺序；默认迟到继续并记录，不支持 tick 对齐。旧 sequence 保持串行，旧 key 保持整组自动释放。
 
 玩家快照有效期 30 秒；瞬时动作也会使旧快照失效。普通单次调用示例：
 

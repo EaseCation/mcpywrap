@@ -6,6 +6,7 @@ import json
 from pathlib import Path, PureWindowsPath
 import uuid
 import tokenize
+import time
 import zlib
 
 from .runtime_debug import MAX_CODE
@@ -25,7 +26,11 @@ def install_source(engine):
     source = (Path(__file__).with_name('runtime_ui_payload.py').read_bytes() + b'\n' +
               Path(__file__).with_name('runtime_ui_outline.py').read_bytes() + b'\n' +
               Path(__file__).parent.parent.joinpath('timeline.py').read_bytes() + b'\n' +
-              Path(__file__).with_name('runtime_player_payload.py').read_bytes())
+              Path(__file__).parent.parent.joinpath('input_plan.py').read_bytes().replace(b'from __future__ import unicode_literals', b'') + b'\n' +
+              Path(__file__).parent.parent.joinpath('input_executor.py').read_bytes().replace(b'from __future__ import unicode_literals', b'') + b'\n' +
+              Path(__file__).with_name('runtime_key_timeline_payload.py').read_bytes() + b'\n' +
+              Path(__file__).with_name('runtime_player_payload.py').read_bytes() + b'\n' +
+              Path(__file__).with_name('runtime_input_payload.py').read_bytes())
     digest = hashlib.sha256(source).hexdigest()
     encoded = base64.b64encode(zlib.compress(compact_source(source), 9)).decode('ascii')
     code = '''# coding: utf-8
@@ -55,6 +60,8 @@ else:
         _uilp = None
     _ui_module.player = _ui_module.PlayerController(_ui_module.controller, _uilp)
     _ui_module.controller.player = _ui_module.player
+    _ui_module.input = _ui_module.GameInputController(_ui_module.controller, _ui_module.player)
+    _ui_module.controller.input = _ui_module.input
     try:
         _ui_module.attach_events(_ui_module.controller, _ui_module_name)
     except Exception:
@@ -64,17 +71,52 @@ mcpy = _uitypes.ModuleType('mcpy')
 mcpy._mcpy_runtime = True
 mcpy.ui = _ui_module.controller
 mcpy.player = _ui_module.player
+mcpy.input = _ui_module.input
 mcpy.api = _uiapi
 _result = dict(mcpy.ui.capabilities(), source_hash=_ui_module.source_hash, alias='mcpy.ui',
-               api_alias='mcpy.api', player_alias='mcpy.player', player_capabilities=mcpy.player.capabilities()['capabilities'])
+               api_alias='mcpy.api', player_alias='mcpy.player', player_capabilities=mcpy.player.capabilities()['capabilities'],
+               player_timeline=mcpy.player.capabilities()['timeline'], input_capabilities=mcpy.input.capabilities())
 ''' % {'digest': digest, 'encoded': encoded, 'engine': engine}
-    if len(code.encode('utf-8')) > MAX_CODE:
-        raise ValueError('UI 安装脚本超过运行时传输上限')
     return code
 
 
+def install_sources(engine):
+    """有界分段暂存，最后一段才安装；保持现有 32 KiB Python 传输契约。"""
+    source = install_source(engine)
+    if len(source.encode('utf-8')) <= MAX_CODE:
+        return [source]
+    # install_source 的编码参数只由本地源码生成，替换位置不涉及用户输入。
+    start = source.index('_uib64.b64decode(') + len('_uib64.b64decode(')
+    end = source.index(')', start)
+    encoded = source[start:end][1:-1]
+    name = '_mcpywrap_install_stage_' + uuid.uuid4().hex
+    chunks = [encoded[index:index+24000] for index in range(0, len(encoded), 24000)]
+    result = []
+    for index, chunk in enumerate(chunks):
+        initialize = '''
+_stale = sorted(n for n in _stage_sys.modules if n.startswith('_mcpywrap_install_stage_'))
+for _name in _stale[:-7]:
+    _stage_sys.modules.pop(_name, None)
+_stage = _stage_types.ModuleType(%r)
+_stage.payload = ''
+_stage_sys.modules[%r] = _stage
+''' % (name, name) if index == 0 else ''
+        result.append('''import sys as _stage_sys, types as _stage_types
+%s
+_stage_sys.modules[%r].payload += %r
+_result = {'ok': True, 'stage': 'staged'}
+''' % (initialize, name, chunk))
+    source = source[:start] + '_ui_encoded' + source[end:]
+    marker = 'import mod.client.extraClientApi as _uiapi, gui as _uigui'
+    source = source.replace(marker, "_ui_encoded = _uisys.modules.pop(%r).payload\n" % name + marker, 1)
+    result.append(source)
+    if any(len(piece.encode('utf-8')) > MAX_CODE for piece in result):
+        raise ValueError('UI 安装分段超过运行时传输上限')
+    return result
+
+
 def call_source(action, parameters, family='ui'):
-    if family not in ('ui', 'player'):
+    if family not in ('ui', 'player', 'input'):
         raise ValueError('未知运行时能力域')
     payload = json.dumps({'action': action, 'parameters': parameters, 'family': family}, ensure_ascii=True, allow_nan=False)
     encoded = base64.b64encode(payload.encode('ascii')).decode('ascii')
@@ -100,11 +142,11 @@ def execute(project, session, action, parameters=None, family='ui'):
     from . import sessions
     from .runtime_debug import control_request
     identifier(session)
-    if family not in ('ui', 'player'):
+    if family not in ('ui', 'player', 'input'):
         raise ValueError('未知运行时能力域')
     parameters = dict(parameters or {})
-    mutation = (action in ('click', 'slide', 'scroll', 'set_control_value') if family=='ui' else
-                action in ('move','look','look_at','select_slot','jump','sneak','key','attack','use_item','dig','eat','shoot','sequence'))
+    mutation = (action in ('run', 'key') if family == 'input' else action in ('click', 'slide', 'scroll', 'set_control_value') if family=='ui' else
+                action in ('move','look','look_at','select_slot','jump','sneak','key','attack','use_item','dig','eat','shoot','sequence','timeline'))
     if mutation:
         parameters.setdefault('request_id', uuid.uuid4().hex)
     endpoint = remote_url()
@@ -116,21 +158,46 @@ def execute(project, session, action, parameters=None, family='ui'):
         if data.get('state') != 'running' or not data.get('game'):
             raise ValueError('游戏会话尚未运行')
         engine = PureWindowsPath(data['game']['executable']).parent.name
-        source = install_source(engine)
+        sources = install_sources(engine)
     else:
-        source = call_source(action, parameters, family)
+        sources = [call_source(action, parameters, family)]
     try:
-        response = (client.request('POST', '/sessions/' + session + '/py', {'code': source, 'side': 'client'})
-                    if client else control_request(project, session, 'execute', code=source, side='client'))
+        for index, source in enumerate(sources):
+            response = (client.request('POST', '/sessions/' + session + '/py', {'code': source, 'side': 'client'})
+                        if client else control_request(project, session, 'execute', code=source, side='client'))
+            if index < len(sources)-1:
+                # macOS 启动期可能返回排队请求；只查询原请求，不能重发源码或跳过暂存确认。
+                deadline = time.monotonic()+12
+                while (client is None and response.get('state') in ('queued', 'running') and
+                       response.get('request_id') and time.monotonic() < deadline):
+                    time.sleep(.1)
+                    response = control_request(project, session, 'python-result', request_id=response['request_id'])
+                value = response.get('value')
+                if (response.get('state') != 'completed' or response.get('side') != 'client' or
+                        not isinstance(value, dict) or not value.get('ok') or value.get('stage') != 'staged'):
+                    return dict(response, ok=False, session=session, state='unknown',
+                                error='安装源码暂存未确认；未提交后续安装阶段')
     except (ValueError, OSError) as exc:
         if mutation:
+            if family == 'input':
+                return {'ok': False, 'state': 'unknown', 'session': session, 'error': str(exc),
+                        'operation_id': parameters['request_id'], 'request_id': parameters['request_id'],
+                        'hint': '输入结果未知，用 runtime input status --operation 查询，不重发'}
             return {'ok': False, 'state': 'unknown', 'session': session, 'error': str(exc),
                     'operation': parameters['request_id'],
                     'hint': '结果未知，不要重复输入；用 runtime '+family+' status --operation 查询该动作'}
         raise
     context = {k: response[k] for k in ('endpoint', 'execution', 'remote_project', 'project') if k in response}
     context.update(session=session, runtime_state=response.get('state'), request_id=response.get('request_id'))
+    if family == 'input':
+        context.pop('request_id', None)
+        context.pop('runtime_state', None)
+        context['transport'] = {'state': response.get('state'), 'request_id': response.get('request_id')}
     if response.get('state') != 'completed' or response.get('side') != 'client':
+        if family == 'input':
+            return dict(context, ok=False, state='unknown', operation_id=parameters.get('request_id'),
+                        request_id=parameters.get('request_id'), error=response.get('error') or '输入传输未确认',
+                        hint='查询原 operation_id；传输请求编号保存在 transport，不重发动作')
         return dict(context, ok=False, state=response.get('state', 'unknown'),
                     error=response.get('error') or '执行端侧不匹配',
                     operation=parameters.get('request_id'),
@@ -140,5 +207,6 @@ def execute(project, session, action, parameters=None, family='ui'):
         return dict(context, ok=False, state='unknown', error='UI 控制层返回格式不兼容',
                     operation=parameters.get('request_id'))
     if action == 'install' and family == 'player':
-        value = dict(value, capabilities=value.get('player_capabilities', {}), alias='mcpy.player')
+        value = dict(value, capabilities=value.get('player_capabilities', {}),
+                     timeline=value.get('player_timeline'), alias='mcpy.player')
     return dict(context, **value)

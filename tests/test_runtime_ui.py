@@ -370,13 +370,15 @@ class RuntimeUIInjectionTests(unittest.TestCase):
 
     def test_real_payload_installs_idempotently_and_lifecycle_is_guarded(self):
         source = install_source('3.10.0.420447')
-        self.assertLess(len(source.encode('utf-8')), 32768)
+        from mcpywrap.mcstudio.runtime_ui import install_sources
+        self.assertTrue(all(len(piece.encode('utf-8')) <= 32768 for piece in install_sources('3.10.0.420447')))
         self.assertTrue(self.run_code(source)['lifecycle_guard'])
         ui = self.scope['mcpy'].ui
         listeners = len(self.api.listeners)
         self.run_code(source)
         self.assertIs(self.scope['mcpy'].ui, ui)
         self.assertEqual(len(self.api.listeners), listeners)
+
         module = sys.modules['_mcpywrap_ui_runtime']
         module.source_hash = 'previous-build'
         self.run_code(source)
@@ -391,6 +393,36 @@ class RuntimeUIInjectionTests(unittest.TestCase):
         self.assertEqual(self.api.listeners, [])
         self.run_code(source)
         self.assertEqual(len(self.api.listeners), listeners)
+
+    def test_staged_install_executes_only_after_all_source_arrives(self):
+        from mcpywrap.mcstudio.runtime_ui import install_sources
+        sources = install_sources('3.10.0.420447')
+        for piece in sources[:-1]:
+            self.assertEqual(self.run_code(piece)['stage'], 'staged')
+            self.assertNotIn('mcpy', self.scope)
+        result = self.run_code(sources[-1])
+        self.assertTrue(result['ok'])
+        self.assertIn('timeline', result['player_capabilities'])
+        self.assertFalse(any(name.startswith('_mcpywrap_install_stage_') for name in sys.modules))
+
+    def test_existing_event_system_gains_unload_guard_on_upgrade(self):
+        base = self.api.base
+        class LegacyEvents(base):
+            def __init__(self):
+                self.owner = None
+            def bind(self, owner):
+                self.owner = owner
+        legacy = LegacyEvents()
+        self.api.systems[('mcpywrap_runtime', 'ui_events')] = legacy
+        self.run_code(install_source('3.10.0.420447'))
+        self.assertIs(self.scope['mcpy'].ui.events, legacy)
+        self.assertTrue(callable(legacy.unloading))
+        player = self.scope['mcpy'].player
+        player._timeline_unload = Mock()
+        legacy.unloading()
+        player._timeline_unload.assert_called_once()
+        self.run_code(call_source('close', {}))
+        self.assertEqual(self.api.listeners, [])
 
     def test_call_serialization_cannot_execute_value_as_python(self):
         self.run_code(install_source('3.10.0.420447'))
@@ -439,7 +471,8 @@ class RuntimeUIInjectionTests(unittest.TestCase):
                 for command in ('install','status','stop'):
                     result=CliRunner().invoke(cli,player_prefix+[command,'--session','a'*32,'--json'])
                     self.assertEqual(result.exit_code,0,result.output)
-                self.assertEqual(len(calls), 6)
+                from mcpywrap.mcstudio.runtime_ui import install_sources
+                self.assertEqual(len(calls), 4 + 2*len(install_sources('3.10.0.420447')))
                 self.assertTrue(all(data['side'] == 'client' for _, data in calls))
                 self.assertEqual(service.record.call_count, 2)
                 service.stop.assert_not_called()

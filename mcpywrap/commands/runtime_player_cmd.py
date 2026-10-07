@@ -24,7 +24,7 @@ def player_cmd():
 @player_cmd.command(cls=UICommand, name='install')
 @session_option
 def install_cmd(session):
-    """一次注入 mcpy.ui、mcpy.player、mcpy.api。"""
+    """注入统一 mcpy.input 及兼容的 UI、玩家和客户端 API。"""
     return perform(session, 'install')
 
 
@@ -153,6 +153,19 @@ def sequence_cmd(session, request_id, steps, filename):
     except ValueError:
         raise click.UsageError('步骤必须是有效 JSON') from None
     return perform(session,'sequence',steps=plan,request_id=request_id)
+
+
+@player_cmd.command(cls=UICommand, name='timeline')
+@action_options
+@click.option('--file', 'filename', required=True, type=click.Path(exists=True, dir_okay=False),
+              help='调用端 UTF-8 JSON 按键边沿计划；同一时刻严格按列表顺序')
+def timeline_cmd(session, filename, request_id):
+    """一次提交后台按键时间线；迟到默认继续并记录，不提供 tick 对齐。"""
+    try:
+        plan = json.loads(Path(filename).read_text(encoding='utf-8-sig'))
+    except ValueError:
+        raise click.UsageError('--file 必须是合法的 UTF-8 JSON 计划') from None
+    return perform(session, 'timeline', plan=plan, request_id=request_id)
 
 
 @player_cmd.command(cls=UICommand, name='status')

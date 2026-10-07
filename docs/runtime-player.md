@@ -6,6 +6,8 @@
 
 日常 API、默认时长、坐标/槽位约定、连续计划示例及失败恢复统一维护在 [Skill 玩家操作说明](../skills/mcpywrap/references/runtime-player.md)，主 Skill 直接列出了常用方法，不要求 Agent 自行检索 ModSDK。
 
+全部输入入口的键名、别名、组合/边沿写法与平台兼容见 [按键写法与兼容对照](../skills/mcpywrap/references/input-writing.md)。
+
 ## 实现边界
 
 - 公共 ModSDK 用于状态读取、朝向、移动向量锁定、跳跃。内部 `localplayermodule` 用于真实客户端攻击、选槽、使用物品、挖掘和释放，按实际函数是否存在报告能力，不按引擎版本号限制。接口缺失或调用异常会返回引擎版本与兼容性提示。
@@ -27,6 +29,12 @@
 `completed` 只说明输入流程完成，`effect_verified=false` 保留给上层根据饥饿值、物品数量、位置、目标生命值或服务端日志判断。尤其是挖掘时限耗尽，不等于目标已被破坏。原目标坐标已经变为空气时，`block_removed_observed=true / verification=client_block_readback` 表示客户端读到了方块消失，队列可以继续；不等同于已证明由本次操作造成了服务端变化。
 
 ## 验证
+
+独立按键重叠使用新增 `runtime player timeline` / `mcpy.player.timeline(plan)`，公开契约见 [后台按键时间线](../skills/mcpywrap/references/runtime-key-timeline.md)。同一时刻严格遵循列表顺序，不采用旧 key 的修饰键排序；默认迟到继续并记录，可显式设置 max_lateness 中止。每个计划独占已有写操作槽位，取消/异常只释放本计划持有的键，失败释放可用 stop 重试。接口通过同一客户端 Python 通道，原 sequence 保持串行。
+
+统一安装源码超过单条 32 KiB 限额时分段暂存，确认各段后才执行安装；暂存不注入部分控制器。查询及业务包不依赖暂存模块，不扩大原传输上限。输入消费阶段、暂停期间释放和人工输入归属均不作额外保证，不把脚本回调计数包装为模拟 tick。
+
+`tests/test_runtime_key_timeline.py` 用假时钟验证边沿顺序、独立释放、迟到策略、幂等、互斥及失败清理。`tests/manual_runtime_key_timeline.py` 是显式可选的 Windows 实机验收，三次重复重叠配方，并检查两种修饰键顺序、取消和菜单释放；保存真实跳跃、持续移动及后台观测证据，不进入默认测试或正常启动。
 
 `tests/test_runtime_player.py` 使用有时序的引擎适配器验证：按键逆序释放、移动/疾跑恢复、目标变化与越距拒绝、食物 False 返回但已开始使用、弓蓄力松开、队列延迟、预检失败、步骤断言、取消、重复请求和调用者修改原计划后的隔离。
 
