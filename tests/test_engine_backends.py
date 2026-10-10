@@ -18,6 +18,28 @@ from mcpywrap.engines.windows import WindowsBackend
 
 
 class BackendTests(unittest.TestCase):
+    def test_windows_native_hud_layout_when_python_launch_log_is_missing(self):
+        backend=WindowsBackend()
+        game=self.root/'game.log';engine=self.root/'engine.log'
+        data={'mode':'local','log_path':str(game),'engine_log_path':str(engine)}
+        channel=backend.debug_channel(data,lambda text:None);self.addCleanup(channel.close)
+        game.write_bytes(b'UI registered\n')
+        engine.write_bytes(b"[INFO GUI 1 2] Destroyed 'world_loading_progress_screen'\n[INFO GUI 1 2] Layout main thread: Full re-layout of 364 controls completed in 3ms for screen 'pause.pause_screen'.\n")
+        self.assertFalse(backend.refresh(data,channel));self.assertFalse(channel.ready())
+        marker=b"[2026-10-10 16:54:45:664 INFO GUI 90568 80348] Layout main thread: Full re-layout of 364 controls completed in 3.714000ms for screen 'hud.hud_screen'."
+        with engine.open('ab') as stream:stream.write(marker[:120])
+        self.assertFalse(backend.refresh(data,channel))
+        with engine.open('ab') as stream:stream.write(marker[120:]+b'\n')
+        self.assertTrue(backend.refresh(data,channel));self.assertTrue(data['world_ready']);self.assertTrue(channel.ready())
+        self.assertFalse(backend.refresh(data,channel))
+
+    def test_windows_native_hud_requires_engine_log_not_arbitrary_python_text(self):
+        backend=WindowsBackend();game=self.root/'game.log'
+        data={'mode':'local','log_path':str(game),'engine_log_path':str(self.root/'missing.log')}
+        channel=backend.debug_channel(data,lambda text:None);self.addCleanup(channel.close)
+        game.write_bytes(b"[INFO GUI 1 2] Layout main thread: 10 controls completed for screen 'hud.hud_screen'.\n")
+        self.assertFalse(backend.refresh(data,channel));self.assertFalse(channel.ready())
+
     def test_windows_world_readiness_waits_for_client_system_initialization(self):
         backend = WindowsBackend()
         path = self.root/'game.log'

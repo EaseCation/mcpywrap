@@ -13,28 +13,34 @@ class WindowsBackend(GameBackend):
     def debug_channel(self, data, write_log):
         from ..mcstudio.runtime_debug import SafaiaChannel
         self._world_ready = data.get('mode') != 'local'
-        self._log_offset, self._log_pending = 0, b''
+        self._ready_log_cursors = {}
         if data.get('mode') == 'local': data['world_ready'] = False
         return SafaiaChannel(write_log, ready=lambda: self._world_ready)
 
     def refresh(self, data, channel):
         if self._world_ready: return False
         from pathlib import Path
-        path = Path(data['log_path'])
-        try:
-            with path.open('rb') as stream:
-                stream.seek(self._log_offset)
-                chunk = stream.read(65536)
-                self._log_offset = stream.tell()
-        except FileNotFoundError:
-            return False
-        text = self._log_pending + chunk
-        # This engine log is emitted after client/server Python system creation.
-        if b'OnHandlePushScreen hud_screen' in text:
-            self._world_ready = data['world_ready'] = True
-            self._log_pending = b''
-            return True
-        self._log_pending = text[-64:]
+        import re
+        for name in ('log_path', 'engine_log_path'):
+            if not data.get(name): continue
+            path = Path(data[name])
+            offset, pending = self._ready_log_cursors.get(name, (0, b''))
+            try:
+                with path.open('rb') as stream:
+                    stream.seek(offset)
+                    chunk = stream.read(65536)
+                    offset = stream.tell()
+            except FileNotFoundError:
+                continue
+            text = pending + chunk
+            # Both markers require a created gameplay HUD. The native layout
+            # marker also works if the Python launch logging handler raises.
+            hud = (b'OnHandlePushScreen hud_screen' in text if name == 'log_path' else
+                   re.search(rb"\bINFO GUI [^\r\n]*\] Layout main thread: [^\r\n]*controls completed [^\r\n]*for screen 'hud\.hud_screen'\.", text))
+            self._ready_log_cursors[name] = (offset, text[-1024:])
+            if hud:
+                self._world_ready = data['world_ready'] = True
+                return True
         return False
 
     def reload_restriction(self, data, kind):
