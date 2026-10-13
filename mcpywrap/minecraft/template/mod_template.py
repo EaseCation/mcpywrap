@@ -144,6 +144,8 @@ def open_ui_crate_mod(behavior_pack_path, run_event_loop=True):
     
     # 主窗口
     window = QWidget()
+    # Closed embedded editors must release their signal closures before Qt exits.
+    window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
     window.setWindowTitle("Minecraft Mod 创建工具")
     window.setMinimumWidth(900)  # 增加窗口宽度以适应目录树
     window.setMinimumHeight(600)  # 设置窗口最小高度

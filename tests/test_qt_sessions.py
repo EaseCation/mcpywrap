@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import QTimer, QThread, Qt
+from PySide6.QtCore import QTimer, QThread, Qt, QEvent
 from mcpywrap.ui.project_ui import GameInstanceManager
 from mcpywrap.ui.engine_setup import EngineSetupDialog
 from mcpywrap.ui.session_tools import LogTail
@@ -293,7 +293,11 @@ class GuiTests(unittest.TestCase):
         from mcpywrap.minecraft.template.mod_template import open_ui_crate_mod
         window = open_ui_crate_mod(str(self.root), run_event_loop=False)
         self.assertTrue(window.isVisible())
+        destroyed = []
+        window.destroyed.connect(lambda: destroyed.append(True))
         window.close()
+        self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.assertEqual(destroyed, [True])
 
     def test_log_tail_preserves_utf8_and_partial_lines(self):
         path=self.root/'game.log';tail=LogTail()
