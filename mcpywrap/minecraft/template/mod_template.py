@@ -107,7 +107,8 @@ def open_ui_crate_mod(behavior_pack_path, run_event_loop=True):
     Args:
         behavior_pack_path: 行为包目录的路径
     """
-    app = QApplication.instance() or QApplication(sys.argv)
+    from ...ui.application import create_application
+    app = create_application(sys.argv)
 
     # 设置优先使用的中文字体列表
     preferred_fonts = [

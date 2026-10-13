@@ -64,7 +64,9 @@ def pinned_runtime(item):
         raise EngineError('当前系统低于此实例的最低 macOS 要求', 'os_too_old')
     install.verify_game(game, plan['profile'])
     compatibility = install.preflight_runtime(app, game, plan['profile'], meta, plan['runtime_id'])
-    return {'runtime': str(app), 'game': str(game), 'profile': plan['profile'], 'runtime_id': plan['runtime_id'],
+    from .macos_icons import optional_runtime_application
+    application = optional_runtime_application(app, game)
+    return {'runtime': str(app), 'application': str(application), 'game': str(game), 'profile': plan['profile'], 'runtime_id': plan['runtime_id'],
             'compat_report': compatibility, 'cppconfig_protocol': meta.get('cppconfig_protocol'),
             'network_connect_protocol': meta.get('network_connect_protocol')}
 
@@ -167,6 +169,7 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
             finally:
                 if stage.exists(): shutil.rmtree(stage)
             plan = {'runtime': state['runtime'], 'game': state['game'], 'data': str(directory/'data'),
+                    'application': state.get('application'),
                     'cache': str(directory/'cache'), 'engine_version': version,
                     'compat_report': state.get('compat_report')}
             config_path = Path(item['config_path'])
@@ -210,7 +213,8 @@ def launch_session(data):
     helper = app/'Contents/Resources/launcher/run_netease_dev.py'
     if not helper.is_file():
         raise EngineError('运行包缺少启动适配器，请重新安装。', 'runtime_incompatible')
-    command = [sys.executable, str(helper), '--runtime', str(app), '--game-dir', plan['game'],
+    display_app = plan.get('application') or app
+    command = [sys.executable, str(helper), '--runtime', str(display_app), '--game-dir', plan['game'],
                '--data-dir', plan['data'], '--cache-dir', plan['cache'], '--angle-backend', 'metal',
                '--debug-loopback', '--exec-client', '--log', data['engine_log_path']]
     if plan.get('cppconfig'):

@@ -13,12 +13,18 @@ version = config['version']
 wheel = root / 'dist' / f'mcpywrap-{version}-py3-none-any.whl'
 sdist = root / 'dist' / f'mcpywrap-{version}.tar.gz'
 expected = {p.relative_to(root).as_posix() for p in (root / 'mcpywrap').rglob('*.py')}
+icon_files = {'mcpywrap/ui/assets/' + name for name in (
+    'mcpy.png', 'mcpy.icns', 'mcpy.icon/icon.json',
+    'mcpy.icon/Assets/01-cube.svg', 'mcpy.icon/Assets/02-prompt.svg')}
 
 with zipfile.ZipFile(wheel) as archive:
     wheel_names = set(archive.namelist())
     assert expected <= wheel_names, f'Wheel missing modules: {expected - wheel_names}'
     for name in expected:
         assert archive.read(name) == (root / name).read_bytes(), f'Wheel has stale module: {name}'
+    assert icon_files <= wheel_names, f'Wheel missing icons: {icon_files - wheel_names}'
+    for name in icon_files:
+        assert archive.read(name) == (root/name).read_bytes(), f'Wheel has stale icon: {name}'
     assert all(name.startswith(('mcpywrap/', f'mcpywrap-{version}.dist-info/')) for name in wheel_names)
     metadata = BytesParser().parsebytes(archive.read(f'mcpywrap-{version}.dist-info/METADATA'))
     assert metadata['Version'] == version
@@ -36,6 +42,12 @@ with zipfile.ZipFile(wheel) as archive:
 with tarfile.open(sdist) as archive:
     sdist_names = {'/'.join(Path(name).parts[1:]) for name in archive.getnames()}
     assert expected <= sdist_names, f'Sdist missing modules: {expected - sdist_names}'
+    assert icon_files <= sdist_names, f'Sdist missing icons: {icon_files - sdist_names}'
+    assert 'scripts/build_app_icon.py' in sdist_names
+    assert 'tests/test_application_icons.py' in sdist_names
+    for name in icon_files:
+        assert archive.extractfile(f'mcpywrap-{version}/{name}').read() == (root/name).read_bytes(), \
+            f'Sdist has stale icon: {name}'
     assert 'tests/test_local_dependencies.py' in sdist_names
     assert {'docs/code-libraries.md', 'docs/git-dependencies.md', 'docs/qumod.md', 'docs/runtime-debug.md'} <= sdist_names
     runtime_files = {'docs/runtime-ui.md', 'docs/runtime-player.md', 'docs/input-sequence.md', 'docs/runtime-input.md',
@@ -71,5 +83,6 @@ with tarfile.open(sdist) as archive:
 for name in wheel_names | sdist_names:
     parts = Path(name).parts
     assert not any(part in ('test', '.runtime', '__pycache__', '.git') for part in parts), name
-    assert not name.endswith(('.cppconfig', '.log', '.pyc', '.pyo', '.png', '.pfx', '.p12', '.key')), name
+    assert not name.endswith(('.cppconfig', '.log', '.pyc', '.pyo', '.pfx', '.p12', '.key')), name
+    assert not name.endswith('.png') or name in icon_files, name
 print(f'{version}: wheel and sdist contain all {len(expected)} Python modules; no local test artifacts')

@@ -49,8 +49,9 @@ ConvertTo-Json -InputObject $items -Compress
 
 
 def confirm_certificate(certificate):
-    from PySide6.QtWidgets import QApplication, QMessageBox
-    app = QApplication.instance() or QApplication([])
+    from PySide6.QtWidgets import QMessageBox
+    from ..ui.application import create_application
+    app = create_application()
     dialog = QMessageBox()
     dialog.setWindowTitle('启用 MC Studio 登录身份')
     dialog.setIcon(QMessageBox.Icon.Warning)
@@ -81,6 +82,7 @@ def install_certificate(certificate):
 
 
 def show_failure(message):
-    from PySide6.QtWidgets import QApplication, QMessageBox
-    app = QApplication.instance() or QApplication([])
+    from PySide6.QtWidgets import QMessageBox
+    from ..ui.application import create_application
+    app = create_application()
     QMessageBox.warning(None, '暂时无法使用 MC Studio 登录身份', message)

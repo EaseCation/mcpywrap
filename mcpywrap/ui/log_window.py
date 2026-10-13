@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, Q
                               QLabel, QTabWidget, QMenu, QWidgetAction, QSizePolicy, QCheckBox)
 from .log_view import LogView
 from .session_views import SessionControls, PythonConsole
+from .application import application_icon
 
 
 class ElidedStatus(QLabel):
@@ -36,6 +37,7 @@ class LogWindow(QMainWindow):
         self.log_expanded = False
         self.expanded_size = QSize(540, 340)
         self.setWindowTitle(title)
+        self.setWindowIcon(application_icon())
         central = QWidget(); layout = QVBoxLayout(central); self.setCentralWidget(central)
         layout.setContentsMargins(6, 4, 6, 4); layout.setSpacing(4)
         row = QHBoxLayout(); row.setSpacing(4)

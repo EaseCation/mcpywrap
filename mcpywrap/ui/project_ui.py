@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QTabWidget, QLineEdit, QListWidget, QListWidgetItem, QComboBox, QCompleter, QToolButton, QMenu, QInputDialog, QSizePolicy, QFormLayout
 )
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer, QStringListModel
-from PySide6.QtGui import QIcon, QFont, QColor
+from PySide6.QtGui import QFont, QColor
 
 from ..commands.run_cmd import _setup_dependencies
 from ..commands.edit_cmd import open_edit
@@ -24,6 +24,7 @@ from .session_controller import SessionController
 from .session_views import SessionControls, PythonConsole
 from .log_view import LogView
 from .log_window import SessionLogWindow
+from .application import create_application, application_icon
 from ..dependencies import (DependencyService, DependencyError,
                             read_project, resolve_path, path_for_storage, addon_directories)
 from ..builders.dependency_manager import find_all_mcpywrap_packages
@@ -87,7 +88,7 @@ class GameInstanceManager(QMainWindow):
         self.setWindowTitle(f"Minecraft游戏实例管理器 - {self.current_project}")
         self.setMinimumSize(800, 600)
         self.resize(1200, 800)
-        self.setWindowIcon(QIcon())
+        self.setWindowIcon(application_icon())
 
         self.setup_global_font()
         
@@ -893,7 +894,7 @@ class DependencyInstallThread(QThread):
 
 def show_run_ui(base_dir=None, mcs_auth=False, autorun=False, new=False, instance=None, engine_overrides=None, world_config=None):
     """显示游戏实例管理UI"""
-    app = QApplication.instance() or QApplication(sys.argv)
+    app = create_application(sys.argv)
     # Keep Qt's platform style and system palette for the project and floating controls.
     
     window = GameInstanceManager(base_dir or os.getcwd(), mcs_auth=mcs_auth, engine_overrides=engine_overrides)

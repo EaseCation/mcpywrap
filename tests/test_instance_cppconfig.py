@@ -131,6 +131,7 @@ class ConfigTests(unittest.TestCase):
         app = self.root/'app';helper = app/'Contents/Resources/launcher/run_netease_dev.py'
         helper.parent.mkdir(parents=True);helper.touch()
         data = {'launch': {'runtime':str(app),'game':'/game','data':'/data','cache':'/cache',
+                          'application':'/local/Minecraft China.app',
                           'cppconfig':str(self.path)}, 'engine_log_path':'/log'}
         process = Mock(pid=999);process.poll.return_value = None
         with patch.object(macos.install, 'read_json', return_value={'addon_link_protocol':1}), \
@@ -138,6 +139,8 @@ class ConfigTests(unittest.TestCase):
                 patch('mcpywrap.mcstudio.processes.identity', return_value={'executable':'/bin/mcpelauncher-client'}):
             self.assertIs(macos.launch_session(data), process)
         command = popen.call_args.args[0]
+        self.assertEqual(command[command.index('--runtime') + 1], '/local/Minecraft China.app')
+        self.assertIn(str(helper), command)
         self.assertIn('--cppconfig', command)
         for flag in ('--world-id','--world-name','--source-addon'):self.assertNotIn(flag, command)
 
