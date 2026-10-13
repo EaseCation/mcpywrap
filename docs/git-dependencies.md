@@ -76,11 +76,11 @@ Python的project.dependencies继续表示工具Python依赖，不变成游戏代
 
 两端提交并使用同一份 `mcpy-git.lock.json`，无需维护平台分支。锁定的是 Git 提交、源码和依赖关系；本机安装目录位于 `.mcpy/`，不提交到 Git。当前依赖都是游戏源码，没有需要分别锁定的 Windows/macOS 原生包。
 
-v2 锁使用相同的大小写敏感路径排序；源码由 Git archive 提取，保留仓库内的原始字节，工具生成的文件统一使用 LF。切换操作系统不会改变依赖摘要。新机器或克隆项目后运行一次 `mcpy sync`，随后正常 `mcpy run`。
+v2 锁使用相同的大小写敏感路径排序；源码由 Git archive 提取，禁用宿主 Git 的换行、编码、ident 和 filter 转换及全局 attributes，保留提交中的文件字节（包括二进制和原本的 CRLF）。工具生成的文件统一使用 LF。新机器或克隆项目后运行一次 `mcpy sync`，随后正常 `mcpy run`。
 
-普通 `mcpy sync` 会验证旧 v1 锁的源码，再自动更新跨平台格式，不再需要迁移参数。旧锁备份于 `.mcpy/lock-backups/`；需要重建的旧平台安装副本保留于 `.mcpy/registration-backups/`。提交新锁后，团队两端应使用支持 v2 的新版 mcpy。旧源码校验失败、或已安装文件出现无法解释的修改时仍会报错，不自动丢弃用户修改。
+`mcpy sync` 依据声明中固定的完整 Git 提交重新计算源码和安装内容摘要，直接写回锁文件；不更新依赖版本、不创建备份或执行专门的锁迁移。旧 v1/v2 锁都可通过一次 sync 刷新。新快照使用独立的 `git-archive-v2` 缓存，首次同步会重新获取固定提交，之后可离线复用；旧缓存不参与新摘要计算。已安装副本与旧锁一致时可重建，手动改动或缓存损坏仍会报错。`build/package/run` 继续严格验证锁文件，不隐式重算。
 
-终端只显示同步进度、结果和必要操作；`mcpy sync --json` 保留备份位置、完整摘要等诊断信息，供脚本和 AI 使用。`--migrate-windows-lock` 暂留作旧脚本兼容参数。
+终端只显示同步进度、结果和必要操作；`mcpy sync --json` 返回结构化结果。`--migrate-windows-lock` 和 JSON 中始终为空的 `git_lock_migrations` 仅保留旧脚本兼容。团队各设备应使用包含此修复的版本，并提交 sync 更新后的锁文件。
 
 ## 验证范围
 

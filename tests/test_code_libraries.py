@@ -87,6 +87,26 @@ class CodeLibraries(unittest.TestCase):
         self.build()
         self.assertFalse((self.out / 'behavior_pack/MyMod/Library').exists())
 
+    def test_windows_lock_and_installation_are_recalculated_from_pinned_source(self):
+        from mcpywrap.source_files import digest
+        sync_libraries(self.main)
+        path = self.main / LOCK_FILE
+        canonical = path.read_bytes()
+        installed = resolve_libraries(self.main)[0]['source']
+        for file in installed.rglob('*'):
+            if file.is_file():
+                file.write_bytes(file.read_bytes().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n'))
+        lock = json.loads(canonical)
+        lock['libraries'][0]['sha256'] = digest(installed)
+        self.assertNotEqual(lock['libraries'][0]['sha256'], json.loads(canonical)['libraries'][0]['sha256'])
+        path.write_text(json.dumps(lock))
+        clone = self.root / 'clone'
+        shutil.copytree(self.main, clone, ignore=shutil.ignore_patterns('.mcpy'))
+        for project in (self.main, clone):
+            sync_libraries(project)
+            resolve_libraries(project)
+            self.assertEqual((project / LOCK_FILE).read_bytes(), canonical)
+
     def test_tamper_failed_fetch_and_handwritten_conflicts_preserve_output(self):
         sync_libraries(self.main)
         self.build()

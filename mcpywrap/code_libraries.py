@@ -64,9 +64,6 @@ def prepare_sync(root, config=None):
     for entry in entries:
         key = identity(entry)
         installed = cache / key
-        if installed.is_dir() and key in expected and expected[key] in (digest(installed), windows_checkout_digest(installed, crlf=False)):
-            lock['libraries'].append({'declaration': entry, 'sha256': digest(installed)})
-            continue
         # 临时仓库不检出文件、不运行依赖代码、hooks 或安装脚本。
         with tempfile.TemporaryDirectory(prefix='fetch-', dir=cache) as temporary:
             temp = Path(temporary)
@@ -83,12 +80,19 @@ def prepare_sync(root, config=None):
                     (content / ('MCPY_UPSTREAM_' + file.name)).write_bytes(file.read_bytes())
             validate_game_files(root, [content])
             value = digest(content)
-            if key in expected and expected[key] not in (value, windows_checkout_digest(content, crlf=False)):
-                raise DependencyError('固定提交的代码库内容与锁文件摘要不符')
             if installed.exists():
-                # 回退到旧提交：用重新获取的内容验证旧缓存，而不是逐文件覆盖。
+                # Rebuild unchanged old installations from canonical source.
                 if digest(installed) != value:
-                    raise DependencyError(f'代码库缓存已损坏，请移走后重新 sync: {installed}')
+                    if key not in expected or expected[key] not in (
+                            digest(installed), windows_checkout_digest(installed, crlf=False)):
+                        raise DependencyError(f'代码库缓存已损坏，请移走后重新 sync: {installed}')
+                    old = temp / 'old'
+                    os.replace(installed, old)
+                    try:
+                        os.replace(content, installed)
+                    except BaseException:
+                        os.replace(old, installed)
+                        raise
             else:
                 os.replace(content, installed)
             lock['libraries'].append({'declaration': entry, 'sha256': value})

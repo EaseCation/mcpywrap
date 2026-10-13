@@ -108,11 +108,10 @@ def prepare_graph(root, config=None, migrate_windows_lock=False):
     root = Path(root).resolve()
     config = read_project(root) if config is None else config
     roots = declarations(root, config)
-    expected, legacy = {}, False
+    expected = {}
     if (root / LOCK_FILE).exists():
         try:
             prior = json.loads((root / LOCK_FILE).read_text('utf-8'))
-            legacy = prior['version'] == 1
             expected = {record['id']: record for record in prior['nodes']}
         except (ValueError, KeyError, TypeError) as exc:
             raise DependencyError('无法读取依赖锁文件 mcpy-git.lock.json。\n请从版本控制恢复该文件后运行 mcpy sync。') from exc
@@ -120,7 +119,7 @@ def prepare_graph(root, config=None, migrate_windows_lock=False):
             raise DependencyError('此项目需要较新版本的 mcpy，请先升级 mcpywrap。')
     registered = long_path(root / '.mcpy/git-projects')
     registered.mkdir(parents=True, exist_ok=True)
-    nodes, active, migrations = {}, [], []
+    nodes, active = {}, []
     def visit(entry, supplied_source=None):
         source, commit = supplied_source or fetch_source(root, entry['git'], entry['rev'])
         project, payload, project_config, kind, target = _layout(source, entry)
@@ -138,11 +137,8 @@ def prepare_graph(root, config=None, migrate_windows_lock=False):
         active.append(key)
         source_hash = digest(source)
         previous = expected.get(key)
-        migrating = legacy and previous is not None
-        if previous and previous['source_sha256'] != source_hash:
-            if not migrating or previous['source_sha256'] not in (
-                    windows_checkout_digest(source), windows_checkout_digest(source, crlf=False)):
-                raise DependencyError(f"依赖 {entry['name']} 的源码校验失败。\n请保留 mcpy-git.lock.json，并重新获取该依赖的固定版本。")
+        # sync derives checksums from the pinned commit's verified snapshot.
+        # Old host-dependent checksums are outputs, not version constraints.
         children = []
         for child in declarations(project, project_config):
             children.append(visit(child))
@@ -197,65 +193,39 @@ def prepare_graph(root, config=None, migrate_windows_lock=False):
             from .dependencies import validate_game_files
             validate_game_files(stage, addon_directories(stage).values())
             content_hash = digest(stage)
-            if previous and previous['sha256'] != content_hash and not migrating:
-                raise DependencyError(f"依赖 {entry['name']} 的安装内容与锁文件不一致。\n请确认团队使用相同版本的 mcpywrap；不要删除锁文件。")
             final = registered / key
             if final.exists():
                 if digest(final) != content_hash:
-                    # Old generated files may contain Windows line endings. Only
-                    # replace a verified old registration; preserve it for recovery.
-                    if not migrating or previous['sha256'] not in (
+                    # Only replace an unchanged installation of the old lock.
+                    if not previous or previous['sha256'] not in (
                             digest(final), windows_checkout_digest(final, crlf=False)):
                         raise DependencyError(f"依赖 {entry['name']} 的本地文件已修改。\n请将 {final} 移到项目外备份，再运行 mcpy sync。")
-                    backups = root/'.mcpy/registration-backups'
-                    backups.mkdir(parents=True, exist_ok=True)
-                    backup = Path(tempfile.mkdtemp(prefix=key[:12]+'-', dir=backups))/'project'
-                    os.replace(final, backup)
+                    old = Path(temporary) / 'old'
+                    os.replace(final, old)
                     try:
                         os.replace(stage, final)
                     except BaseException:
-                        os.replace(backup, final)
+                        os.replace(old, final)
                         raise
             else:
                 os.replace(stage, final)
         record = {'id': key, 'source': identity, 'source_sha256': source_hash, 'sha256': content_hash,
                   'kind': kind, 'target': target, 'children': list(dict.fromkeys(children))}
-        if migrating:
-            migrations.append({'node': key, 'name': entry['name'], 'git': entry['git'], 'rev': commit,
-                               'old_source_sha256': previous['source_sha256'], 'source_sha256': source_hash,
-                               'old_registered_sha256': previous['sha256'], 'registered_sha256': content_hash})
         nodes[key] = record
         active.pop()
         return key
     root_ids = [visit(entry) for entry in roots]
-    lock = {'version': 2, 'declarations': roots, 'roots': root_ids, 'nodes': list(nodes.values())}
-    if migrations:
-        lock['_lock_migrations'] = migrations
-    return lock
+    return {'version': 2, 'declarations': roots, 'roots': root_ids, 'nodes': list(nodes.values())}
 
 
 def write_lock(root, lock):
-    data = dict(lock)
-    migrations = data.pop('_lock_migrations', [])
-    report = []
-    if migrations and (Path(root)/LOCK_FILE).exists():
-        old = (Path(root)/LOCK_FILE).read_bytes()
-        backup = Path(root)/'.mcpy/lock-backups'/(hashlib.sha256(old).hexdigest()+'.json')
-        backup.parent.mkdir(parents=True, exist_ok=True)
-        if backup.exists() and backup.read_bytes() != old:
-            raise DependencyError('无法备份旧依赖记录，原锁文件未修改。')
-        backup.write_bytes(old)
-        report.append({'project': str(root), 'backup': str(backup), 'nodes': migrations})
-    _write_json(Path(root) / LOCK_FILE, data)
-    return report
+    _write_json(Path(root) / LOCK_FILE, lock)
 
 
 def sync_projects(root, config=None, migrate_windows_lock=False, migration_report=None):
-    # Kept for older callers; recognized legacy locks now migrate automatically.
-    lock = prepare_graph(root, config, migrate_windows_lock=migrate_windows_lock)
-    report = write_lock(root, lock)
-    if migration_report is not None:
-        migration_report.extend(report)
+    # Legacy arguments are retained for callers; sync simply recalculates the lock.
+    lock = prepare_graph(root, config)
+    write_lock(root, lock)
     return len(lock['nodes'])
 
 

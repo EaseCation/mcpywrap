@@ -89,7 +89,9 @@ def fetch_snapshot(url, ref):
         raise DependencyError('无效Git引用')
     origin = hashlib.sha256(url.encode('utf-8')).hexdigest()
     base = cache_root()
-    snapshots = base / 'git' / origin
+    # Old archives may contain bytes converted by the host's Git settings.
+    # Keep them separate so even a verified old cache cannot reintroduce CRLF.
+    snapshots = base / 'git-archive-v2' / origin
     snapshots.mkdir(parents=True, exist_ok=True)
     with _source_lock(base / 'locks' / (origin + '.lock')):
         if re.fullmatch('[0-9a-f]{40}', ref) and (snapshots / ref).exists():
@@ -99,6 +101,11 @@ def fetch_snapshot(url, ref):
             repo, package = stage / 'repo', stage / 'snapshot'
             content = package / 'content'
             _git('init', '--bare', repo)
+            # Archive applies checkout conversions too. Preserve blob bytes,
+            # including binary/intentional CRLF files, on every host.
+            (repo / 'info').mkdir(exist_ok=True)
+            (repo / 'info' / 'attributes').write_bytes(
+                b'* -text -eol -filter -ident -working-tree-encoding\n')
             _git('-C', repo, 'fetch', '--depth=1', '--no-tags', url, ref)
             commit = _git('-C', repo, 'rev-parse', 'FETCH_HEAD^{commit}').decode().strip()
             if not re.fullmatch('[0-9a-f]{40}', commit) or (re.fullmatch('[0-9a-f]{40}', ref) and commit != ref):

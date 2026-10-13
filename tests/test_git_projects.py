@@ -22,77 +22,116 @@ from test_local_dependencies import addon
 
 
 class GitProjects(unittest.TestCase):
-    def test_windows_lock_migration_is_automatic_and_preserves_old_lock(self):
+    def test_sync_recalculates_old_lock_without_changing_pins_or_backups(self):
         from mcpywrap.git_projects import sync_projects
-        from mcpywrap.source_files import windows_checkout_digest, digest
-        repo, rev = self.repository('legacy', 'code')
-        # 固定 LF 字节，避免 Windows 文本写入让旧/新摘要在夹具中意外相同。
-        (repo/'src/legacy_marker.py').write_bytes(b'VALUE = 1\n')
-        (repo/'.gitattributes').write_bytes(b'src/legacy_marker.py -text\n')
-        rev = self.commit(repo)
-        self.service.add(repo.as_uri())
-        path = self.main / LOCK_FILE
-        lock = json.loads(path.read_text())
-        lock['version'] = 1
-        source, _ = fetch_snapshot(repo.as_uri(), rev)
-        lock['nodes'][0]['source_sha256'] = windows_checkout_digest(source)
-        self.assertNotEqual(lock['nodes'][0]['source_sha256'], digest(source))
-        lock['nodes'][0]['sha256'] = 'a' * 64  # legacy tool/platform registration
-        path.write_text(json.dumps(lock))
-        previous = path.read_bytes()
-        report = []
-        sync_projects(self.main, migration_report=report)
-        self.assertEqual(len(report), 1)
-        self.assertEqual(Path(report[0]['backup']).read_bytes(), previous)
-        self.assertNotEqual(path.read_bytes(), previous)
-        sync_projects(self.main)  # migrated locks resume strict normal checks
-        resolve_projects(self.main)
-
-    def test_windows_case_order_lock_with_lf_is_automatically_migrated(self):
-        from mcpywrap.git_projects import sync_projects
-        from mcpywrap.source_files import windows_checkout_digest, digest
-        repo, _ = self.repository('case-legacy', 'code')
-        (repo/'src/B.py').write_bytes(b'B = 1\n')
-        (repo/'src/a.py').write_bytes(b'a = 2\n')
-        rev = self.commit(repo)
-        self.service.add(repo.as_uri())
-        source, _ = fetch_snapshot(repo.as_uri(), rev)
-        old_digest = windows_checkout_digest(source, crlf=False)
-        self.assertNotEqual(old_digest, digest(source))
-        path = self.main/LOCK_FILE
-        lock = json.loads(path.read_text())
-        lock['version'] = 1
-        lock['nodes'][0]['source_sha256'] = old_digest
-        path.write_text(json.dumps(lock))
-        sync_projects(self.main)
-        resolve_projects(self.main)
-
-    def test_migration_rejects_unexplained_source_and_registration_changes(self):
-        from mcpywrap.git_projects import sync_projects
-        repo, _ = self.repository('changed', 'code')
-        self.service.add(repo.as_uri())
+        repo, rev = self.repository('refresh', 'code')
+        self.service.add(repo.as_uri(), ref=rev)
         path = self.main / LOCK_FILE
         original = json.loads(path.read_text())
-        for field in ('source_sha256', 'sha256'):
+        config = (self.main / 'pyproject.toml').read_bytes()
+        for version in (1, 2):
             lock = json.loads(json.dumps(original))
-            lock['nodes'][0][field] = '0' * 64
+            lock['version'] = version
+            lock['nodes'][0]['source_sha256'] = '0' * 64
+            lock['nodes'][0]['sha256'] = 'a' * 64
             path.write_text(json.dumps(lock))
-            with self.subTest(field=field), self.assertRaises(DependencyError):
-                sync_projects(self.main, migrate_windows_lock=True)
-            self.assertEqual(json.loads(path.read_text()), lock)
+            with self.subTest(version=version):
+                sync_projects(self.main)
+                self.assertEqual(json.loads(path.read_text()), original)
+                resolve_projects(self.main)
+                self.assertEqual((self.main / 'pyproject.toml').read_bytes(), config)
+                self.assertFalse((self.main / '.mcpy/lock-backups').exists())
+                self.assertFalse((self.main / '.mcpy/registration-backups').exists())
 
-    def test_legacy_migration_still_rejects_changed_source(self):
+    def test_sync_rejects_modified_source_cache_and_registration(self):
         from mcpywrap.git_projects import sync_projects
-        repo, _ = self.repository('legacy-corrupt', 'code')
+        repo, rev = self.repository('corrupt', 'code')
         self.service.add(repo.as_uri())
-        path = self.main/LOCK_FILE
-        lock = json.loads(path.read_text()); lock['version'] = 1
-        lock['nodes'][0]['source_sha256'] = '0'*64
-        path.write_text(json.dumps(lock)); before = path.read_bytes()
-        with self.assertRaisesRegex(DependencyError, '源码校验失败'):
-            sync_projects(self.main)
-        self.assertEqual(path.read_bytes(), before)
-        self.assertFalse((self.main/'.mcpy/lock-backups').exists())
+        source, _ = fetch_snapshot(repo.as_uri(), rev)
+        registered = resolve_projects(self.main)[0][1]
+        before = (self.main / LOCK_FILE).read_bytes()
+        for file in (source / 'src/__init__.py',
+                     registered / 'behavior_pack/Mod/corrupt/__init__.py'):
+            original = file.read_bytes()
+            file.write_bytes(b'TAMPERED = True\n')
+            with self.subTest(file=file), self.assertRaises(DependencyError):
+                sync_projects(self.main)
+            self.assertEqual(file.read_bytes(), b'TAMPERED = True\n')
+            self.assertEqual((self.main / LOCK_FILE).read_bytes(), before)
+            file.write_bytes(original)
+
+    def test_archive_and_lock_ignore_host_git_conversion_settings(self):
+        from mcpywrap.git_projects import sync_projects
+        repo, _ = self.repository('portable-archive', 'code')
+        (repo / '.gitattributes').write_bytes(
+            b'*.py text eol=crlf ident filter=host\n*.bin -text\n')
+        (repo / 'src/__init__.py').write_bytes(b'VALUE = 42\n# $Id$\n')
+        (repo / 'src/data.bin').write_bytes(b'\x00data\r\n\xff\n')
+        (repo / 'src/crlf.bin').write_bytes(b'intentional\r\n')
+        rev = self.commit(repo)
+        expected = {name: subprocess.check_output(['git', '-C', str(repo),
+                    'show', rev + ':' + name]) for name in
+                    ('src/__init__.py', 'src/data.bin', 'src/crlf.bin')}
+        attributes = self.root / 'global-attributes'
+        attributes.write_bytes(b'* export-ignore\n')
+        config = self.root / 'global-gitconfig'
+        locks = []
+        for autocrlf, eol in (('true', 'crlf'), ('false', 'lf'), ('input', 'native')):
+            config.write_text('[core]\nautocrlf = ' + autocrlf + '\neol = ' + eol +
+                              '\nattributesFile = ' + attributes.as_posix() + '\n', encoding='utf-8')
+            with self.subTest(autocrlf=autocrlf), patch.dict(os.environ, {
+                    'GIT_CONFIG_GLOBAL': str(config), 'GIT_CONFIG_NOSYSTEM': '1',
+                    'MCPY_CACHE_DIR': str(self.root / ('cache-' + autocrlf))}):
+                source, _ = fetch_snapshot(repo.as_uri(), rev)
+                for name, data in expected.items():
+                    self.assertEqual((source / name).read_bytes(), data)
+                if not locks:
+                    self.service.add(repo.as_uri(), ref=rev)
+                else:
+                    shutil.rmtree(self.main / '.mcpy')
+                    sync_projects(self.main)
+                locks.append((self.main / LOCK_FILE).read_bytes())
+                resolve_projects(self.main)
+        self.assertEqual(locks, [locks[0]] * len(locks))
+
+    def test_v2_windows_archive_lock_and_existing_cache_are_refreshed(self):
+        import hashlib
+        import io
+        import tarfile
+        from mcpywrap.git_projects import sync_projects
+        from mcpywrap.source_files import digest
+        repo, rev = self.repository('windows-v2', 'code')
+        old = self.root / 'windows-archive'
+        old.mkdir()
+        archive = subprocess.check_output(['git', '-C', str(repo), '-c',
+                                          'core.autocrlf=true', 'archive', rev])
+        with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+            for member in tar:
+                if member.isfile():
+                    path = old / member.name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(tar.extractfile(member).read())
+        self.assertIn(b'\r\n', (old / 'src/__init__.py').read_bytes())
+        with patch('mcpywrap.git_projects.fetch_source', return_value=(old, rev)):
+            self.service.add(repo.as_uri(), ref=rev)
+        old_lock = (self.main / LOCK_FILE).read_bytes()
+        # Simulate the previous shared cache, whose checksum is valid but whose
+        # bytes have already been converted by Git for Windows.
+        container = cache_root() / 'git' / hashlib.sha256(repo.as_uri().encode()).hexdigest() / rev
+        shutil.copytree(old, container / 'content')
+        (container / 'source.json').write_text(json.dumps({
+            'git': repo.as_uri(), 'rev': rev, 'sha256': digest(old)}))
+        clone = self.root / 'windows-clone'
+        shutil.copytree(self.main, clone, ignore=shutil.ignore_patterns('.mcpy'))
+        for project in (self.main, clone):
+            sync_projects(project)
+            installed = resolve_projects(project)[0][1]
+            self.assertNotIn(b'\r\n', (installed / 'behavior_pack/Mod/windows-v2/__init__.py').read_bytes())
+            self.assertNotEqual((project / LOCK_FILE).read_bytes(), old_lock)
+            self.assertFalse((project / '.mcpy/lock-backups').exists())
+            self.assertFalse((project / '.mcpy/registration-backups').exists())
+        self.assertEqual((self.main / LOCK_FILE).read_bytes(), (clone / LOCK_FILE).read_bytes())
+        self.assertEqual(digest(container / 'content'), digest(old))
 
     def test_existing_windows_source_cache_remains_usable_offline(self):
         from mcpywrap.source_files import windows_checkout_digest
@@ -130,7 +169,7 @@ class GitProjects(unittest.TestCase):
         registered = resolve_projects(self.main)[0][1]
         self.assertNotIn(b'\r\n', (registered/'behavior_pack/manifest.json').read_bytes())
 
-    def test_old_windows_generated_files_are_backed_up_and_rebuilt(self):
+    def test_old_windows_generated_files_are_rebuilt_without_backups(self):
         from mcpywrap.git_projects import sync_projects
         from mcpywrap.source_files import windows_checkout_digest
         repo, _ = self.repository('old-generated', 'code')
@@ -138,7 +177,6 @@ class GitProjects(unittest.TestCase):
         registered = resolve_projects(self.main)[0][1]
         manifest = registered/'behavior_pack/manifest.json'
         manifest.write_bytes(manifest.read_bytes().replace(b'\n', b'\r\n'))
-        old_manifest = manifest.read_bytes()
         path = self.main/LOCK_FILE
         lock = json.loads(path.read_text()); lock['version'] = 1
         lock['nodes'][0]['sha256'] = windows_checkout_digest(registered, crlf=False)
@@ -146,9 +184,7 @@ class GitProjects(unittest.TestCase):
         sync_projects(self.main)
         resolve_projects(self.main)
         self.assertNotIn(b'\r\n', manifest.read_bytes())
-        backup = list((self.main/'.mcpy/registration-backups').glob('*/project/behavior_pack/manifest.json'))
-        self.assertEqual(len(backup), 1)
-        self.assertEqual(backup[0].read_bytes(), old_manifest)
+        self.assertFalse((self.main / '.mcpy/registration-backups').exists())
 
     def test_human_sync_is_concise_and_json_keeps_details(self):
         repo, _ = self.repository('readable', 'code')
@@ -161,7 +197,7 @@ class GitProjects(unittest.TestCase):
         result = runner.invoke(cli, ['--project', str(self.main), 'sync'])
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn('1 个源码依赖已就绪', result.output)
-        self.assertIn('旧文件已备份', result.output)
+        self.assertNotIn('备份', result.output)
         for internal in ('git_lock_migrations', 'source_sha256', 'installed:', '找到行为包目录'):
             self.assertNotIn(internal, result.output)
         result = runner.invoke(cli, ['--project', str(self.main), 'sync', '--json'])
@@ -286,8 +322,8 @@ class GitProjects(unittest.TestCase):
         for result in results:
             self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(results[0].stdout, results[1].stdout)
-        self.assertEqual(len(list(cache_root().glob('git/*/*/source.json'))), 1)
-        self.assertFalse(list(cache_root().glob('git/*/fetch-*')))
+        self.assertEqual(len(list(cache_root().glob('git-archive-v2/*/*/source.json'))), 1)
+        self.assertFalse(list(cache_root().glob('git-archive-v2/*/fetch-*')))
 
     def test_cycle_escape_and_layout_failure_do_not_change_project(self):
         repo, rev = self.repository('cycle')

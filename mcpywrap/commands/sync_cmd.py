@@ -19,8 +19,6 @@ def sync_cmd(install, migrate_windows_lock=False):
     result = sync_project(project_dir(), install, migrate_windows_lock=migrate_windows_lock)
     if json_output():
         return result
-    if result['git_lock_migrations']:
-        click.echo('已更新跨平台依赖记录，旧文件已备份。')
     count = result['git_projects'] + result['code_libraries']
     click.secho('完成 · %d 个源码依赖已就绪 · %.1fs' % (count, time.monotonic()-started), fg='green')
     if install:
@@ -38,7 +36,6 @@ def sync_project(path, install=False, migrate_windows_lock=False):
         from ..builders.dependency_manager import DependencyManager
         visited, active = set(), set()
         git_count = 0
-        migrations = []
         def sync_sources(directory):
             nonlocal git_count
             key = canonical_path(directory)
@@ -57,8 +54,7 @@ def sync_project(path, install=False, migrate_windows_lock=False):
                     if target and 'mcpywrap' in read_project(target).get('tool', {}):
                         sync_sources(target)
             if git_declarations(directory, source_config) or Path(directory, GIT_LOCK_FILE).exists():
-                git_count += sync_projects(directory, source_config, migrate_windows_lock=migrate_windows_lock,
-                                           migration_report=migrations)
+                git_count += sync_projects(directory, source_config)
             active.remove(key)
             visited.add(key)
         sync_sources(path)
@@ -78,4 +74,4 @@ def sync_project(path, install=False, migrate_windows_lock=False):
             if proc.returncode:
                 raise click.ClickException(proc.stderr or proc.stdout or '项目安装失败')
     return {'project': str(path), 'installed': install, 'code_libraries': library_count,
-            'git_projects': git_count, 'git_lock_migrations': migrations}
+            'git_projects': git_count, 'git_lock_migrations': []}

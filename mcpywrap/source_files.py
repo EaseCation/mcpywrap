@@ -68,7 +68,10 @@ def _git(*args):
             return value[4:]
         return value
     try:
-        result = subprocess.run(['git', '-c', 'core.hooksPath=', '-c', 'core.longpaths=true', *map(argument, args)],
+        result = subprocess.run(['git', '-c', 'core.hooksPath=', '-c', 'core.longpaths=true',
+                                 '-c', 'core.autocrlf=false', '-c', 'core.eol=lf',
+                                 '-c', 'core.attributesFile=' + os.devnull, *map(argument, args)],
+                                env=dict(os.environ, GIT_ATTR_NOSYSTEM='1'),
                                 capture_output=True, timeout=180)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise DependencyError(f'无法获取代码库: {exc}') from exc
