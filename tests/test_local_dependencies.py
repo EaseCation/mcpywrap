@@ -343,11 +343,33 @@ class Projects(ProjectFixture):
 
     def test_run_and_editor_receive_local_packs(self):
         self.add()
-        self.assertEqual([Path(p.path) for p in _setup_dependencies('main', str(self.main))], [self.dep, self.main])
+        packs = _setup_dependencies('main', str(self.main), raise_errors=True)
+        self.assertEqual(len(packs), 1)
+        self.assertEqual(Path(packs[0].path), self.main / '.mcpy/runtime/assembled')
         edit = importlib.import_module('mcpywrap.commands.edit_cmd')
         with patch.object(edit, 'discover_engines'), patch.object(edit, 'require_resources'), patch.object(edit, 'studio_installation', return_value=('test-studio', [])), patch.object(edit, 'create_editor_config', return_value={}) as config, patch.object(edit, 'open_editor'):
             edit.open_edit(str(self.main))
-            self.assertEqual(config.call_args.kwargs['addon_paths'], [str(self.dep), str(self.main)])
+            self.assertEqual(config.call_args.kwargs['addon_paths'], [str(self.main / '.mcpy/runtime/assembled')])
+
+    def test_local_only_run_merges_common_and_refreshes_previous_assembly(self):
+        self.add()
+        shared = self.dep / 'behavior_pack/Shared'
+        shared.mkdir()
+        (shared / 'player.py').write_text('VALUE = 1\n')
+        stale = self.main / '.mcpy/runtime/assembled/behavior_pack/RemovedFramework'
+        stale.mkdir(parents=True)
+        (stale / '__init__.py').write_text('OLD = True\n')
+        packs = _setup_dependencies('main', str(self.main), raise_errors=True)
+        self.assertEqual(len(packs), 1)
+        folder = Path(packs[0].behavior_pack_dir)
+        self.assertEqual((folder / 'Shared/player.py').read_text(), '# -*- coding: utf-8 -*-\nVALUE = 1\n')
+        self.assertTrue((folder / 'marker.py').read_text().endswith((self.main / 'behavior_pack/marker.py').read_text()))
+        self.assertEqual((folder / 'manifest.json').read_bytes(), (self.main / 'behavior_pack/manifest.json').read_bytes())
+        self.assertFalse((folder / 'RemovedFramework').exists())
+        (shared / 'player.py').write_text('VALUE = 2\n')
+        again = _setup_dependencies('main', str(self.main), raise_errors=True)
+        self.assertEqual(again[0].pkg_name, packs[0].pkg_name)
+        self.assertEqual((folder / 'Shared/player.py').read_text(), '# -*- coding: utf-8 -*-\nVALUE = 2\n')
 
     def test_cli_add_remove_and_noninteractive(self):
         runner = CliRunner()
@@ -409,7 +431,7 @@ class GuiProjects(ProjectFixture):
                 window.add_dependency()
                 install.assert_not_called()
             self.assertEqual(window.dependency_list.count(), 1)
-            self.assertEqual(len(window.all_packs), 2)
+            self.assertEqual(len(window.all_packs), 1)
             self.assertEqual(window.dependency_list.item(0).data(Qt.ItemDataRole.UserRole).kind, 'local')
             window.local_path_input.setText('../missing')
             window.add_dependency()
