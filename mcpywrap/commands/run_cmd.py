@@ -120,7 +120,10 @@ def _setup_dependencies(project_name, base_dir, raise_errors=False, report=None)
         from ..code_libraries import prepare_libraries
         has_libraries = (prepare_libraries(packs) if project_type == 'addon' else
                          any([prepare_libraries([pack]) for pack in packs]))
-        if has_libraries or manager.has_git_projects:
+        # Addon dependencies are overlays, just as in build/package. Loading
+        # their source packs separately loses shared scripts/resources when a
+        # root namespace overrides the dependency (even without code libraries).
+        if has_libraries or manager.has_git_projects or (project_type == 'addon' and len(packs) > 1):
             from ..builders.project_builder import AddonProjectBuilder
             if project_type == 'addon':
                 destination = Path(base_dir) / '.mcpy' / 'runtime' / 'assembled'
