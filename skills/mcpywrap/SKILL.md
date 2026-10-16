@@ -99,6 +99,10 @@ Windows/macOS 共用依赖锁；克隆后用 `sync --json` 恢复。sync 按固�
 
 ## 游戏会话
 
+世界保留测试进度，重新运行默认使用当前项目代码；`--new` 表示新世界，不表示旧代码快照。依赖变化需要重新运行；已有会话被复用时，检查提示，不能假定新源码已经应用。
+
+需要两个玩家验证同步、权限或视角时，先读[双客户端联调](references/dual-clients.md)。检查平台的 `local-dual-client-manual` 能力后，用 `run --clients 2` 准备本地主客机；`waiting_for_join` 是等待用户在客户端 2 点击目标局域网卡片，不是启动失败。外服使用 `connect ... --clients 2`。保存组 ID 和各成员会话 ID，以 `connection_verified` 判断两名玩家是否已确认加入，业务效果另行验收。Python、输入和截图始终选具体成员；组热更需检查每个成员与端侧结果。关闭管理面板保留游戏，停止要明确指定会话或组。
+
 新建不同地形、难度、种子或游戏规则的测试实例时，读[实例世界设置](references/instance-world-settings.md)。使用 `run --new` 的直接参数，无需先创建再修改文件；世界设置属于实例，不写入项目 pyproject.toml。
 
 Windows 用户在专用、已登录未锁屏的桌面设置 `MCPY_REMOTE_TOKEN` 后运行 `mcpy --local serve` 并保持控制台打开；默认 `0.0.0.0:18765`，不加 `--json`。

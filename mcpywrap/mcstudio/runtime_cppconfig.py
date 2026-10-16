@@ -149,8 +149,8 @@ def write_cppconfig(path, config):
     save(path, config)
 
 
-def prepare_cppconfig(path, version, name, level_id, download_dir, package, behaviors, resources, settings=None):
-    """Preserve instance options; refresh only backend-generated references."""
+def compose_cppconfig(path, version, name, level_id, download_dir, package, behaviors, resources, settings=None):
+    """Compose without writing: callers decide when a recipe becomes visible."""
     from pathlib import Path
     generated = gen_runtime_config(version, name, level_id, download_dir, package, behaviors, resources)
     if Path(path).exists():
@@ -176,6 +176,11 @@ def prepare_cppconfig(path, version, name, level_id, download_dir, package, beha
                   LocalComponentPathsDict={}, LocalComponentPaths=None)
     config['skin_info'] = generated['skin_info']
     info.update(behavior_packs=behaviors, resource_packs=resources)
+    return config
+
+
+def prepare_cppconfig(path, version, name, level_id, download_dir, package, behaviors, resources, settings=None):
+    config = compose_cppconfig(path, version, name, level_id, download_dir, package, behaviors, resources, settings)
     write_cppconfig(path, config)
     return config
 

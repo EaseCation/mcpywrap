@@ -38,14 +38,20 @@ def _clear_directory(directory):
 
 
 class AddonProjectBuilder:
-    def __init__(self, source_dir, target_dir, include_dependencies=True):
+    def __init__(self, source_dir, target_dir, include_dependencies=True, *, resolved=None, stable_layout=False):
         self.source_dir = str(Path(source_dir).resolve())
+        self.requested_target = Path(target_dir).absolute() if target_dir else None
         self.target_dir = str(Path(target_dir).resolve()) if target_dir else None
         self.config = read_project(self.source_dir)
         self.project_name = self.config.get('project', {}).get('name', 'current_project')
         self.include_dependencies = include_dependencies
+        self.resolved = resolved
+        self.stable_layout = stable_layout
 
     def initialize(self):
+        if self.requested_target is not None and (self.requested_target.is_symlink() or
+                getattr(self.requested_target, 'is_junction', lambda: False)()):
+            raise DependencyError('构建目标不能是目录链接')
         addon_directories(self.source_dir)
         config = None
         if not self.include_dependencies:
@@ -54,7 +60,7 @@ class AddonProjectBuilder:
             config.setdefault('project', {})['dependencies'] = []
             config.setdefault('tool', {}).setdefault('mcpywrap', {})['local_dependencies'] = []
             config['tool']['mcpywrap']['git_dependencies'] = []
-        self.dependency_manager = DependencyService(self.source_dir).resolve(config)
+        self.dependency_manager = self.resolved or DependencyService(self.source_dir).resolve(config)
         report_dependency_warnings(self.dependency_manager)
         self.dependency_tree = self.dependency_manager.root_node
         self.origin_addon = self.dependency_tree.addon_pack
@@ -67,11 +73,14 @@ class AddonProjectBuilder:
         self.target_addon.path = self.target_dir
         for kind in ('behavior', 'resource'):
             source = getattr(self.origin_addon, kind + '_pack_dir')
-            setattr(self.target_addon, kind + '_pack_dir', str(Path(self.target_dir) / Path(source).name))
+            name = kind + '_pack' if self.stable_layout else Path(source).name
+            setattr(self.target_addon, kind + '_pack_dir', str(Path(self.target_dir) / name))
         return True
 
     def build(self):
         try:
+            from ..runtime.deployment import check_build_target
+            check_build_target(self.source_dir, self.target_dir)
             self.initialize()
             target = Path(self.target_dir)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -121,6 +130,8 @@ class MapProjectBuilder:
 
     def build(self):
         try:
+            from ..runtime.deployment import check_build_target
+            check_build_target(self.source_dir, self.target_dir)
             manager = DependencyService(self.source_dir).resolve()
             report_dependency_warnings(manager)
             packs = list(manager.get_all_dependencies().values())

@@ -37,12 +37,12 @@ def edit_cmd(detach, **engine_overrides):
 
 def open_edit(project_dir=None, engine_overrides=None, raise_errors=False):
     from ..dependencies import read_project
-    from .run_cmd import _setup_dependencies
+    from ..runtime.preparation import prepare_editor
     base_dir = os.path.abspath(project_dir or str(current_project()))
     config = read_project(base_dir)
     project_name = config.get('project', {}).get('name', 'project')
     project_type = config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
-    all_packs = _setup_dependencies(project_name, base_dir, raise_errors=raise_errors)
+    all_packs = prepare_editor(base_dir)
     if all_packs is None:
         return False
     try:

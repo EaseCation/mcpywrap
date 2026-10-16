@@ -27,25 +27,6 @@ def file_change_callback(src_path, dest_path, success, output, is_python, is_dep
         click.secho(f'❌ 处理失败 {output}', fg="red")
 
 
-def changed_reload_targets(target_dir, changed_paths):
-    from ..mcstudio.hot_reload import target_from_file
-    targets = {}
-    for path in changed_paths:
-        parts = [part.lower() for part in os.path.normpath(path).split(os.sep)]
-        kind = ('python' if path.lower().endswith('.py') else
-                'ui' if 'ui' in parts and path.lower().endswith('.json') else
-                'shader' if 'shaders' in parts else
-                'material' if 'materials' in parts else
-                'particle' if 'particles' in parts and path.lower().endswith('.json') else None)
-        if not kind:
-            continue
-        try:
-            target = target_from_file(target_dir, kind, path)
-            targets[(kind, None if kind == 'ui' else target)] = path
-        except ValueError as exc:
-            click.secho('跳过热更: ' + str(exc), fg='yellow')
-    return targets
-
 @click.command(cls=OperationCommand)
 @click.option('--reload-session', hidden=True, help='已迁移到 runtime watch --session')
 def dev_cmd(reload_session):

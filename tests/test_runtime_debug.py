@@ -8,6 +8,7 @@ import tempfile
 import threading
 import time
 import unittest
+from collections import namedtuple
 from pathlib import Path
 from unittest.mock import patch, Mock
 from click.testing import CliRunner
@@ -15,7 +16,7 @@ from click.testing import CliRunner
 from mcpywrap.cli import cli
 from mcpywrap.mcstudio.hot_reload import reload_code, target_from_file, reload_session
 from mcpywrap.mcstudio.runtime_debug import SafaiaChannel, RuntimeControlServer, frame, recv_frame, recv_exact, script_request, control_request
-from mcpywrap.commands.dev_cmd import changed_reload_targets
+from mcpywrap.runtime.targets import changed_reload_targets
 
 
 class RuntimeDebugTests(unittest.TestCase):
@@ -44,6 +45,41 @@ class RuntimeDebugTests(unittest.TestCase):
             self.assertEqual(owned_udp_endpoints(123), {('127.0.0.1', 26613)})
             self.assertTrue(all(call.args == (123,) for call in process.call_args_list))
             global_scan.assert_not_called()
+
+    def test_tcp_fallback_requires_both_endpoints_owned_by_selected_game(self):
+        from mcpywrap.mcstudio.runtime_debug import owns_tcp_connection
+        Address = namedtuple('Address', 'ip port')
+        client = Mock()
+        client.getpeername.return_value = ('127.0.0.1', 40001)
+        client.getsockname.return_value = ('127.0.0.1', 40002)
+        candidates = [
+            (Address('127.0.0.1', 40001), Address('127.0.0.1', 40002), True),
+            (Address('127.0.0.1', 40003), Address('127.0.0.1', 40002), False),
+            (Address('127.0.0.1', 40001), Address('127.0.0.1', 40003), False),
+            (Address('127.0.0.2', 40001), Address('127.0.0.1', 40002), False),
+        ]
+        for local, remote, expected in candidates:
+            with self.subTest(local=local, remote=remote), \
+                    patch('mcpywrap.mcstudio.runtime_debug.psutil.Process') as process, \
+                    patch('mcpywrap.mcstudio.runtime_debug.time.sleep'):
+                process.return_value.net_connections.return_value = [Mock(laddr=local, raddr=remote)]
+                self.assertEqual(owns_tcp_connection(123, client), expected)
+                process.assert_called_once_with(123)
+
+    def test_missing_udp_claim_accepts_only_verified_tcp_peer(self):
+        channel = SafaiaChannel(lambda _: None)
+        with patch('mcpywrap.mcstudio.runtime_debug.owned_udp_ports', return_value={26614}), \
+                patch('mcpywrap.mcstudio.runtime_debug.owned_udp_endpoints', return_value=set()), \
+                patch('mcpywrap.mcstudio.runtime_debug.owns_tcp_connection', return_value=True) as owned:
+            channel.start(123)
+            try:
+                with socket.create_connection(('127.0.0.1', channel.port), timeout=2) as client:
+                    client.sendall(frame(3, '{"connect_port":null,"name":"game"}'))
+                    self.assertEqual(recv_frame(client)[0], 48)
+                    self.assertTrue(channel.connected.wait(2))
+                    self.assertEqual(owned.call_args.args[0], 123)
+            finally:
+                channel.close()
 
     def test_server_reload_cli_routes_selected_side(self):
         with patch('mcpywrap.mcstudio.hot_reload.reload_session', return_value={'state':'completed'}) as call:

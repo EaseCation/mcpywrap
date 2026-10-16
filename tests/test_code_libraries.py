@@ -166,7 +166,7 @@ class CodeLibraries(unittest.TestCase):
             sync_libraries(self.main)
 
     def test_run_and_dev_share_assembly(self):
-        from mcpywrap.commands.run_cmd import _setup_dependencies
+        from runtime_support import prepare_packs as _setup_dependencies
         sync_libraries(self.main)
         self.build()
         expected = (self.out / 'behavior_pack/MyMod/Library/old.py').read_bytes()
@@ -181,7 +181,7 @@ class CodeLibraries(unittest.TestCase):
         self.assertEqual(expected, (self.out / 'behavior_pack/MyMod/Library/old.py').read_bytes())
 
     def test_map_runtime_does_not_reinclude_transitive_addons(self):
-        from mcpywrap.commands.run_cmd import _setup_dependencies
+        from runtime_support import prepare_packs as _setup_dependencies
         child = addon(self.root, 'child', configured=True)
         config = read_project(self.main)
         config['tool']['mcpywrap']['local_dependencies'] = ['../child']
@@ -198,8 +198,9 @@ class CodeLibraries(unittest.TestCase):
         packs = _setup_dependencies('world', str(world), raise_errors=True)
         # Windows CI 的 TEMP 可使用 RUNNER~1 短路径，解析器返回长路径。
         # 按目录身份选择，避免把 child 自己当作待验证的 main。
-        main_pack = next(p for p in packs if not Path(p.path).samefile(child))
-        child_pack = next(p for p in packs if Path(p.path).samefile(child))
+        main_pack = next(p for p in packs if not Path(p.origin_path).samefile(child))
+        child_pack = next(p for p in packs if Path(p.origin_path).samefile(child))
+        self.assertNotEqual(Path(child_pack.path).resolve(), child.resolve())
         self.assertTrue((Path(child_pack.behavior_pack_dir) / 'child-only.py').exists())
         self.assertTrue((Path(main_pack.behavior_pack_dir) / 'MyMod/Library/old.py').exists())
         self.assertFalse((Path(main_pack.behavior_pack_dir) / 'child-only.py').exists())
