@@ -2,10 +2,10 @@
 import signal
 import click
 from PySide6.QtCore import QObject, QEvent, QTimer
-from PySide6.QtWidgets import QApplication
 from ..mcstudio import sessions
 from .session_controller import SessionController
 from .log_window import SessionLogWindow
+from .application import create_application
 
 
 class RunSessionView(QObject):
@@ -68,7 +68,7 @@ class RunSessionView(QObject):
 
 
 def show_session_window(project, backend, result):
-    app = QApplication.instance() or QApplication([])
+    app = create_application()
     previous_quit = app.quitOnLastWindowClosed()
     app.setQuitOnLastWindowClosed(False)
     view = RunSessionView(app, project, backend, result)

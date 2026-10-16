@@ -36,3 +36,11 @@ smoke.py 的 --client-file/--server-file 通过同一 CLI 等待世界/HUD、分
 两端单人实例共用 cppconfig 的 world_info；存储、启动转换、保存优先级和创建参数见[实例世界设置](instance-world-settings.md)。
 
 版本发现使用 `mcpy --local engine check-updates --json`：实时查询网易 pe/pe_old，返回真实完整版本和 URL；不得递增版本号或猜测 CDN 路径。该命令只检查，不下载或替换实例。新版本 compatibility=not_checked 需实际 APK 校验与结构兼容检查，不能把“发现版本”当作“可运行”。无需先执行此命令：首次 run 的自动安装已经查询 pe。已有本地版本/实例继续运行；缺失的旧版本若不在官方频道中则不可下载，不猜 CDN 路径。
+
+## macOS 游戏图标
+
+安装 APK 时读取 `AndroidManifest.xml` 中 `application/android:icon` 的资源引用，再通过 `resources.arsc` 解析别名和多分辨率变体，选择最大的可解码位图。图标仅来自用户本机已校验的官方 APK，不随 Python wheel 或原生发行包分发。支持 PNG/WebP/JPEG 位图；自适应 XML 存在同资源位图变体时使用该变体，仅有 XML/矢量图时提示暂不支持，不猜用通知或登录图标。
+
+转换结果在每个引擎的 `game` 同级 `icons` 目录保存为透明 PNG 与多尺寸 ICNS（16–1024 像素及 Retina 表示），记录 APK 摘要、资源路径、原始尺寸与输出摘要。保留宽高比和透明度；放大不会增加原始图像细节。已有安装在下一次启动时可从匹配的 APK 缓存自动补全，不需要重装游戏。缓存已删除时可执行 `mcpy engine install --apk <匹配的原 APK>`；缺少图标不会阻止游戏启动。
+
+游戏启动前，在安装锁内按原生运行包和图标摘要创建 `runtimes/<id>/applications/<摘要>/Minecraft China.app` 本地副本，设置中文应用名、`CFBundleIconFile`，重新进行 ad-hoc 签名并验证。之后复用副本，每次启动检查签名。原始运行包的文件、发行完整性清单和签名不变；本地副本只用于实际游戏进程，实例固定的原生运行版本、游戏资源、数据目录和控制协议仍保持原绑定。图标转换或签名失败时向 stderr 记录原因，继续使用原始运行包。无需 Xcode、Android SDK、Pillow 或重新编译原生启动器。

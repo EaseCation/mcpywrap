@@ -38,6 +38,7 @@ def connect(target, *, project_dir=None, packs=(), engine_overrides=None, detach
         session = session_id or uuid.uuid4().hex
         directory = sessions.session_path(root, session)
         plan = {'runtime': state['runtime'], 'game': state['game'],
+                'application': state.get('application'),
                 'data': str(directory/'native/data'), 'cache': str(directory/'native/cache'),
                 'engine_version': version, 'compat_report': state.get('compat_report'),
                 'cppconfig': str(directory/'runtime.cppconfig')}

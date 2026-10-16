@@ -52,3 +52,18 @@ mcpy 自身继续使用 MIT；GUI 改为 PySide6-Essentials 和 Shiboken6，选�
 后台结果通过显式 Slot 更新主线程界面，发行声明随 wheel 携带于 THIRD_PARTY_NOTICES.md。
 
 交互式 run 的调试小窗复用 SessionController/SessionLogWindow，不启动第二套日志服务。置顶使用原生 QCheckBox，随系统主题显示；关闭小窗只隐藏视图，游戏退出后清理控制器和监控。Ctrl+C 与“保存退出”调用同一停止接口。
+
+## 应用图标
+
+GUI 入口共用 `ui.application.create_application`：Qt 应用名与菜单显示名为 mcpy，管理页、日志小窗、模板和登录提示使用同一图标。Qt 的应用级图标也交给 Cocoa 用于 Dock。直接运行 Python 时，LaunchServices 仍可能把进程名称缓存为 Python；设置 Qt 显示名不等同于已安装独立 mcpy.app。已打开的小窗需要重新启动后应用新图标。
+
+图标源为 `mcpywrap/ui/assets/mcpy.icon`，是可由 Icon Composer 27 编辑的分层文档：深蓝背景、薄荷绿方块、白色命令提示符。背景满幅不透明，前景 SVG 未预裁切；命令提示符保留不透明，以确保小尺寸对比度。不把 Minecraft 游戏图标用作 mcpy 品牌图标。
+
+设计依据 Apple [App icons HIG](https://developer.apple.com/design/human-interface-guidelines/app-icons)（2026-06-08 更新）和 [Icon Composer 文档](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)：
+
+- 1024×1024 画布、sRGB；圆角遮罩、高光、边缘反射和层间阴影由 Apple 渲染器生成，不自行用固定半径模拟系统连续圆角。
+- 方块范围 x=248–776、y=224–816，主要内容距离未裁切画布边缘至少 208 px。此数值是本设计的留白选择，HIG 并未规定统一的 macOS 安全区百分比。
+- 分层源背景不预留透明外框。导出给传统 Qt/ICNS 的静态图标时，参考 actool 的 macOS 兼容输出，在 1024 画布内将系统渲染图形放入 824×824 区域，四周留 100 px 透明区，防止 Dock 中图标显得过大。分层源与静态兼容文件的留白不能混用。
+- 图标已用 Icon Composer 27 渲染，并通过 Xcode 27 actool 编译。保留 `.icon` 原始分层素材，PNG 和 ICNS 则用于当前 Qt 应用；静态资源不具备随光照变化的动态 Liquid Glass，也不会自动切换 dark/clear/tinted 外观。将来独立打包 mcpy.app 时可接入编译后的 Assets.car，不能仅给 PNG 加反光就宣称支持全部动态外观。
+
+维护者运行 `python scripts/build_app_icon.py` 重建 PNG 和 ICNS，需要本机 Xcode 27 / Icon Composer 27 与 PySide6；运行时无需 Xcode。ICNS 提供 16、32、128、256、512 点的 1×/2× 图像。wheel 包含静态图标和可编辑分层源。

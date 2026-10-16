@@ -349,7 +349,11 @@ class GuiTests(unittest.TestCase):
         from mcpywrap.minecraft.template.mod_template import open_ui_crate_mod
         window = open_ui_crate_mod(str(self.root), run_event_loop=False)
         self.assertTrue(window.isVisible())
+        destroyed = []
+        window.destroyed.connect(lambda: destroyed.append(True))
         window.close()
+        self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.assertEqual(destroyed, [True])
 
     def test_log_tail_preserves_utf8_and_partial_lines(self):
         path=self.root/'game.log';tail=LogTail()

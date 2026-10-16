@@ -630,6 +630,7 @@ def install(location=None, apk=None, progress=None):
             finally:
                 if stage.exists(): shutil.rmtree(stage)
         apk_meta = profile['apk']
+        apk_path = None
         if apk:
             apk_path = Path(apk).expanduser().resolve()
             if apk_path.stat().st_size != apk_meta['size'] or digest(apk_path) != apk_meta['sha256']:
@@ -651,6 +652,9 @@ def install(location=None, apk=None, progress=None):
                 _replace(stage, game)
             finally:
                 if stage.exists(): shutil.rmtree(stage)
+        from .macos_icons import optional_icons
+        _phase(progress, '准备游戏图标')
+        optional_icons(game, profile, apk_path)
         _phase(progress, '检查运行兼容性')
         metadata = verify_runtime(destination/'McpyRuntime.app', destination/'McpyRuntime.integrity.json', profile)
         preflight_runtime(destination/'McpyRuntime.app', game, profile, metadata, runtime['id'])

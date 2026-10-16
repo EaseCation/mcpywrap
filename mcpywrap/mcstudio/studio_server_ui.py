@@ -80,7 +80,8 @@ class StudioLoggerUI(LogWindow):
 
 
 def run_studio_server_ui(host='0.0.0.0', port=8000):
-    app = QApplication.instance() or QApplication(sys.argv)
+    from ..ui.application import create_application
+    app = create_application(sys.argv)
     window = StudioLoggerUI(host, port); window.show()
     if sys.platform == 'win32': set_windows_dark_titlebar(int(window.winId()))
     signal.signal(signal.SIGINT, lambda *_: window.close())
