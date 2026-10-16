@@ -39,7 +39,7 @@ class RemoteTests(unittest.TestCase):
         def checked(record):
             return Mock() if record['pid'] in self.live else None
         patch.object(api, 'checked_process', side_effect=checked).start()
-        patch.object(sessions, 'checked_process', side_effect=checked).start()
+        patch.object(sessions, 'observed_process', side_effect=checked).start()
         self.start = patch.object(sessions, 'start', side_effect=self.fake_start).start()
         self.stop = patch.object(sessions, 'stop', side_effect=self.fake_stop).start()
         self.http = GameHTTPServer(('127.0.0.1', 0), self.service)
@@ -332,7 +332,7 @@ class RemoteTests(unittest.TestCase):
 
     def test_pid_reuse_prevents_stop_and_new_launch(self):
         self.create()
-        with patch.object(sessions, 'checked_process', side_effect=ValueError('进程身份不匹配')):
+        with patch.object(sessions, 'observed_process', side_effect=ValueError('进程身份不匹配')):
             with self.assertRaises(api.RemoteError):
                 self.client.request('POST', '/sessions/'+'a'*32+'/stop', {})
             with self.assertRaises(api.RemoteError):

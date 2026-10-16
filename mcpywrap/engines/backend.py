@@ -11,6 +11,8 @@ from .host import EngineError, describe
 class LaunchedGame:
     process: object
     capture_output: bool = True
+    deployment: object = None
+    guard: object = None
 
 
 class GameBackend:
@@ -32,13 +34,17 @@ class GameBackend:
     def delete_instances(self, project, identity=None):
         return self.run(project, delete=identity, clean_all=identity is None, force=True)
 
-    def start_session(self, project, identity=None, auth_context=None, overrides=None, world_config=None):
+    def start_session(self, project, identity=None, auth_context=None, overrides=None, world_config=None, clients=1):
         from ..command_context import project_scope
         with project_scope(project):
-            return self.run(project, new=identity is None, instance_prefix=identity,
-                            detach=True, no_gui=True, **({'auth_context': auth_context} if auth_context else {}),
-                            **({'overrides': overrides} if overrides else {}),
-                            **({'world_config': world_config} if world_config is not None else {}))
+            options = dict(new=identity is None, instance_prefix=identity, detach=True, no_gui=True,
+                           **({'auth_context': auth_context} if auth_context else {}),
+                           **({'overrides': overrides} if overrides else {}),
+                           **({'world_config': world_config} if world_config is not None else {}))
+            if clients == 2:
+                from ..runtime import groups
+                return groups.start_local(project, self, options)
+            return self.run(project, **options)
 
     def world_option_restrictions(self):
         """Unsupported cppconfig fields for presentation; adapters also validate."""
@@ -76,6 +82,13 @@ _result = {'ok': True}
 
     def connect(self, target, **options):
         return self.unsupported('连接服务器；可使用 --remote <Windows 服务地址>')
+
+    def prepare_guest(self, host):
+        """Validate menu launch support before creating a local group."""
+        return self.unsupported('从游戏卡片加入本地主机')
+
+    def start_guest(self, host, **options):
+        return self.unsupported('从游戏卡片加入本地主机')
 
     def diagnose(self, project=None, overrides=None, mcs_auth=False, check_files=False):
         return {'ok': False, 'backend': self.id, 'state': 'unsupported_platform', 'hint': self.setup_description}

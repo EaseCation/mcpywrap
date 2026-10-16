@@ -47,20 +47,44 @@ class SessionLogs(LogBuffer):
         super().__init__(parent)
         self.directory = None
         self.tails, self.filters = {}, {}
+        self.group_sources = []
 
     def bind(self, project, session):
+        self.group_sources = []
         self.directory = sessions.session_path(project, session)
         self.tails = {name: LogTail() for name in self.sources if name != 'operations'}
         self.filters = {name: DebugLogFilter() for name in self.tails}
         self.clear(self.tails)
 
+    def bind_group(self, project, members):
+        self.directory = None
+        self.group_sources = []
+        for member in members:
+            if member.get('session'):
+                directory = sessions.session_path(project, member['session'])
+                for source in ('game', 'engine', 'worker'):
+                    self.group_sources.append((member['role'], source, directory/(source+'.log'), LogTail(), DebugLogFilter()))
+        self.clear(('game', 'engine', 'worker'))
+
     def poll(self):
+        if self.group_sources:
+            for role, source, path, tail, filter_ in self.group_sources:
+                text = tail.read(path)
+                if text:
+                    raw = ''.join('['+role+'] '+line+'\n' for line in text.splitlines())
+                    clean = ''.join('['+role+'] '+line+'\n' for line in filter_.apply(text).splitlines())
+                    self.append(source, raw, clean)
+            return
         if self.directory is None: return
         for name, tail in self.tails.items():
             text = tail.read(self.directory/(name + '.log'))
             if text: self.append(name, text, self.filters[name].apply(text))
 
     def finish(self):
+        if self.group_sources:
+            self.poll()
+            self.group_sources = []
+            return
         # Drain the remaining bounded view history; complete logs stay on disk.
         for _ in range(16):
             before = sum(tail.offset for tail in self.tails.values())

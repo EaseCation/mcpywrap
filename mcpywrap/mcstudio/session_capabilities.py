@@ -16,15 +16,19 @@ def inspect_session(project, session):
     path = sessions.session_path(project, session)/'control.json'
     if live and path.is_file():
         control = json.loads(path.read_text(encoding='utf-8'))
+    from ..runtime.groups import is_local_guest
+    guest = is_local_guest(project, data)
     local = data.get('mode') == 'local'
     available = live and bool(control)
     reloads = {}
     for kind in KINDS:
         reason = None
-        if not local:
+        if not local and not guest:
             reason = '资源和模块热更仅支持本地测试世界'
         else:
             reason = backend.reload_restriction(data, kind)
+        if guest and kind != 'python':
+            reason = '客机使用下载缓存，资源热更尚未验证；请重新运行联调组并从卡片加入'
         reloads[kind] = {
             'state': 'unsupported' if reason else 'available' if available else 'unavailable',
             'reason': reason or (None if available else '会话没有运行中的游戏及调试通道'),
@@ -39,7 +43,7 @@ def inspect_session(project, session):
         'python': {'sides': sides if available else [],
                    'client_queue': control.get('client_python_queue') if available else False,
                    'reload_sides': [side for side in sides if side in control.get('python_reload_sides', [])]
-                                   if available and local else []},
+                                   if available and (local or guest) else []},
         'reload': reloads,
         'verification': 'entrypoints_only',
         'hint': 'available 表示允许调用，不证明游戏已就绪、API 存在或效果生效；JSON UI 重载后须按 Mod 逻辑重新注册创建界面及绑定回调。',

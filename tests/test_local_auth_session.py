@@ -1,6 +1,7 @@
 import importlib
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -25,16 +26,15 @@ class LocalAuthTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
 
     def test_local_world_saves_only_anonymous_instance_configuration(self):
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
+        from runtime_support import launch_world
         identity = context()
         config = self.root/'.runtime/world.cppconfig'
-        transient = self.root/'auth.cppconfig'
         engine = Engine('game', '3.10', 'engine', str(self.root), 'fixture')
-        process = Mock()
+        process = Mock(pid=os.getpid())
         def launch(path, **kwargs):
-            self.assertEqual(Path(path), transient)
+            self.assertEqual(Path(path).name, 'auth.cppconfig')
             saved = json.loads(config.read_text(encoding='utf-8'))
-            runtime = json.loads(transient.read_text(encoding='utf-8'))
+            runtime = json.loads(Path(path).read_text(encoding='utf-8'))
             self.assertEqual(saved['room_info']['token'], '')
             self.assertNotIn('player_info', saved)
             self.assertEqual(runtime['room_info']['token'], identity.token)
@@ -42,15 +42,11 @@ class LocalAuthTests(unittest.TestCase):
             self.assertTrue(kwargs['capture_output'])
             self.assertNotIn('output_path', kwargs)
             return process
-        with patch.object(run, '_setup_dependencies', return_value=[]), \
-                patch.object(run, 'discover_engines', return_value=Mock(require_engine=lambda: engine)), \
-                patch.object(run, 'require_resources'), patch.object(run, 'get_mcs_game_engine_data_path', return_value=str(self.root)), \
-                patch.object(run, 'setup_global_addons_symlinks', return_value=(True, [], [])), \
-                patch.object(run, 'open_game', side_effect=launch), patch.object(run, 'open_safaia') as gui:
-            success, _ = run._run_game_with_instance(str(config), 'world', [], wait=False, no_gui=True,
-                                                    logging_port=54321, auth_context=identity,
-                                                    auth_config_path=str(transient))
-            self.assertTrue(success)
+        with patch('mcpywrap.runtime.windows.discover_engines', return_value=Mock(require_engine=lambda: engine)), \
+                patch('mcpywrap.runtime.windows.require_resources'), \
+                patch('mcpywrap.mcstudio.game.open_game', side_effect=launch), patch('mcpywrap.mcstudio.game.open_safaia') as gui:
+            result = launch_world(self.root, config, 'world', auth_context=identity)
+            self.assertIs(result.process, process)
             gui.assert_not_called()
 
     def test_session_credentials_use_stdin_not_metadata_or_arguments(self):
@@ -86,12 +82,13 @@ class LocalAuthTests(unittest.TestCase):
         process = Mock(pid=77, stdout=io.BytesIO(('LoginToken: '+identity.token).encode()))
         process.poll.side_effect = [None, 0]
         process.wait.return_value = 0
-        def launch(*args, **kwargs):
-            self.assertEqual(kwargs['auth_context'].token, identity.token)
-            Path(kwargs['auth_config_path']).write_text(identity.token)
-            return True, process
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
-        with patch.object(run, '_run_game_with_instance', side_effect=launch), \
+        from mcpywrap.engines.windows import WindowsBackend
+        from mcpywrap.engines.backend import LaunchedGame
+        def launch(data, receiver, auth_context):
+            self.assertEqual(auth_context.token, identity.token)
+            (directory/'auth.cppconfig').write_text(identity.token)
+            return LaunchedGame(process)
+        with patch.object(WindowsBackend, 'launch', side_effect=launch), \
                 patch.object(session_worker, 'identity', side_effect=lambda pid: {'pid': pid}), \
                 patch.object(session_worker.sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(json.dumps(identity.to_payload()).encode()))):
             session_worker.run(str(self.root), session)

@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtCore import QTimer, QThread, Qt, QEvent
+from PySide6.QtCore import QTimer, QThread, Qt, QCoreApplication, QEvent
 from mcpywrap.ui.project_ui import GameInstanceManager
 from mcpywrap.ui.engine_setup import EngineSetupDialog
 from mcpywrap.ui.session_tools import LogTail
@@ -21,6 +21,7 @@ class GuiTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
+        self.previous_widgets = set(self.app.topLevelWidgets())
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
         (self.root/'pyproject.toml').write_text('[project]\nname="qt-test"\nversion="0.0.0"\n')
@@ -30,7 +31,7 @@ class GuiTests(unittest.TestCase):
         self.backend.instances.return_value = []
         self.backend.start_session.return_value = {'session': 'a'*32}
         with patch('mcpywrap.ui.project_ui.get_backend', return_value=self.backend), \
-                patch('mcpywrap.ui.project_ui._setup_dependencies', return_value=[]), \
+                patch('mcpywrap.ui.project_ui.resolve_packs', return_value=[]), \
                 patch('mcpywrap.ui.project_ui.find_all_mcpywrap_packages', return_value=[]):
             self.window = GameInstanceManager(str(self.root))
         self.window.controller.timer.stop()
@@ -40,7 +41,13 @@ class GuiTests(unittest.TestCase):
         task = self.window.controller.task
         if task: task.wait(2000); self.app.processEvents()
         self.window.controller.session=None; self.window.controller.owns_session=False
-        self.window.close();self.app.processEvents()
+        # close() only hides ordinary dialogs. Destroy every widget created by
+        # this test while QApplication and its event dispatcher are still alive.
+        for widget in set(self.app.topLevelWidgets()) - self.previous_widgets:
+            widget.close()
+            widget.deleteLater()
+        self.app.processEvents()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
     def wait(self, condition):
         end=time.monotonic()+3
@@ -48,6 +55,54 @@ class GuiTests(unittest.TestCase):
             self.app.processEvents();time.sleep(.005)
         self.app.processEvents()
         self.assertTrue(condition())
+
+    def test_retry_keeps_selected_role_and_replaces_its_session_handle(self):
+        from mcpywrap.ui.session_controller import SessionController
+        controller = SessionController(self.root, self.backend)
+        controller.timer.stop()
+        self.addCleanup(controller.deleteLater)
+        self.addCleanup(controller.dispose)
+        group, host, old_guest, new_guest = 'a'*32, 'b'*32, 'c'*32, 'd'*32
+        with patch.object(controller, 'bind_logs'), patch.object(controller, 'poll'):
+            controller.attach({'group': group, 'session': host, 'owned_sessions': [host, old_guest],
+                               'members': [{'role': 'host', 'session': host}, {'role': 'guest', 'session': old_guest}]})
+            controller.session = old_guest
+            controller.attach({'group': group, 'session': host, 'owned_sessions': [new_guest],
+                               'members': [{'role': 'host', 'session': host}, {'role': 'guest', 'session': new_guest}]})
+        self.assertEqual(controller.session, new_guest)
+        self.assertEqual(controller.owned_sessions, {host, new_guest})
+
+    def test_reopen_discovers_waiting_group_without_owning_its_games(self):
+        record={'group':'a'*32,'state':'waiting_for_join','session':'b'*32,
+                'members':[{'role':'host','session':'b'*32},{'role':'guest','session':'c'*32}]}
+        with patch('mcpywrap.runtime.groups.list_groups',return_value=[record]), \
+                patch('mcpywrap.runtime.occupancy.active',return_value=[]), \
+                patch.object(self.window.controller,'attach') as attach:
+            QTimer.singleShot(0,lambda:QApplication.activeModalWidget().accept())
+            self.window.attach_existing()
+        self.assertEqual(attach.call_args.args[0]['group'],record['group'])
+        self.assertEqual(attach.call_args.args[0]['members'],record['members'])
+        self.assertTrue(attach.call_args.args[0]['already_running'])
+
+    def test_dual_run_with_guest_selected_reuses_host_world(self):
+        controller=self.window.controller
+        controller.session='c'*32
+        controller.data={'state':'running','mode':'network','level_id':None}
+        controller.group='a'*32
+        controller.group_data={'kind':'local'}
+        controller.members=[{'role':'host','session':'b'*32},{'role':'guest','session':'c'*32}]
+        with patch.object(controller,'run_task',side_effect=lambda operation,*a,**k:operation()), \
+                patch('mcpywrap.mcstudio.sessions.read',return_value={'level_id':'original-world'}):
+            controller.start(clients=2)
+        self.backend.start_session.assert_called_once_with(str(self.root),'original-world',None,clients=2)
+
+    def test_stopped_group_does_not_block_a_new_single_session(self):
+        controller=self.window.controller
+        controller.session='b'*32
+        controller.data={'state':'exited'}
+        with patch.object(controller,'run_task',side_effect=lambda operation,*a,**k:operation()):
+            controller.start('original-world')
+        self.backend.start_session.assert_called_once_with(str(self.root),'original-world',None)
 
     def test_new_instance_confirms_with_settings_collapsed_and_can_cancel(self):
         from mcpywrap.ui.world_config import WorldConfigDialog
@@ -130,15 +185,16 @@ class GuiTests(unittest.TestCase):
     def test_background_result_updates_widgets_on_application_thread(self):
         workers, updates = [], []
         self.window.log_output.textChanged.connect(
-            lambda: updates.append(QThread.currentThread()), Qt.ConnectionType.DirectConnection)
+            lambda: updates.append(QThread.currentThread() == self.app.thread()), Qt.ConnectionType.DirectConnection)
         def work():
-            workers.append(QThread.currentThread())
+            # Do not retain wrappers for QThreads scheduled for deleteLater.
+            workers.append(QThread.currentThread() == self.app.thread())
             return {'state': 'completed', 'value': 'worker-result'}
         self.window.controller.run_task(work)
         self.wait(lambda: 'worker-result' in self.window.log_output.toPlainText() and not self.window.is_busy())
-        self.assertNotEqual(workers[0], self.app.thread())
+        self.assertFalse(workers[0])
         self.assertTrue(updates)
-        self.assertTrue(all(thread == self.app.thread() for thread in updates))
+        self.assertTrue(all(updates))
 
     def test_startup_failure_keeps_interface_usable(self):
         self.backend.start_session.side_effect=ValueError('fixture failed')
@@ -147,14 +203,14 @@ class GuiTests(unittest.TestCase):
         self.assertIn('fixture failed', self.window.log_output.toPlainText())
         self.assertIsNone(self.window.controller.session)
 
-    def test_window_close_stops_only_its_owned_game(self):
+    def test_window_close_keeps_owned_and_attached_games_running(self):
         self.window.controller.session='a'*32;self.window.controller.owns_session=True
         self.window.show()
         with patch.object(QMessageBox,'question',return_value=QMessageBox.StandardButton.Yes), \
                 patch('mcpywrap.mcstudio.sessions.stop',return_value={'state':'exited'}) as stop:
             self.window.close()
             self.wait(lambda: not self.window.isVisible() and not self.window.is_busy())
-        stop.assert_called_once()
+        stop.assert_not_called()
         self.window.controller.session='b'*32;self.window.controller.owns_session=False;self.window.show()
         with patch('mcpywrap.mcstudio.sessions.stop') as stop:
             self.window.close(); self.app.processEvents()
@@ -175,7 +231,7 @@ class GuiTests(unittest.TestCase):
         from mcpywrap.mcstudio import sessions
         self.window.controller.session='a'*32
         directory=sessions.session_path(self.root,self.window.controller.session);directory.mkdir(parents=True)
-        (directory/'game.log').write_text('真实 Mod 输出\n[INFO] RN Call: transport\nerror: fixture\n')
+        (directory/'game.log').write_text('真实 Mod 输出\n[INFO] RN Call: transport\nerror: fixture\n', encoding='utf-8')
         self.window.controller.logs.bind(self.root,self.window.controller.session)
         with patch.object(sessions,'read',return_value={'state':'running','world_ready':True}):self.window.controller.poll()
         text=self.window.debug_view.editor.toPlainText()
@@ -206,7 +262,7 @@ class GuiTests(unittest.TestCase):
             view.window.close()
             view.update()
             self.assertEqual(view.controller.session, 'b'*32)
-            quit_app.assert_not_called()
+            quit_app.assert_called()
             state['state'] = 'exited'
             view.controller.poll()
             quit_app.assert_called()

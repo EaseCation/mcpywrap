@@ -1,5 +1,7 @@
 # Windows/macOS 本地无交互开发与验收
 
+两个玩家的本地联调或双客户端进服见[双客户端联调](dual-clients.md)。本地 `waiting_for_join` 表示等待用户在客户端 2 点击提示的局域网卡片，不是失败，不应重复启动。保存 `group` 和成员 `session`；部分启动失败时保留成功成员并重试失败成员。不要将进程存活当作两名玩家已进入同一世界。
+
 适用于本地 Addon 世界。对两个平台使用相同命令、参数、JSON 解析和生命周期；后端选择由 mcpy 完成。安装来源仍有区别：Windows 通过 MC Studio 准备引擎；Apple Silicon 首次 run 自动准备原生运行包/APK，也可提前 engine install，见 [macOS 安装](macos-local.md)。不支持的功能明确报告，不自动换平台、登录或切到桌面输入。
 
 ## 纯命令契约

@@ -1,7 +1,7 @@
 """可复现的本机验收：真实 CLI/pip/watchdog，--game 时启动已安装的 MCS 引擎。
 
 在独立、带 system-site-packages 的虚拟环境中执行，避免安装到用户工具环境。
-所有测试项目和日志保留在 --workspace；只移除本次新建的全局链接。
+所有测试项目、会话日志和受管运行包保留在 --workspace；只停止本次启动的会话。
 """
 import argparse
 import hashlib
@@ -89,94 +89,28 @@ def wait_for(predicate, timeout=12):
 
 
 def launch(project, evidence, expected, timeout):
-    """仅替换日志窗口为文件收集器；游戏、配置生成、链接均走真实实现。"""
-    import psutil
-    assert not any(p.info['name'] == 'Minecraft.Windows.exe' for p in psutil.process_iter(['name'])), '请先结束现有游戏后再运行本机测试'
-    run = importlib.import_module('mcpywrap.commands.run_cmd')
+    """Use the public session lifecycle and keep its logs and owned registrations."""
     evidence_name = project.parent.name + '-assembled' if project.name == 'build' else project.name
-    server = socket.socket()
-    server.bind(('127.0.0.1', 0))
-    server.listen()
-    server.settimeout(0.5)
-    port = server.getsockname()[1]
-    stopped = threading.Event()
-    chunks, clients = [], []
-
-    def receive(client):
-        client.settimeout(0.5)
-        while not stopped.is_set():
-            try:
-                data = client.recv(65536)
-                if not data:
-                    break
-                chunks.append(data)
-            except socket.timeout:
-                continue
-            except OSError:
-                break
-
-    def accept():
-        while not stopped.is_set():
-            try:
-                client, _ = server.accept()
-                clients.append(client)
-                threading.Thread(target=receive, args=(client,), daemon=True).start()
-            except socket.timeout:
-                continue
-            except OSError:
-                break
-
-    threading.Thread(target=accept, daemon=True).start()
-    global_root = Path(get_mcs_game_engine_netease_data_path())
-    packs = run._setup_dependencies(project.name, str(project))
-    planned = [global_root / (kind + '_packs') / (Path(folder).name + '_' + pack.pkg_name)
-               for pack in packs for kind in ('behavior', 'resource')
-               if (folder := getattr(pack, kind + '_pack_dir')) and Path(folder).is_dir()]
-    created = [p for p in planned if not os.path.lexists(p)]
-    level, config = run._generate_new_instance_config(str(project), project.name)
-    proc = None
+    started = json.loads(cli(project, '--local', '--non-interactive', 'run', '--new', '--no-gui', '--detach', '--json').stdout)
+    session = started['session']
     try:
-        with patch.object(run, '_gen_random_port', return_value=port), patch(
-                'mcpywrap.mcstudio.studio_server_ui.run_studio_server_ui_subprocess', return_value=None):
-            success, proc = run._run_game_with_instance(config, level, packs, wait=False)
-        assert success and proc, 'Actual game launch failed'
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline and proc.poll() is None:
-            log = b''.join(chunks).decode('utf-8', errors='replace')
-            if all('MCPY_ACCEPT_' + side + '_' + name in log for side in ('SERVER', 'CLIENT') for name in expected):
-                break
-            time.sleep(0.5)
-        log = b''.join(chunks).decode('utf-8', errors='replace')
-        (evidence / (evidence_name + '-game.log')).write_text(log, encoding='utf-8')
-        loaded = [side + '_' + name for side in ('SERVER', 'CLIENT') for name in expected
-                  if 'MCPY_ACCEPT_' + side + '_' + name in log]
-        world = Path(get_mcs_game_engine_data_path()) / 'minecraftWorlds' / level
-        registered = {}
-        for kind in ('behavior', 'resource'):
-            declared = {json.loads((Path(folder) / 'manifest.json').read_text())['header']['uuid']
-                        for pack in packs if (folder := getattr(pack, kind + '_pack_dir')) and Path(folder).is_dir()}
-            world_file = world / ('netease_world_' + kind + '_packs.json')
-            actual = {entry['pack_id'] for entry in json.loads(world_file.read_text())} if world_file.exists() else set()
-            registered[kind] = {'expected': sorted(declared), 'actual': sorted(actual), 'passed': declared == actual}
-            if world_file.exists():
-                (evidence / (evidence_name + '-' + kind + '-packs.json')).write_bytes(world_file.read_bytes())
-        return {'pid': proc.pid, 'exit_code_before_cleanup': proc.poll(), 'config': config,
-                'expected_markers': 2 * len(expected), 'loaded_markers': loaded,
-                'registered_packs': registered,
-                'passed': len(loaded) == 2 * len(expected) and all(v['passed'] for v in registered.values()), 'log_bytes': len(log)}
+        loaded, log = [], ''
+        while time.monotonic() < deadline:
+            output = json.loads(cli(project, '--local', 'logs', '--session', session, '--tail', '10000', '--json').stdout)
+            log = output['text']
+            loaded = [side + '_' + name for side in ('SERVER', 'CLIENT') for name in expected
+                      if 'MCPY_ACCEPT_' + side + '_' + name in log]
+            if len(loaded) == 2 * len(expected): break
+            state = json.loads(cli(project, '--local', 'status', '--session', session, '--json').stdout)
+            if state['state'] not in ('starting', 'running'): break
+            time.sleep(.5)
+        (evidence/(evidence_name+'-game.log')).write_text(log, encoding='utf-8')
+        return {'session': session, 'pid': started['pid'], 'config': started['config_path'],
+                'expected_markers': 2*len(expected), 'loaded_markers': loaded,
+                'passed': len(loaded) == 2*len(expected), 'log_bytes': len(log.encode('utf-8'))}
     finally:
-        if proc is not None and proc.poll() is None:
-            proc.terminate()
-            proc.wait(timeout=20)
-        stopped.set()
-        server.close()
-        for client in clients:
-            client.close()
-        for link in created:
-            if link.is_symlink():
-                link.unlink()
-            elif link.is_junction():
-                os.rmdir(link)
+        cli(project, '--local', 'stop', '--session', session, '--json')
 
 
 def main():
