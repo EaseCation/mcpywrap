@@ -262,81 +262,70 @@ class EngineDiscoveryTests(unittest.TestCase):
             start.assert_not_called()
 
     def test_run_preserves_instance_version_and_passes_same_engine(self):
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
+        from runtime_support import launch_world
         root = self.root / 'registered'
-        self.engine(root, '3.9')
-        self.engine(root, '3.10')
-        self.resources(root)
+        self.engine(root, '3.9'); self.engine(root, '3.10'); self.resources(root)
         self.registry.return_value = [(str(root), 'registry64')]
         path = self.project / '.runtime/test.cppconfig'
         path.parent.mkdir()
         path.write_text('{"version":"3.9","world_info":{"level_id":"test","difficulty":3}}')
         captured = []
-
         def launch(config_path, **kwargs):
             captured.append(kwargs['engine'])
             self.assertEqual(json.loads(Path(config_path).read_text(encoding='utf-8'))['version'], kwargs['engine'].version)
-            return Mock()
-
-        with patch.object(run, 'get_mcs_game_engine_data_path', return_value=str(self.root/'game-data')), patch.object(run, '_setup_dependencies', return_value=[]), patch.object(run, 'setup_global_addons_symlinks', return_value=(True, [], [])), patch.object(run, 'open_game', side_effect=launch), patch.object(run, 'is_windows', return_value=False), patch.object(run, 'open_safaia'), patch.object(run, '_gen_random_port', return_value=10000):
-            self.assertTrue(run._run_game_with_instance(str(path), 'test', [], wait=False)[0])
+            return Mock(pid=os.getpid())
+        with patch('mcpywrap.mcstudio.game.open_game', side_effect=launch):
+            launch_world(self.project, path, 'test')
             self.assertEqual(captured[-1].version, '3.9')
-            self.assertTrue(run._run_game_with_instance(str(path), 'test', [], wait=False, engine_overrides={'engine_version': '3.10'})[0])
+            launch_world(self.project, path, 'test', overrides={'engine_version': '3.10'})
             self.assertEqual(captured[-1].version, '3.10')
-            self.assertEqual(json.loads(path.read_text())['world_info']['difficulty'], 3)
+            self.assertEqual(json.loads(path.read_text(encoding='utf-8'))['world_info']['difficulty'], 3)
 
     def test_run_failure_does_not_link_write_or_launch(self):
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
+        from runtime_support import launch_world
         path = self.project / '.runtime/test.cppconfig'
-        with patch.object(run, '_setup_dependencies', return_value=[]), patch.object(run, 'setup_global_addons_symlinks') as links, patch.object(run, 'open_game') as launch, patch.object(run, 'open_safaia') as logs:
-            self.assertEqual(run._run_game_with_instance(str(path), 'test', [], wait=False), (False, None))
-            links.assert_not_called()
-            launch.assert_not_called()
-            logs.assert_not_called()
+        with patch('mcpywrap.mcstudio.deployment_links.ManagedLinks.publish') as links, patch('mcpywrap.mcstudio.game.open_game') as launch:
+            with self.assertRaises(ValueError):
+                launch_world(self.project, path, 'test')
+            links.assert_not_called(); launch.assert_not_called()
             self.assertFalse(path.exists())
 
     def test_missing_resources_preserve_existing_instance(self):
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
+        from runtime_support import launch_world
         root = self.root / 'registered'
         self.engine(root, '3.10')
         self.registry.return_value = [(str(root), 'registry64')]
         path = self.project / '.runtime/test.cppconfig'
-        path.parent.mkdir()
-        path.write_text('{"version":"3.10"}')
+        path.parent.mkdir(); path.write_text('{"version":"3.10"}')
         before = path.read_bytes()
-        with patch.object(run, '_setup_dependencies', return_value=[]), patch.object(run, 'setup_global_addons_symlinks') as links, patch.object(run, 'open_game') as launch:
-            self.assertFalse(run._run_game_with_instance(str(path), 'test', [], wait=False)[0])
-            links.assert_not_called()
-            launch.assert_not_called()
+        with patch('mcpywrap.mcstudio.deployment_links.ManagedLinks.publish') as links, patch('mcpywrap.mcstudio.game.open_game') as launch:
+            with self.assertRaises(ValueError):
+                launch_world(self.project, path, 'test')
+            links.assert_not_called(); launch.assert_not_called()
             self.assertEqual(path.read_bytes(), before)
 
     def test_failed_launch_does_not_start_logging_or_report_success(self):
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
+        from runtime_support import launch_world
         root = self.root / 'registered'
-        self.engine(root, '3.10')
-        self.resources(root)
+        self.engine(root, '3.10'); self.resources(root)
         self.registry.return_value = [(str(root), 'registry64')]
         path = self.project / '.runtime/test.cppconfig'
-        messages = []
-        with patch.object(run, 'get_mcs_game_engine_data_path', return_value=str(self.root/'game-data')), patch.object(run, '_setup_dependencies', return_value=[]), patch.object(run, 'setup_global_addons_symlinks', return_value=(True, [], [])), patch.object(run, 'open_game', return_value=False), patch.object(run, 'open_safaia') as safaia, patch('mcpywrap.mcstudio.studio_server_ui.run_studio_server_ui_subprocess') as logs, patch.object(run, '_gen_random_port', return_value=10000):
-            self.assertFalse(run._run_game_with_instance(str(path), 'test', [], wait=False, log_callback=lambda message, level: messages.append(message))[0])
+        with patch('mcpywrap.mcstudio.game.open_game', return_value=False), patch('mcpywrap.mcstudio.game.open_safaia') as safaia:
+            with self.assertRaisesRegex(ValueError, '未创建游戏进程'):
+                launch_world(self.project, path, 'test')
             safaia.assert_not_called()
-            logs.assert_not_called()
-            self.assertFalse(any('游戏已启动' in message for message in messages))
+            self.assertFalse(path.exists())
 
     def test_cli_run_forwards_overrides(self):
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
-        from mcpywrap.mcstudio import sessions
+        from mcpywrap.engines.windows import WindowsBackend
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=self.root):
             Path('pyproject.toml').write_text('[project]\nname="sample"\n')
-            record = {'project': str(Path.cwd()), 'session': 'test', 'state': 'running',
-                      'game': {'pid': 123}, 'log_path': 'test.log'}
-            with patch.object(run, '_setup_dependencies', return_value=[]), patch.object(sessions, 'start', return_value=record) as start:
+            with patch.object(WindowsBackend, 'run', return_value={'ok': True}) as start:
                 result = runner.invoke(cli, ['run', '--new', '--detach', '--engine-version', '3.10', '--mcs-download-path', 'custom'])
                 self.assertEqual(result.exit_code, 0, result.output)
-                self.assertEqual(start.call_args.args[3]['engine_version'], '3.10')
-                self.assertEqual(start.call_args.args[3]['mcs_download_path'], 'custom')
+                self.assertEqual(start.call_args.kwargs['overrides']['engine_version'], '3.10')
+                self.assertEqual(start.call_args.kwargs['overrides']['mcs_download_path'], 'custom')
 
     def test_nonstandard_exe_not_returned_as_legacy_version_directory(self):
         from mcpywrap.mcstudio import mcs
@@ -359,7 +348,7 @@ class EngineDiscoveryTests(unittest.TestCase):
         (root / 'EngineAssert').mkdir()
         install = self.root / 'studio'
         (install / 'data/inner_res').mkdir(parents=True)
-        with patch('mcpywrap.commands.run_cmd._setup_dependencies', return_value=[]), patch.object(edit, 'studio_installation', return_value=(str(install), [])), patch.object(edit, 'open_editor', return_value=Mock(pid=os.getpid())) as launch, patch.object(edit, 'discover_engines', wraps=d.discover_engines) as scan:
+        with patch('mcpywrap.runtime.preparation.prepare_editor', return_value=[]), patch.object(edit, 'studio_installation', return_value=(str(install), [])), patch.object(edit, 'open_editor', return_value=Mock(pid=os.getpid())) as launch, patch.object(edit, 'discover_engines', wraps=d.discover_engines) as scan:
             edit.open_edit(str(self.project))
             self.assertEqual(scan.call_count, 1)
             engine = launch.call_args.kwargs['engine']

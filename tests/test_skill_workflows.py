@@ -31,6 +31,38 @@ class SmokeTests(unittest.TestCase):
         self.artifact.touch()
         self.calls = []
 
+    def test_group_probes_target_each_client_and_host_server_once(self):
+        from types import SimpleNamespace
+        client, server = self.root/'client.py', self.root/'server.py'
+        client.write_text('_result=True\n'); server.write_text('_result=True\n')
+        members = [{'role': 'host', 'session': 'host-session'}, {'role': 'guest', 'session': 'guest-session'}]
+        calls = []
+        def invoke(*args, **kwargs):
+            calls.append(args)
+            if args[0] == 'status':
+                return {'ok': True, 'connection_verified': True, 'members': members}
+            if args[:2] == ('runtime', 'capabilities'):
+                return {'ok': True}
+            return {'ok': True, 'state': 'completed', 'side': args[args.index('--side')+1]}
+        report = {}
+        smoke.verify_group(invoke, SimpleNamespace(client_file=client, server_file=server, timeout=1, expect_log=[]),
+                           {'ok': True, 'group': 'group', 'members': members}, report)
+        executed = [args for args in calls if args[:2] == ('runtime', 'py')]
+        self.assertEqual([(a[a.index('--session')+1], a[a.index('--side')+1]) for a in executed],
+                         [('host-session', 'client'), ('host-session', 'server'), ('guest-session', 'client')])
+
+    def test_group_partial_launch_retains_ids_before_failure(self):
+        from types import SimpleNamespace
+        report = {}
+        with self.assertRaises(ValueError):
+            smoke.verify_group(Mock(), SimpleNamespace(), {'ok': False, 'group': 'owned-group',
+                               'members': [{'role': 'host', 'session': 'owned-host'}], 'error': 'guest failed'}, report)
+        self.assertEqual(report['group'], 'owned-group')
+        invoke = Mock(return_value={'ok': True})
+        smoke.cleanup_group(invoke, report['group'], report)
+        self.assertTrue(report['stopped'])
+        self.assertEqual(invoke.call_args.args, ('stop', '--group', 'owned-group'))
+
     def run_script(self, *args, text='LOADED', state='running', fail_log=False, clock=None, probe_state='completed', queued_ready=False):
         def invoke(command, **kwargs):
             self.calls.append(command)

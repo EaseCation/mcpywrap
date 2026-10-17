@@ -57,6 +57,16 @@ class MacOSNetworkTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)['code'], 'runtime_incompatible')
         self.start_mock.assert_not_called()
 
+    def test_dual_player_identity_requires_runtime_protocol(self):
+        player = {'user_id': 1024, 'user_name': 'mcpy_player_one'}
+        with self.assertRaises(EngineError) as error:
+            self.backend.connect(ServerTarget('localhost'), project_dir=self.root, detach=True, player=player)
+        self.assertEqual(error.exception.code, 'runtime_incompatible')
+        self.start_mock.assert_not_called()
+        self.state['developer_identity_protocol'] = 1
+        self.backend.connect(ServerTarget('localhost'), project_dir=self.root, detach=True, player=player)
+        self.assertEqual(self.start_mock.call_args.kwargs['network']['player'], player)
+
     def test_auth_and_version_rejected(self):
         for args, code in [(['--mcs-auth'], 'unsupported_option'), (['--engine-version', 'wrong'], 'engine_version_mismatch')]:
             result = self.call('connect', 'localhost', '--detach', *args)

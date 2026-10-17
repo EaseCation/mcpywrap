@@ -8,6 +8,7 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 from PySide6.QtGui import QTextCursor
+from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication
 from mcpywrap.mcstudio import sessions
 from mcpywrap.mcstudio.log_colorizer import LogColorizer
@@ -36,9 +37,13 @@ class SharedLogsTests(unittest.TestCase):
     def cleanup(self):
         if self.controller.task:
             self.controller.task.wait(3000); self.app.processEvents()
-        for window in self.windows: window.close()
+        for window in self.windows:
+            window.close()
+            window.deleteLater()
         self.controller.session = None; self.controller.watcher = None
         self.controller.dispose(); self.app.processEvents()
+        self.controller.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
     def log_file(self, sid, content):
         directory = sessions.session_path(self.project, sid); directory.mkdir(parents=True, exist_ok=True)
@@ -80,7 +85,7 @@ class SharedLogsTests(unittest.TestCase):
             floating.log_view.raw.setChecked(True)
             self.assertEqual(read.call_count, 1)  # View changes replay memory, not the file.
         for view in (embedded, floating.log_view):
-            self.assertEqual(view.editor.toPlainText(), path.read_text())
+            self.assertEqual(view.editor.toPlainText(), path.read_text(encoding='utf-8'))
             self.assertEqual(self.color_at(view, '[ERROR]'), LogColorizer.COLORS['bright_red'].lower())
             self.assertEqual(self.color_at(view, '[WARN]'), LogColorizer.COLORS['bright_yellow'].lower())
             view.search.setText('故障'); self.assertEqual(len(view.matches), 2)

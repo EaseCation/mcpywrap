@@ -20,7 +20,7 @@ from mcpywrap.dependencies import (DependencyService, DependencyDeclaration, Dep
 from mcpywrap.builders.dependency_manager import DependencyManager
 from mcpywrap.builders.project_builder import AddonProjectBuilder, MapProjectBuilder
 from mcpywrap.builders.watcher import ProjectWatcher
-from mcpywrap.commands.run_cmd import _setup_dependencies
+from runtime_support import prepare_packs as _setup_dependencies
 
 
 def addon(root, name, configured=False, local=(), packages=(), resource=True):
@@ -222,14 +222,18 @@ class Projects(ProjectFixture):
         self.assertEqual((output / 'resource_pack/manifest.json').read_bytes(), (self.main / 'resource_pack/manifest.json').read_bytes())
 
     def test_run_revalidates_before_linking(self):
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
+        from mcpywrap.runtime.deployment import Deployment, inventory
         self.add()
-        packs = _setup_dependencies('main', str(self.main))
+        _setup_dependencies('main', str(self.main))
+        deployment = Deployment(self.main)
+        before = inventory(deployment.target)
         shutil.rmtree(self.dep)
-        with patch.object(run, 'setup_global_addons_symlinks') as link, patch.object(run, 'open_game') as game:
-            self.assertEqual(run._run_game_with_instance(str(self.main / '.runtime/test.cppconfig'), 'test', packs, False), (False, None))
+        with patch('mcpywrap.mcstudio.deployment_links.ManagedLinks.publish') as link, patch('mcpywrap.mcstudio.game.open_game') as game:
+            with deployment.lock(), self.assertRaises(DependencyError):
+                deployment.prepare()
             link.assert_not_called()
             game.assert_not_called()
+        self.assertEqual(inventory(deployment.target), before)
 
     def test_global_links_preserve_unrelated_and_reuse(self):
         from mcpywrap.mcstudio.symlinks import create_symlinks, _create_directory_link
@@ -263,13 +267,13 @@ class Projects(ProjectFixture):
             self.assertNotIn('shell', start.call_args.kwargs)
 
     def test_instances_use_explicit_project_root(self):
-        from mcpywrap.commands.run_cmd import _get_all_instances
+        from mcpywrap.runtime.instances import list_instances
         runtime = self.main / '.runtime'
         runtime.mkdir()
         (runtime / 'test.cppconfig').write_text('{"world_info":{"level_id":"test"}}')
         with cwd(self.dep):
-            self.assertEqual(_get_all_instances(str(self.main))[0]['level_id'], 'test')
-            self.assertEqual(_get_all_instances(), [])
+            self.assertEqual(list_instances(self.main)[0]['level_id'], 'test')
+            self.assertEqual(list_instances(self.dep), [])
 
     def test_build_primary_priority_and_incremental_fallback(self):
         self.add()
@@ -343,11 +347,33 @@ class Projects(ProjectFixture):
 
     def test_run_and_editor_receive_local_packs(self):
         self.add()
-        self.assertEqual([Path(p.path) for p in _setup_dependencies('main', str(self.main))], [self.dep, self.main])
+        packs = _setup_dependencies('main', str(self.main), raise_errors=True)
+        self.assertEqual(len(packs), 1)
+        self.assertEqual(Path(packs[0].path), self.main / '.mcpy/runtime/assembled')
         edit = importlib.import_module('mcpywrap.commands.edit_cmd')
         with patch.object(edit, 'discover_engines'), patch.object(edit, 'require_resources'), patch.object(edit, 'studio_installation', return_value=('test-studio', [])), patch.object(edit, 'create_editor_config', return_value={}) as config, patch.object(edit, 'open_editor'):
             edit.open_edit(str(self.main))
-            self.assertEqual(config.call_args.kwargs['addon_paths'], [str(self.dep), str(self.main)])
+            self.assertEqual(config.call_args.kwargs['addon_paths'], [str(self.main / '.mcpy/editor/assembled')])
+
+    def test_local_only_run_merges_common_and_refreshes_previous_assembly(self):
+        self.add()
+        shared = self.dep / 'behavior_pack/Shared'
+        shared.mkdir()
+        (shared / 'player.py').write_text('VALUE = 1\n')
+        stale = self.main / '.mcpy/runtime/assembled/behavior_pack/RemovedFramework'
+        stale.mkdir(parents=True)
+        (stale / '__init__.py').write_text('OLD = True\n')
+        packs = _setup_dependencies('main', str(self.main), raise_errors=True)
+        self.assertEqual(len(packs), 1)
+        folder = Path(packs[0].behavior_pack_dir)
+        self.assertEqual((folder / 'Shared/player.py').read_text(), 'VALUE = 1\n')
+        self.assertTrue((folder / 'marker.py').read_text().endswith((self.main / 'behavior_pack/marker.py').read_text()))
+        self.assertEqual((folder / 'manifest.json').read_bytes(), (self.main / 'behavior_pack/manifest.json').read_bytes())
+        self.assertFalse((folder / 'RemovedFramework').exists())
+        (shared / 'player.py').write_text('VALUE = 2\n')
+        again = _setup_dependencies('main', str(self.main), raise_errors=True)
+        self.assertEqual(again[0].pkg_name, packs[0].pkg_name)
+        self.assertEqual((folder / 'Shared/player.py').read_text(), 'VALUE = 2\n')
 
     def test_cli_add_remove_and_noninteractive(self):
         runner = CliRunner()
@@ -409,7 +435,8 @@ class GuiProjects(ProjectFixture):
                 window.add_dependency()
                 install.assert_not_called()
             self.assertEqual(window.dependency_list.count(), 1)
-            self.assertEqual(len(window.all_packs), 2)
+            self.assertEqual({Path(pack.path).resolve() for pack in window.all_packs}, {self.main, self.dep})
+            self.assertFalse((self.main/'.mcpy/runtime/assembled').exists())
             self.assertEqual(window.dependency_list.item(0).data(Qt.ItemDataRole.UserRole).kind, 'local')
             window.local_path_input.setText('../missing')
             window.add_dependency()

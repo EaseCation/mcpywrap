@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer, QStringListModel
 from PySide6.QtGui import QFont, QColor
 
-from ..commands.run_cmd import _setup_dependencies
+from ..runtime.preparation import resolve_packs
 from ..commands.edit_cmd import open_edit
 from ..engines.backend import get_backend
 from .session_controller import SessionController
@@ -58,13 +58,6 @@ class GameInstanceManager(QMainWindow):
     def closeEvent(self, event):
         if self.is_busy():
             self.log('请等待当前操作完成后关闭窗口。', 'warning')
-            event.ignore(); return
-        if self.controller.session and self.controller.owns_session:
-            answer = QMessageBox.question(self, '保存退出', '关闭管理器并保存退出本窗口启动的游戏？',
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.Yes)
-            if answer != QMessageBox.StandardButton.Yes:
-                event.ignore(); return
-            self.closing = True; self.controller.stop()
             event.ignore(); return
         if self.controller.watcher:
             self.closing = True
@@ -261,7 +254,7 @@ class GameInstanceManager(QMainWindow):
         
         # 实例列表表格
         self.instance_table = QTableWidget(0, 4)
-        self.instance_table.setHorizontalHeaderLabels(["默认", "实例ID", "创建时间", "世界名称"])
+        self.instance_table.setHorizontalHeaderLabels(["状态", "实例ID", "创建时间", "世界名称"])
         self.instance_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.instance_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.instance_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
@@ -290,6 +283,12 @@ class GameInstanceManager(QMainWindow):
         self.run_btn.clicked.connect(self.run_selected_instance)
         self.run_btn.setEnabled(False)
         btn_layout.addWidget(self.run_btn)
+        self.dual_btn = QPushButton('双客户端联调')
+        self.dual_btn.clicked.connect(self.run_dual_clients)
+        btn_layout.addWidget(self.dual_btn)
+        self.connect_btn = QPushButton('连接服务器…')
+        self.connect_btn.clicked.connect(self.connect_server)
+        btn_layout.addWidget(self.connect_btn)
         
         self.delete_btn = QPushButton("删除选中实例")
         self.delete_btn.clicked.connect(self.delete_selected_instance)
@@ -301,6 +300,11 @@ class GameInstanceManager(QMainWindow):
         btn_layout.addWidget(self.clean_btn)
         
         instance_list_layout.addLayout(btn_layout)
+        self.watch_on_start = QCheckBox('运行并监控 Python（客户端；可在下方调整端侧）')
+        instance_list_layout.addWidget(self.watch_on_start)
+        self.attach_btn = QPushButton('接管已有会话…')
+        self.attach_btn.clicked.connect(self.attach_existing)
+        instance_list_layout.addWidget(self.attach_btn)
         self.session_controls = SessionControls(self.controller)
         instance_list_layout.addWidget(self.session_controls)
         self.float_log_btn = QPushButton('打开日志小窗')
@@ -409,9 +413,12 @@ class GameInstanceManager(QMainWindow):
             return
         
         self.instance_table.setRowCount(len(self.instances))
+        default = next((i['level_id'] for i in self.instances if i.get('state', 'ready') in ('ready', 'legacy_existing')), None)
         for row, instance in enumerate(self.instances):
             # 状态图标
-            status_item = QTableWidgetItem("📌" if row == 0 else "")
+            state = instance.get('state', 'ready')
+            labels = {'pending': '待启动', 'failed': '启动失败', 'unverified': '尚未确认', 'legacy_existing': '已有存档', 'ready': '可用'}
+            status_item = QTableWidgetItem(('📌 ' if instance['level_id'] == default else '') + labels.get(state, state))
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
             # 实例ID(显示前8位)
@@ -463,8 +470,7 @@ class GameInstanceManager(QMainWindow):
 
     def reload_runtime_dependencies(self):
         try:
-            self.all_packs = _setup_dependencies(self.current_project, self.base_dir, raise_errors=True,
-                                                report=lambda message: self.log(message, 'warning'))
+            self.all_packs = resolve_packs(self.base_dir, report=lambda message: self.log(message, 'warning'))
         except (DependencyError, OSError) as exc:
             self.all_packs = None
             self.log(str(exc), 'error')
@@ -594,6 +600,45 @@ class GameInstanceManager(QMainWindow):
         # 使用QThread启动游戏，避免UI卡死
         self.start_game_thread(level_id)
 
+    def run_dual_clients(self):
+        if self.is_busy(): return
+        if 'local-dual-client-manual' not in self.backend.capabilities:
+            self.log('当前平台运行包尚不支持从游戏卡片加入本地主机。', 'warning'); return
+        if self.mcs_auth:
+            self.log('双客户端联调使用无认证开发身份，请关闭 MCS 身份模式后启动。', 'warning'); return
+        rows = self.instance_table.selectionModel().selectedRows()
+        identity = self.instances[rows[0].row()]['level_id'] if rows else None
+        self.controller.start(identity, clients=2)
+
+    def connect_server(self):
+        if self.is_busy(): return
+        host, accepted = QInputDialog.getText(self, '连接服务器', '服务器 IP 或域名（无认证开发服务器）')
+        if not accepted or not host.strip(): return
+        port, accepted = QInputDialog.getInt(self, '服务器端口', '端口', 19132, 1, 65535)
+        if not accepted: return
+        clients, accepted = QInputDialog.getItem(self, '玩家数量', '本机客户端', ['2', '1'], 0, False)
+        if accepted: self.controller.connect(host.strip(), port, int(clients))
+
+    def attach_existing(self):
+        if self.is_busy(): return
+        from ..runtime import groups, occupancy
+        from ..mcstudio import sessions
+        choices = []
+        grouped = set()
+        for value in groups.list_groups(self.base_dir):
+            if value['state'] in ('ready', 'running', 'waiting_for_join', 'partial', 'starting'):
+                choices.append(('联调组 ' + value['group'][:8] + ' · ' + value['state'], value))
+                grouped.update(m.get('session') for m in value['members'])
+        for data in occupancy.active(self.base_dir):
+            if data['session'] not in grouped and data.get('game'):
+                choices.append(('会话 ' + data['session'][:8], dict(sessions.handoff(data), already_running=True)))
+        if not choices:
+            self.log('没有运行中的会话。', 'info'); return
+        label, accepted = QInputDialog.getItem(self, '接管已有会话', '选择目标', [x[0] for x in choices], 0, False)
+        if accepted:
+            result = next(value for name, value in choices if name == label)
+            self.controller.attach(dict(result, already_running=True))
+
     def create_from_cppconfig(self):
         path, _ = QFileDialog.getOpenFileName(self, '从 cppconfig 新建', self.base_dir,
                                              'cppconfig (*.cppconfig);;JSON (*.json)')
@@ -635,6 +680,8 @@ class GameInstanceManager(QMainWindow):
         self.refresh_instances()
         self.log_tabs.setCurrentIndex(1)
         self.show_log_window()
+        if self.watch_on_start.isChecked() and result.get('ok', True):
+            self.controller.set_watching(True)
 
     @Slot()
     def show_log_window(self):
@@ -647,7 +694,7 @@ class GameInstanceManager(QMainWindow):
         self.session_label.setText(self.controller.status)
         self.float_log_btn.setEnabled(bool(self.controller.session))
         if not self.controller.session and self.log_window: self.log_window.close()
-        if self.closing and not self.is_busy() and not self.controller.watcher and (not self.controller.session or not self.controller.owns_session):
+        if self.closing and not self.is_busy() and not self.controller.watcher:
             QTimer.singleShot(0, self.close)
 
     @Slot(object)

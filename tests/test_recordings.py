@@ -177,7 +177,7 @@ class Jobs(RecordingFixture):
     def test_session_stop_finishes_recording_before_game_termination(self):
         with patch.object(sessions, 'read', return_value={'game': self.game, 'worker': None, 'state': 'running'}), \
              patch.object(jobs, 'stop_session') as stop_recording, \
-             patch.object(sessions, 'checked_process', return_value=Mock()) as game:
+             patch.object(sessions, 'observed_process', return_value=Mock()) as game:
             actions = []
             stop_recording.side_effect = lambda *a: actions.append('recording')
             game.return_value.terminate.side_effect = lambda: actions.append('game')

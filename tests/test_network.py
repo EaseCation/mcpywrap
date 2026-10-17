@@ -60,6 +60,20 @@ class NetworkTests(unittest.TestCase):
                 n.configured_target({'tool': {'mcpywrap': {'server': value}}})
         self.assertIsNone(n.configured_target({}))
 
+    def test_development_identities_are_distinct_and_not_authenticated(self):
+        engine = Engine('game.exe', '3.10', str(self.root/'engine'), str(self.root), 'fixture')
+        target = n.ServerTarget('localhost')
+        players = [{'user_id': 1024, 'user_name': 'mcpy_one'}, {'user_id': 1025, 'user_name': 'mcpy_two'}]
+        configs = [n.unauthenticated_config(engine, target, player) for player in players]
+        for player, config in zip(players, configs):
+            self.assertEqual(config['player_info'], dict(player, urs=''))
+            self.assertEqual(config['room_info']['token'], '')
+        self.assertNotEqual(configs[0]['player_info'], configs[1]['player_info'])
+        for player in ({'user_id': True, 'user_name': 'mcpy_bad'},
+                       {'user_id': 1024, 'user_name': 'x'*17}):
+            with self.assertRaises(ValueError):
+                n.unauthenticated_config(engine, target, player)
+
     def test_empty_project_and_dependency_only_and_root(self):
         self.config()
         self.assertEqual(n.prepare_project(self.project), [])
@@ -117,7 +131,7 @@ class NetworkTests(unittest.TestCase):
     def test_network_options_and_invalid_config_never_start_world(self):
         run = importlib.import_module('mcpywrap.commands.run_cmd')
         self.config()
-        with patch.object(run, '_run_game_with_instance') as local, patch.object(n, 'run_network') as launch:
+        with patch('mcpywrap.runtime.windows.launch') as local, patch.object(n, 'run_network') as launch:
             for args in (('run', '--new'), ('run', '1234')):
                 self.assertEqual(self.call(*args).exit_code, 2)
             self.config('[tool.mcpywrap.server]\nport=123\n')
@@ -135,9 +149,9 @@ class NetworkTests(unittest.TestCase):
             result = self.runner.invoke(cli, ['--project', str(self.project), 'ui'])
             self.assertNotEqual(result.exit_code, 0)
             self.assertIn('mcpy run', result.stderr)
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
+        from mcpywrap.runtime.windows import launch
         with self.assertRaisesRegex(ValueError, '服务器目标'):
-            run._run_game_with_instance(str(self.project / '.runtime/old.cppconfig'), 'old', [])
+            launch({'project': str(self.project)}, None)
 
     def test_anonymous_config_does_not_inherit_identity(self):
         engine = Engine('game', '3.10.0.420447', 'engine', str(self.root), 'test')
