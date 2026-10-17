@@ -1,0 +1,147 @@
+diff --git a/tests/test_binary_rules.py b/tests/test_binary_rules.py
+index b716903..0e0844e 100644
+--- a/tests/test_binary_rules.py
++++ b/tests/test_binary_rules.py
+@@ -57,5 +57,45 @@ class RuleTests(unittest.TestCase):
+         self.assertIn('missing UI anchor',result['ui_error'])
+         self.assertEqual(result['dispatcher']['begin'],0x1040)
+ 
++    def clock_fixture(self, base=0x1000):
++        r=self.fixture()
++        image=bytearray(words(*([0xd503201f]*192)))
++        def jump(source,target):
++            return 0x14000000+((target-source)//4 & 0x3ffffff)
++        for wrapper in (0,32):
++            struct.pack_into('<I',image,wrapper+16,jump(wrapper+16,64))
++        struct.pack_into('<I',image,64+160,jump(64+160,384))
++        image[384:392]=words(0xfd000800,0xd65f03c0)
++        r.elf=SimpleNamespace(data=bytes(image),loads=[],
++            executable=lambda a:base<=a<base+len(image),offset=lambda a:a-base)
++        r.rules['shapes']={name:{'size':size,'digest':hashlib.sha256(
++            normalized(image[offset:offset+size],base+offset)).hexdigest()}
++            for name,offset,size in [('math_unary_wrapper',0,20),('math_unary',64,244),('floatFromDouble',384,8)]}
++        r.registered_function=lambda name:base+{'fabs':0,'ceil':32}[name]
++        return r
++
++    def test_clock_constructor_is_resolved_through_both_math_registrations(self):
++        for base in (0x1000,0x8000):
++            self.assertEqual(self.clock_fixture(base).float_constructor(),base+384)
++
++    def test_clock_rejects_changed_constructor_or_disagreeing_helpers(self):
++        r=self.clock_fixture()
++        r.elf.data=r.elf.data[:384]+words(0xfd000801)+r.elf.data[388:]
++        with self.assertRaises(Incompatible):r.float_constructor()
++        r=self.clock_fixture()
++        image=bytearray(r.elf.data)
++        image[448:692]=image[64:308]
++        struct.pack_into('<I',image,48,0x14000000+(448-48)//4)
++        r.elf.data=bytes(image)
++        with self.assertRaisesRegex(Incompatible,'shared CPython'):
++            r.float_constructor()
++
++    def test_missing_clock_binding_preserves_ui_capability(self):
++        r=self.fixture();r.ui=Mock(return_value={'reload':123})
++        r.float_constructor=Mock(side_effect=Incompatible('float ABI changed'))
++        result=r.resolve()
++        self.assertEqual(result['ui'],{'reload':123})
++        self.assertEqual(result['input_clock_error'],'float ABI changed')
++
+ 
+ if __name__=='__main__':unittest.main()
+diff --git a/tools/analyze_developer_binary.py b/tools/analyze_developer_binary.py
+index 52c537c..bb7bc39 100644
+--- a/tools/analyze_developer_binary.py
++++ b/tools/analyze_developer_binary.py
+@@ -250,6 +250,17 @@ class Resolver:
+         output['reload']=self.verify(target,'reload');output['reload_index']=index
+         return output
+ 
++    def float_constructor(self):
++        # Two independently registered CPython math methods must converge on
++        # the same audited helper and its double -> PyFloatObject return path.
++        # Never use a version address or a host Python allocator.
++        helpers=[]
++        for name in ('fabs', 'ceil'):
++            wrapper=self.verify(self.registered_function(name),'math_unary_wrapper')
++            helpers.append(self.verify(branch(self.word(wrapper+16),wrapper+16),'math_unary'))
++        helper=unique(helpers,'shared CPython unary math helper')
++        return self.verify(branch(self.word(helper+160),helper+160),'floatFromDouble')
++
+     def resolve(self):
+         result={'schema':1,'rule_family':self.rules['family'],'elf_sha256':hashlib.sha256(self.elf.data).hexdigest(),
+                 'elf_size':len(self.elf.data),'mapping_end':max(s[3]+s[6] for s in self.elf.loads),
+@@ -257,6 +268,11 @@ class Resolver:
+         try:result['ui']=self.ui()
+         except (ValueError, KeyError, IndexError, struct.error) as error:
+             result['ui']=None;result['ui_error']=str(error)
++        if result['ui'] is not None:
++            try:result['ui']['floatFromDouble']=self.float_constructor()
++            except (ValueError, KeyError, IndexError, struct.error) as error:
++                # A missing optional clock must not disable existing UI reload.
++                result['input_clock_error']=str(error)
+         result['evidence']=self.evidence
+         return result
+ 
+@@ -275,7 +291,8 @@ def main():
+         return 1
+     a.output.parent.mkdir(parents=True,exist_ok=True)
+     temporary=a.output.with_suffix(a.output.suffix+'.tmp');temporary.write_text(json.dumps(result,indent=2)+'\n');temporary.replace(a.output)
+-    print(json.dumps({'ok':True,'rule_family':result['rule_family'],'capabilities':{'arm64_dispatcher':True,'json_ui_reload':result['ui'] is not None},'output':str(a.output)}))
++    print(json.dumps({'ok':True,'rule_family':result['rule_family'],'capabilities':{'arm64_dispatcher':True,'json_ui_reload':result['ui'] is not None,
++        'input_monotonic_clock':'floatFromDouble' in (result['ui'] or {})},'output':str(a.output)}))
+     return 0
+ 
+ if __name__=='__main__':raise SystemExit(main())
+diff --git a/tools/build_macos_runtime.py b/tools/build_macos_runtime.py
+index 8da54a9..73435fe 100644
+--- a/tools/build_macos_runtime.py
++++ b/tools/build_macos_runtime.py
+@@ -196,7 +196,7 @@ def main():
+         'CFBundleExecutable': 'mcpelauncher-client', 'CFBundlePackageType': 'APPL', 'CFBundleVersion': '1',
+         'LSMinimumSystemVersion': args.minimum_macos, 'NSHighResolutionCapable': True}))
+     metadata = {'schema': 1, 'platform': 'darwin-arm64', 'minimum_macos': args.minimum_macos,
+-        'client_python_protocol': 1, 'json_ui_reload_protocol': 1,
++        'client_python_protocol': 1, 'json_ui_reload_protocol': 1, 'input_monotonic_clock_protocol': 1,
+         'launch_protocol': 1, 'addon_link_protocol': 1, 'cppconfig_protocol': 1, 'network_connect_protocol': 1,
+         'game_compatibility': {'elf_rules_schema': 1, 'package_name': 'com.netease.mctest', 'abi': 'arm64-v8a',
+                                'rules_sha256': digest(ROOT/'tools/developer_binary_rules.json')}, 'game_profile': json.loads(args.profile.read_text()),
+diff --git a/tools/developer_binary_rules.json b/tools/developer_binary_rules.json
+index 9db334f..5c2b328 100644
+--- a/tools/developer_binary_rules.json
++++ b/tools/developer_binary_rules.json
+@@ -1969,6 +1969,18 @@
+     "reload": {
+       "size": 172,
+       "digest": "028072fed65e8dcd05b64904603b95ce4de1fccc91455b0726e4a390a481cc0b"
++    },
++    "math_unary_wrapper": {
++      "size": 20,
++      "digest": "857147802910d4ecfca958af8436ea80019e5c1cd93b70f5deaf96cdefbe7ff1"
++    },
++    "math_unary": {
++      "size": 244,
++      "digest": "63b9293284354e1595cd8edb82cf3c4adb832927f1d843434b2a3580bb17233f"
++    },
++    "floatFromDouble": {
++      "size": 452,
++      "digest": "e5ac0511d124453602ef7225a3d39f18e1e5a8950bb0ffaff644aad28696af49"
+     }
+   },
+   "reload_closure": "NSt6__ndk110__function6__funcIZN13MinecraftGame25handleReloadUIDefinitionsEvE3$_0NS_9allocatorIS3_EEFvRNS_6vectorI10PackReportNS4_IS7_EEEEEEE"
+diff --git a/tools/learn_developer_rules.py b/tools/learn_developer_rules.py
+index 049e64a..764dbef 100644
+--- a/tools/learn_developer_rules.py
++++ b/tools/learn_developer_rules.py
+@@ -16,7 +16,11 @@ FUNCTIONS={
+  'check_wrapper':(0x93ca240,72), 'check_impl':(0x9381f80,64),
+  'thread':(0x123e5a28,48), 'isMainThread':(0x123e5a00,40), 'boolean':(0x12143f6c,40),
+  'context':(0x94c305c,108), 'game':(0x94c3768,248), 'gilEnsure':(0x12288454,152),
+- 'gilRelease':(0x122884ec,224), 'initModule':(0x1228461c,136), 'reload':(0x6364d14,172)}
++ 'gilRelease':(0x122884ec,224), 'initModule':(0x1228461c,136), 'reload':(0x6364d14,172),
++ # math.fabs/ceil -> math_1_to_whatever -> PyFloat_FromDouble. The full
++ # constructor includes the free-list allocation and PyFloatObject return ABI.
++ 'math_unary_wrapper':(0x122171e4,20), 'math_unary':(0x12218698,244),
++ 'floatFromDouble':(0x12160a0c,452)}
+ SPECIAL=[
+  (0x10de8cb4,0x52beab12,0x52beab10,16),(0x10de8cb8,0x72804512,0x72804510,16),
+  (0x10debe1c,0x7a4a1a48,0x7a4a1a08,16),(0x10debea8,0x1a92b220,0x1a90b220,16),

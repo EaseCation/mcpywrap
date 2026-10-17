@@ -54,7 +54,7 @@ with tarfile.open(sdist) as archive:
                      'tests/test_runtime_input.py', 'tests/test_host_input.py', 'tests/test_runtime_key_timeline.py',
                      'tests/manual_runtime_input_unified.py', 'tests/manual_runtime_key_timeline.py',
                      'native/runtime_input/README.md', 'native/runtime_input/steady_clock.h',
-                     'native/runtime_input/launcher-monotonic.patch',
+                     'native/runtime_input/launcher-monotonic.patch', 'native/runtime_input/manifest-monotonic.patch',
                      'tests/test_runtime_ui.py', 'tests/test_runtime_ui_outline.py',
                      'tests/test_runtime_player.py', 'tests/manual_runtime_ui.py', 'tests/manual_runtime_player.py',
                      'tests/test_input_sequence.py', 'tests/test_native_input_sequence.py',

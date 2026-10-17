@@ -50,7 +50,7 @@ FPS/VSync、画质、GUI 缩放、音量和输入偏好由 mcpy worker 按用户
 已安装旧运行包时，先正常结束自己的会话，再升级资源并重新 connect：
 
 ```sh
-mcpy --local engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.3/catalog.json
+mcpy --local engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.4/catalog.json
 ```
 
 此命令仍通过网易 pe 发现当前 APK；保留旧资源和原世界绑定。connect 使用当前已选资源，旧单人实例继续使用原运行包。
@@ -69,3 +69,19 @@ connect 不读取项目配置；固定目标可以在项目 `[tool.mcpywrap.serv
 `running` 仅表示进程已启动。macOS `connection_verified=true` 表示此会话曾观察到进入 HUD，并非持续在线探活，也不表示已通过身份认证；需要当前状态时用客户端 Python/日志验证。90 秒未进入 HUD 会失败并关闭本次游戏。失败后检查 logs --source engine/worker、服务端日志、协议版本及离线配置，不尝试账号登录。
 
 仅支持客户端 Python 与 runtime install；游戏内输入另查当前会话 capabilities（旧 C++ 运行包可能缺少统一输入所需的单调时钟），不因注入成功就断言输入可用。服务端 Python 与本地 Mod 热更禁用，服务端逻辑仍由服务器管理。3.10.100.299889 已用本机 Nemisys + SynapseAPI + Nukkit 验证无认证进服；测试端须关闭 Nemisys xbox-auth 并按 SynapseAPI 的调试开关强制 NetEase 玩家。不能推断公开服务器或其他版本一定接受连接。当前网络策略允许目标 UDP 端口和 DNS，不包含外部 HTTP 资源包下载；需要这种资源分发的服务器尚未验收。
+
+## 统一输入时钟修复（CLI 0.4.6 / 运行包 0.4.4）
+
+旧运行包的游戏内 Python 2 缺少单调时钟，统一输入返回 `missing_monotonic_clock`。
+CLI 0.4.6 默认选择运行包 0.4.4；已有安装仍保留原来源与世界绑定，需要显式升级：
+
+```sh
+mcpy --local --non-interactive engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.4/catalog.json --json
+mcpy --local --project <项目> --non-interactive run --new --no-gui --detach --json
+mcpy --local --project <项目> runtime install --session <新会话> --json
+mcpy --local --project <项目> runtime input capabilities --session <新会话> --json
+```
+
+确认 `clock_source=launcher.steady_clock` 和所需动作的 `supported=true`。仅升级 CLI、
+重新注入旧会话或重开旧实例都不会替换原生运行包。macOS 26.6.2 / 开发包3.9.100.297020
+的计时、移动跳跃、取消释放、攻击、聊天和UI点击已实测通过；3.10.100.299889完成结构检查。

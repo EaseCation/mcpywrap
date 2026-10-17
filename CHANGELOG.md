@@ -1,5 +1,12 @@
 # 更新记录
 
+## 0.4.6
+
+- macOS 默认安装配套原生运行包 0.4.4，补齐游戏内 Python 2 单调时钟接口，修复统一输入返回 `missing_monotonic_clock`、键盘及玩家/UI 计划无法执行的问题。
+- 补齐原生浮点接口的结构识别规则与回归测试；不使用 CPU 时间、系统日期或游戏帧数作为替代时钟，未知结构仍明确禁用对应能力。
+- 实机验收覆盖计时、重叠移动跳跃、组合键取消释放、移动中攻击、聊天开关和带修饰键的 UI 点击；改进 macOS 冷启动等待、测试角色复位和瞄准目标确认。
+- 已安装旧资源的用户需显式执行 `mcpy --local engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.4/catalog.json`，然后使用 `run --new` 创建实例。升级 CLI 不修改旧世界的运行包绑定。
+
 ## 0.4.5
 
 - macOS 自动从已校验的开发者 APK 解析游戏图标，转换为多尺寸 ICNS，并用于本地签名的运行副本；保留原始运行包完整性与签名，已有安装可从匹配缓存补全。

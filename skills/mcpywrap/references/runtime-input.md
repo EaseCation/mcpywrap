@@ -102,7 +102,7 @@ mcpy runtime input key "CTRL+W" --duration-ms 500 --session <sid> --json
 
 Windows特殊后端会激活并占用游戏前台。统一调度器记录SendInput调用边界；不承诺0–20ms硬实时或游戏消费间隔。旧顶层input-sequence仍保持原有批量提交与调度行为，见[兼容输入参考](input-writing.md)。
 
-macOS Apple Silicon使用同一游戏协议，但Python2原生运行包必须提供 `_mcpy_launcher.monotonic()` 或其他已确认单调时钟。旧包缺时钟返回missing_monotonic_clock；不自动下载、改包或退回CPU/墙上时间。原生适配源码与限制见仓库 `native/runtime_input/README.md`。Mac未实机验收前不宣称完整支持；pointer/text缺能力仍明确拒绝。
+macOS Apple Silicon使用同一游戏协议，原生运行包0.4.4起提供 `_mcpy_launcher.monotonic()`，当前会话应报告 `clock_source=launcher.steady_clock`。CLI 0.4.6默认指向该运行包。macOS 26.6.2 / 开发包3.9.100.297020已验证计时、移动跳跃叠加、取消释放、攻击、聊天及UI点击；3.10.100.299889本次仅通过结构识别检查。旧包缺时钟仍返回missing_monotonic_clock；须显式升级资源并新建实例，不自动下载、改包或退回CPU/墙上时间。升级命令见[macOS本地测试](macos-local.md)，原生源码与证据见仓库 `native/runtime_input/README.md`。pointer/text缺能力仍明确拒绝。
 
 ## Python 与兼容入口
 

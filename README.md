@@ -191,7 +191,7 @@ Agent通过CLI管理项目和操作游戏。0.4.2起只有一条日常输入流�
 
 严禁业务代码依赖mcpy.*：这些方法只存在于临时注入的调试会话。默认backend=game；原始设备测试显式设置windows-sendinput。旧player/ui、key/mouse/input-sequence入口仍兼容，但从默认帮助隐藏。
 
-时间规划中at_ms可省略，按前一步计划结束加delay_ms编译；真正的实际停顿用wait。Mac旧运行包缺单调时钟时新计划明确不支持，不自动切后端或回退CPU时间。
+时间规划中at_ms可省略，按前一步计划结束加delay_ms编译；真正的实际停顿用wait。macOS运行包0.4.4补齐单调时钟，CLI 0.4.6默认指向该版本；已有资源须[显式升级并新建实例](skills/mcpywrap/references/macos-local.md#统一输入时钟修复cli-046--运行包-044)。旧包仍明确不支持，不自动切后端或回退CPU时间。
 
 常用入口：`mcpy --project <目录> --non-interactive <命令> --json`。
 

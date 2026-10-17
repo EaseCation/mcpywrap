@@ -26,9 +26,9 @@ class LiveInput:
         self.prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap', '--local', '--project',
                        str(Path(args.project).resolve()), '--non-interactive']
 
-    def call(self, *args, session=True, allow_failure=False):
+    def call(self, *args, session=True, allow_failure=False, timeout=60):
         command = self.prefix+list(args)+(['--session', self.session] if session else [])+['--json']
-        result, code = invoke_json(command, timeout=60, history=self.report['history'])
+        result, code = invoke_json(command, timeout=timeout, history=self.report['history'])
         require(allow_failure or (code == 0 and result.get('ok')), str(result))
         return result
 
@@ -94,16 +94,34 @@ class LiveInput:
         return {'height': height, 'movement_after_space_up': delta, 'operation_id': rid}
 
     def mixed_attack(self):
-        self.py('_result=manual_fixture.reset_player()', side='server')
-        target = self.py('_result=manual_fixture.spawn_target()', side='server')
+        self.py("_result=manual_fixture.spawn_target('adult')", side='server')
+        # Teleport and entity geometry reach the client on later frames. Aim
+        # only after observing the reset, then require the real crosshair hit.
+        position = self.py('_result=manual_fixture.position()', side='server')
+        deadline = time.monotonic()+8
+        while True:
+            state = self.input('observe')
+            if all(abs(state['position'][i]-position[i]) < .3 for i in range(3)): break
+            require(time.monotonic() < deadline, 'Client did not observe fixture teleport')
+            time.sleep(.1)
+        target = self.py('_result=manual_fixture.target_geometry()', side='server')
         self.run_plan('aim', [{'action': 'player.select_slot', 'slot': 2},
                               dict(action='player.look_at', **dict(zip(('x', 'y', 'z'), target['aim'])))])
-        time.sleep(.2)
+        while True:
+            state = self.input('observe')
+            if state['target'].get('entityId') == target['entity']: break
+            require(time.monotonic() < deadline, 'Crosshair did not acquire fixture target: '+str(state))
+            time.sleep(.1)
         before = self.py('_result=manual_fixture.health()', side='server')
+        self.py('manual_fixture.events=[]\n_result=True', side='server')
         result = self.run_plan('mixed-attack', [{'action': 'key_down', 'key': 'W'},
-            {'action': 'player.attack', 'at_ms': 200}, {'action': 'key_up', 'key': 'W', 'at_ms': 600}])
+            {'action': 'player.attack', 'at_ms': 200, 'expect': {'target': {'type': 'Entity', 'entityId': target['entity']}}},
+            {'action': 'key_up', 'key': 'W', 'at_ms': 600}])
         after = self.py('_result=manual_fixture.health()', side='server')
-        require(after < before, 'No server damage during held W')
+        events = self.py('_result=manual_fixture.readback()', side='server')['events']
+        require(after < before and any(e.get('cause') == 'entity_attack' and e.get('damage', 0) > 0 and
+                e.get('srcId') == state['player_id'] and e.get('entityId') == target['entity'] for e in events),
+                'No attributed server damage during held W')
         return {'before_health': before, 'after_health': after, 'operation_id': result['operation_id']}
 
     def menu(self):
@@ -130,6 +148,42 @@ class LiveInput:
         self.hud()
         return {'screen': screen, 'operation_id': result['operation_id']}
 
+    def cancel_held(self):
+        self.py('_result=manual_fixture.reset_player()', side='server')
+        path = self.output/'cancel-held.plan.json'
+        path.write_text(json.dumps({'schema_version': 1, 'steps': [
+            # Sneak prevents walking off the finite elevated test arena while
+            # host CLI queries are in flight; cancel must release both keys.
+            {'action': 'key', 'keys': ['SHIFT', 'W'], 'duration_ms': 10000}]}))
+        operation = self.input('run', '--file', str(path))
+        deadline = time.monotonic()+5
+        while not operation.get('held_keys') and time.monotonic() < deadline:
+            operation = self.input('status', '--operation', operation['operation_id'])
+        require(operation.get('held_keys') == ['SHIFT', 'W'], 'Both keys were not held before cancellation')
+        cancelled = self.wait(self.input('cancel', '--operation', operation['operation_id']))
+        require(cancelled['state'] == 'cancelled' and cancelled['released'], 'Cancellation did not release W')
+        require(all(abs(v) < .01 for v in self.input('observe')['input_vector']), 'Input remained held after cancellation')
+        return {'operation_id': operation['operation_id'], 'released': True}
+
+    def monotonic_clock(self):
+        started = time.monotonic()
+        before = self.py('_result=mcpy.input.adapter.clock()')
+        time.sleep(.3)
+        after = self.py('_result=mcpy.input.adapter.clock()')
+        require(.3 <= after-before <= time.monotonic()-started+.1, 'Clock did not advance while idle')
+        # Change only the temporary Python wall-clock callable, never the OS
+        # clock. Scheduling must continue using the native elapsed-time source.
+        wall = self.py("import time\n_saved_wall=time.time\ntry:\n time.time=lambda: -1000000000.0\n _a=mcpy.input.adapter.clock()\n time.time=lambda: 1000000000.0\n _b=mcpy.input.adapter.clock()\n _result=_b-_a\nfinally:\n time.time=_saved_wall")
+        require(0 <= wall < 1, 'Wall-clock change affected the input clock')
+        self.py('mcpy.api.OpenPauseGui()\n_result=True')
+        paused_before = self.py('_result=mcpy.input.adapter.clock()')
+        time.sleep(.3)
+        paused_after = self.py('_result=mcpy.input.adapter.clock()')
+        self.hud()
+        require(paused_after-paused_before >= .3, 'Clock stopped in pause menu')
+        return {'idle_seconds': after-before, 'wall_change_delta': wall,
+                'pause_seconds': paused_after-paused_before}
+
     def windows(self):
         result = self.run_plan('windows-order', [{'action': 'key', 'keys': ['W', 'CTRL'], 'duration_ms': 200}], backend='windows-sendinput')
         require([r['key'] for r in result['events']] == ['W', 'CTRL', 'CTRL', 'W'], 'Windows order changed')
@@ -144,19 +198,31 @@ class LiveInput:
                 result = self.call('run', '--new', '--world-type', 'flat', '--game-type', 'survival', '--difficulty', 'peaceful',
                     '--no-mob-spawn', '--no-gui', '--detach', '--engine-version', self.args.engine_version, session=False)
                 self.session, self.owned = result['session'], True
-            deadline = time.monotonic()+90
+            deadline = time.monotonic()+180
             while True:
                 session = self.call('status')
                 if session.get('world_ready'): break
+                # macOS status reports process state; verify HUD through the
+                # public client channel instead of waiting on a Windows field.
+                if session.get('backend') == 'macos-arm64':
+                    ready = self.call('runtime', 'py', '--side', 'client', '--code',
+                        "import mod.client.extraClientApi as api, gui\n_result = api.GetLevelId() not in (None, -1, '-1') and gui.get_top_screen() == 'hud_screen'",
+                        allow_failure=True, timeout=max(1, deadline-time.monotonic()))
+                    if ready.get('state') == 'completed' and ready.get('value') is True: break
                 require(time.monotonic() < deadline, 'World not ready'); time.sleep(.5)
-            self.report.update(session=self.session, engine=Path(session['game']['executable']).parent.name)
+            self.report.update(session=self.session, engine=session.get('launch', {}).get('engine_version') or
+                               Path(session['game']['executable']).parent.name)
             self.call('runtime', 'install')
             caps = self.input('capabilities'); self.report['capabilities'] = caps
             require(caps['actions']['key']['supported'], 'Missing unified game clock/key capability')
+            if session.get('backend') == 'macos-arm64':
+                require(caps['clock_source'] == 'launcher.steady_clock', 'Native macOS clock was not selected')
+            self.case('monotonic-clock', self.monotonic_clock)
             self.py(filename=Path(__file__).parent/'manual/runtime_controls/server_fixture.py', side='server'); self.fixture = True
             self.py(filename=Path(__file__).parent/'manual/runtime_controls/input_probe.py'); self.probe = True
             self.run_plan('initial-look', [{'action': 'player.look', 'pitch': 0, 'yaw': 0}])
             for i in range(3): self.case('overlap-'+str(i+1), self.overlap)
+            self.case('cancel-held', self.cancel_held)
             self.case('mixed-held-attack', self.mixed_attack)
             self.case('menu-keys', self.menu)
             self.case('ui-modifier-click', self.ui_click)

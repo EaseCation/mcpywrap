@@ -27,6 +27,8 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 
 ## 安装与前置检查
 
+- macOS 单调时钟修复使用 CLI 0.4.6 默认配套的原生运行包 0.4.4。旧资源需显式升级并新建实例，当前会话以 `clock_source=launcher.steady_clock` 为准；具体命令与实测范围见 [macOS 本地测试](references/macos-local.md)。
+
 - 统一输入入口要求 CLI 0.4.2+。bootstrap 可要求调用端 unified-input；随后以当前会话 runtime input capabilities 的动作/时钟支持为准。已有会话重新 runtime install 更新游戏控制层；显式 Windows 设备后端还要求新worker，更新Skill或CLI不会替换既有worker。
 
 - macOS 后端、Qt6 和会话能力查询要求 CLI 0.4.0+；候选版未上 PyPI 时按仓库验收文档安装对应 wheel，不把已更新的 Skill 当作 CLI 已升级。
