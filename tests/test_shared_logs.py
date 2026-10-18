@@ -8,7 +8,8 @@ import time
 import unittest
 from unittest.mock import Mock, patch
 from PySide6.QtGui import QTextCursor
-from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtCore import QCoreApplication, QEvent, QSettings
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from mcpywrap.mcstudio import sessions
 from mcpywrap.mcstudio.log_colorizer import LogColorizer
@@ -25,6 +26,9 @@ class SharedLogsTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.project = Path(self.temp.name).resolve()
+        settings = patch('mcpywrap.ui.log_window.QSettings', side_effect=lambda *args:
+                         QSettings(str(self.project/'window.ini'), QSettings.Format.IniFormat))
+        settings.start(); self.addCleanup(settings.stop)
         self.backend = Mock(label='Fixture', capabilities=('watch',))
         self.controller = SessionController(self.project, self.backend)
         self.controller.timer.stop()
@@ -108,6 +112,56 @@ class SharedLogsTests(unittest.TestCase):
         self.assertEqual(self.controller.session, 'a'*32)
         self.controller.logs.append('game', 'after\n'); window.show()
         self.assertIn('after', window.log_view.editor.toPlainText())
+
+    def test_floating_collapse_restores_geometry_and_remembers_expanded_size(self):
+        window = SessionLogWindow(self.controller)
+        self.windows.append(window)
+        window.show()
+        QTest.qWait(100)
+        window.resize(420, window.height())
+        QTest.qWait(100)
+        compact = window.size()
+        for tab in (0, 1, 0):
+            with self.subTest(tab=tab):
+                window.toggle_btn.click()
+                window.tabs.setCurrentIndex(tab)
+                window.resize(780, 520)
+                QTest.qWait(100)
+                expanded = window.size()
+                self.assertGreater(expanded.height(), compact.height())
+                window.toggle_btn.click()
+                QTest.qWait(100)
+                self.assertEqual(window.size(), compact)
+                self.assertFalse(window.tabs.isVisible())
+                window.resize(compact.width(), 600)
+                QTest.qWait(100)
+                self.assertEqual(window.size(), compact)
+                window.toggle_btn.click()
+                QTest.qWait(100)
+                self.assertEqual(window.size(), expanded)
+                window.toggle_btn.click()
+                QTest.qWait(100)
+                self.assertEqual(window.size(), compact)
+
+    def test_floating_collapse_leaves_maximized_state(self):
+        window = SessionLogWindow(self.controller)
+        self.windows.append(window)
+        window.show()
+        QTest.qWait(100)
+        compact = window.size()
+        window.toggle_btn.click()
+        QTest.qWait(100)
+        expanded = window.size()
+        window.showMaximized()
+        QTest.qWait(100)
+        self.assertTrue(window.isMaximized())
+        window.toggle_btn.click()
+        QTest.qWait(100)
+        self.assertFalse(window.isMaximized())
+        self.assertEqual(window.size(), compact)
+        window.toggle_btn.click()
+        QTest.qWait(100)
+        self.assertEqual(window.size(), expanded)
 
     def test_watch_buttons_share_one_monitor_and_command_side(self):
         self.log_file('a'*32, ''); self.controller.attach({'session': 'a'*32})

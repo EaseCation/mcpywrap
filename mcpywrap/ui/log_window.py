@@ -36,6 +36,8 @@ class LogWindow(QMainWindow):
         self.settings = QSettings('MCPyWrap', 'StudioLogger')
         self.log_expanded = False
         self.expanded_size = QSize(540, 340)
+        self.collapsed_width = 320
+        self.expanded_maximum_height = self.maximumHeight()
         self.setWindowTitle(title)
         self.setWindowIcon(application_icon())
         central = QWidget(); layout = QVBoxLayout(central); self.setCentralWidget(central)
@@ -61,7 +63,7 @@ class LogWindow(QMainWindow):
         self.tabs = QTabWidget(); self.log_view = LogView(model, compact=True)
         self.tabs.addTab(self.log_view, '日志'); layout.addWidget(self.tabs)
         self.tabs.hide()
-        self.resize(320, self.sizeHint().height())
+        self.resize_for_view()
         self.top.setChecked(self.settings.value('always_on_top', True, type=bool))
         position = self.settings.value('window_position')
         if position is not None and any(screen.availableGeometry().contains(position) for screen in self.screen().virtualSiblings()):
@@ -82,18 +84,32 @@ class LogWindow(QMainWindow):
     @Slot()
     def toggle_log_view(self):
         if self.log_expanded:
-            self.expanded_size = self.size()
+            self.expanded_size = (self.normalGeometry().size() if self.isMaximized() or self.isFullScreen()
+                                  else self.size())
+        else:
+            self.collapsed_width = self.width()
+        if self.isMaximized() or self.isFullScreen():
+            self.showNormal()
         self.log_expanded = not self.log_expanded
         self.tabs.setVisible(self.log_expanded)
         self.toggle_btn.setChecked(self.log_expanded)
         self.toggle_btn.setToolTip('收起日志' if self.log_expanded else '展开日志与 Python 控制台')
-        self.centralWidget().layout().activate()
-        self.layout().activate()
+        self.resize_for_view()
+        self.fit_on_screen()
+
+    def resize_for_view(self):
+        # Drop the previous state's constraints and cached size hints before
+        # asking the native window to resize. A collapsed panel is one row.
+        self.setMinimumHeight(0)
+        self.setMaximumHeight(self.expanded_maximum_height)
+        for layout in (self.centralWidget().layout(), self.layout()):
+            layout.invalidate()
+            layout.activate()
         if self.log_expanded:
             self.resize(self.expanded_size)
         else:
-            self.resize(320, self.minimumSizeHint().height())
-        self.fit_on_screen()
+            self.setFixedHeight(self.sizeHint().height())
+            self.resize(self.collapsed_width, self.height())
 
     @Slot(bool)
     def set_always_on_top(self, enabled):
