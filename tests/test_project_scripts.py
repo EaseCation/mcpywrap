@@ -1,5 +1,6 @@
 """Real command execution and lifecycle boundaries in isolated projects."""
 import json
+import inspect
 import os
 from pathlib import Path
 import subprocess
@@ -32,7 +33,9 @@ class ScriptTests(unittest.TestCase):
         write_project(self.project, config)
 
     def invoke(self, *args):
-        return CliRunner().invoke(cli, ['--project', str(self.project), *args])
+        # Click 8.1 (Python 3.9) otherwise merges stderr into result.stdout.
+        options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
+        return CliRunner(**options).invoke(cli, ['--project', str(self.project), *args])
 
     def test_manual_project_cwd_arguments_and_remote_are_local(self):
         self.configure("import sys,json,os\nfrom pathlib import Path\nPath('args.json').write_text(json.dumps([os.getcwd(),sys.argv[1:]]))\n")

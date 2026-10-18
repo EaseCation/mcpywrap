@@ -81,6 +81,19 @@ class DeploymentTests(unittest.TestCase):
         _, next_pack = self.publish()
         self.assertEqual(pack.behavior_pack_dir, next_pack.behavior_pack_dir)
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows extended path spelling')
+    def test_pack_filter_accepts_mixed_extended_path_forms(self):
+        from mcpywrap.builders.AddonsPack import AddonsPack
+        from mcpywrap.source_files import long_path
+        ordinary = str(self.project.resolve())
+        extended = str(long_path(ordinary))
+        pack = AddonsPack('fixture', ordinary, is_origin=True)
+        for root, source in ((extended, ordinary), (ordinary, extended)):
+            with self.subTest(root=root, source=source):
+                pack.path = root
+                self.assertFalse(pack.should_exclude(os.path.join(source, 'behavior_pack', 'terrain.soil.json')))
+                self.assertTrue(pack.should_exclude(os.path.join(source, 'behavior_pack', '__pycache__', 'main.pyc')))
+
     def test_active_reader_prevents_ordinary_replacement_before_writes(self):
         deployment, _ = self.publish()
         old = inventory(deployment.target)

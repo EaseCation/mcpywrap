@@ -71,7 +71,13 @@ class AddonsPack(object):
         # Only inspect components inside this pack. A checkout named demo.git-copy
         # or a perfectly valid terrain.soil.json is not an excluded artifact.
         from pathlib import Path
-        relative = os.path.relpath(path, self.path)
+        if os.name == 'nt':
+            # Python 3.9 treats C: and \\?\C: as different relpath mounts.
+            # Cache paths use the extended spelling; resolved files may not.
+            from ..source_files import long_path
+            relative = os.path.relpath(long_path(path), long_path(self.path))
+        else:
+            relative = os.path.relpath(path, self.path)
         parts = Path(relative).parts
         directories = {'.git', '.hg', '.svn', '.eggs', '.pytest_cache', '.tox',
                        '.bzr', '__pycache__', 'htmlcov'}
