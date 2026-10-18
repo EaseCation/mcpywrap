@@ -52,12 +52,6 @@ class WindowsJob:
             _fields_ = [('BasicLimitInformation', Basic), ('IoInfo', IO),
                         ('ProcessMemoryLimit', c.c_size_t), ('JobMemoryLimit', c.c_size_t),
                         ('PeakProcessMemoryUsed', c.c_size_t), ('PeakJobMemoryUsed', c.c_size_t)]
-        class Accounting(c.Structure):
-            _fields_ = [(name, c.c_longlong) for name in ('TotalUserTime', 'TotalKernelTime',
-                        'ThisPeriodTotalUserTime', 'ThisPeriodTotalKernelTime')] + [
-                        (name, w.DWORD) for name in ('TotalPageFaultCount', 'TotalProcesses',
-                        'ActiveProcesses', 'TotalTerminatedProcesses')]
-        self.accounting_type = Accounting
         self.kernel = c.WinDLL('kernel32', use_last_error=True)
         self.kernel.CreateJobObjectW.argtypes = [c.c_void_p, w.LPCWSTR]
         self.kernel.CreateJobObjectW.restype = w.HANDLE
@@ -65,6 +59,11 @@ class WindowsJob:
         self.kernel.AssignProcessToJobObject.argtypes = [w.HANDLE, w.HANDLE]
         self.kernel.QueryInformationJobObject.argtypes = [w.HANDLE, c.c_int, c.c_void_p, w.DWORD, c.c_void_p]
         self.kernel.TerminateJobObject.argtypes = [w.HANDLE, w.UINT]
+        self.kernel.OpenProcess.argtypes = [w.DWORD, w.BOOL, w.DWORD]
+        self.kernel.OpenProcess.restype = w.HANDLE
+        self.kernel.IsProcessInJob.argtypes = [w.HANDLE, w.HANDLE, c.POINTER(w.BOOL)]
+        self.kernel.WaitForSingleObject.argtypes = [w.HANDLE, w.DWORD]
+        self.kernel.WaitForSingleObject.restype = w.DWORD
         self.kernel.CloseHandle.argtypes = [w.HANDLE]
         self.kernel.OpenThread.argtypes = [w.DWORD, w.BOOL, w.DWORD]
         self.kernel.OpenThread.restype = w.HANDLE
@@ -98,14 +97,50 @@ class WindowsJob:
             self.kernel.CloseHandle(self.handle)
             self.handle = None
 
+    def process_ids(self):
+        import ctypes as c
+        from ctypes import wintypes as w
+        capacity = 16
+        for _ in range(8):
+            class ProcessIds(c.Structure):
+                _fields_ = [('assigned', w.DWORD), ('listed', w.DWORD),
+                            ('ids', c.c_size_t * capacity)]
+            info = ProcessIds()
+            # JobObjectBasicProcessIdList retains descendants after their
+            # parent exits. A concurrent spawn may require a larger buffer.
+            if self.kernel.QueryInformationJobObject(self.handle, 3, c.byref(info), c.sizeof(info), None):
+                return list(info.ids[:info.listed])
+            error = c.get_last_error()
+            if error != 234:  # ERROR_MORE_DATA
+                raise c.WinError(error)
+            capacity = max(capacity * 2, info.assigned)
+        raise RuntimeError('脚本进程树持续增长，无法确认成员')
+
     def active_count(self):
         import ctypes as c
-        info = self.accounting_type()
-        # JobObjectBasicAccountingInformation survives the original parent's
-        # exit and includes descendants missed between process-tree samples.
-        if not self.kernel.QueryInformationJobObject(self.handle, 1, c.byref(info), c.sizeof(info), None):
-            raise c.WinError(c.get_last_error())
-        return info.ActiveProcesses
+        from ctypes import wintypes as w
+        count = 0
+        for pid in self.process_ids():
+            handle = self.kernel.OpenProcess(0x00100000 | 0x1000, False, pid)  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION
+            if not handle:
+                error = c.get_last_error()
+                if error == 87:  # ERROR_INVALID_PARAMETER: process already gone
+                    continue
+                raise c.WinError(error)
+            try:
+                belongs = w.BOOL()
+                if not self.kernel.IsProcessInJob(handle, self.handle, c.byref(belongs)):
+                    raise c.WinError(c.get_last_error())
+                if not belongs.value:
+                    continue  # The PID may have been reused outside this job.
+                state = self.kernel.WaitForSingleObject(handle, 0)
+                if state == 258:  # WAIT_TIMEOUT: process is still running
+                    count += 1
+                elif state != 0:  # WAIT_OBJECT_0: process has exited
+                    raise c.WinError(c.get_last_error())
+            finally:
+                self.kernel.CloseHandle(handle)
+        return count
 
     def terminate(self):
         import ctypes as c

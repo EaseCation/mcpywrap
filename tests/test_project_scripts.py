@@ -258,6 +258,21 @@ class ScriptTests(unittest.TestCase):
         self.assertEqual(data['state'], 'failed')
         self.assert_process_ended(int(marker.read_text()))
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows job membership')
+    def test_job_does_not_count_exited_or_unrelated_processes(self):
+        from mcpywrap import _script_worker as worker
+        job = worker.WindowsJob()
+        self.addCleanup(job.close)
+        child = subprocess.Popen([sys.executable, '-c', 'pass'],
+                                 creationflags=subprocess.CREATE_NO_WINDOW | 0x00000004)
+        self.addCleanup(lambda: child.kill() if child.poll() is None else None)
+        job.assign(child)
+        child.wait(timeout=10)
+        # The exited child's handle is still open. The current test runner is
+        # alive but belongs to no such job: neither is an active descendant.
+        with patch.object(job, 'process_ids', return_value=[child.pid, os.getpid()]):
+            self.assertEqual(job.active_count(), 0)
+
     def test_low_level_builder_and_refresh_do_not_execute_hooks(self):
         from mcpywrap.runtime.deployment import Deployment
         d=Deployment(self.project)
