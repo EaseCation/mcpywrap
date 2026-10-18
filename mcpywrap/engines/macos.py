@@ -142,7 +142,7 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                     raise EngineError('已有会话的引擎与请求不同。', 'session_conflict')
                 return dict(sessions.handoff(current), already_running=True,
                             source_matches=matches_source(project, current),
-                            hint='已复用运行中的实例；修改 Mod 后请先 stop，再 run 以重新部署。')
+                            hint='已复用运行中的实例；未执行预处理，修改 Mod 后请先 stop，再 run 以重新部署。')
             state = item['installation']
         else:
             state = ensure_runtime()

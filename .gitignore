@@ -33,3 +33,7 @@ var/
 .venv/
 .mcpy/
 .runtime/
+
+# Local plans, investigations and per-run evidence (not product documentation)
+/.local-notes/
+/docs/investigations/

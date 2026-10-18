@@ -32,10 +32,13 @@ def build_cmd(merge):
     # 转换为绝对路径
     target_dir = os.path.normpath(os.path.join(str(current_project()), target_dir))
 
-    # 实际构建
-    if not build(str(current_project()), target_dir, force_merge=merge, raise_errors=True):
-        raise click.ClickException('构建失败')
-    return {'output': target_dir}
+    from ..project_scripts import before, configured, validate_build
+    if configured(current_project()):
+        validate_build(current_project(), target_dir)
+    with before(current_project(), 'before_build') as scripts:
+        if not build(str(current_project()), target_dir, force_merge=merge, raise_errors=True):
+            raise click.ClickException('构建失败')
+    return {'output': target_dir, **({'scripts': scripts} if scripts else {})}
 
     
 def build(source_dir, target_dir, force_merge: bool = False, raise_errors=False):

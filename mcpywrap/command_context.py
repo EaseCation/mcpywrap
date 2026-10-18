@@ -79,14 +79,18 @@ def require_project():
 
 
 class OperationCommand(click.Command):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, local_only=False, **kwargs):
+        self.local_only = local_only
         super().__init__(*args, **kwargs)
         self.params.append(click.Option(['--json', 'json_output'], is_flag=True,
                                         help='输出单个 JSON 结果'))
 
     def invoke(self, ctx):
         ctx.params.pop('json_output', None)
-        if ctx.parent and ctx.parent.info_name == 'engine':
+        if os.environ.get('_MCPY_SCRIPT_CHAIN') and ctx.info_name in ('run', 'build', 'package', 'dev', 'restart', 'edit', 'sync', 'add', 'remove'):
+            from .project_scripts import reject_recursion
+            reject_recursion()
+        if self.local_only or (ctx.parent and ctx.parent.info_name == 'engine'):
             return super().invoke(ctx)
         from .remote.client import routed_command
         routed, result = routed_command(ctx.info_name, ctx.params)
@@ -120,9 +124,10 @@ def show_group_result(result):
 class OperationGroup(click.Group):
     def main(self, args=None, prog_name=None, complete_var=None, standalone_mode=True, **extra):
         args = list(sys.argv[1:] if args is None else args)
-        structured = '--json' in args and '--help' not in args
+        own_args = args[:args.index('--')] if '--' in args else args
+        structured = '--json' in own_args and '--help' not in own_args
         output = sys.stdout
-        state = CommandContext(Path.cwd(), '--non-interactive' in args, structured)
+        state = CommandContext(Path.cwd(), '--non-interactive' in own_args, structured)
         token = _context.set(state)
         code, result = 0, None
         try:

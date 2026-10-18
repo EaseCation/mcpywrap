@@ -217,8 +217,15 @@ class Deployment:
         else:
             self.rollback()
 
-    def prepare(self, session=None, allowed_sessions=()):
+    def preflight(self):
         self.recover()
+        previous = storage.read(self.record_path)
+        if previous and inventory(self.target) != previous['files']:
+            raise EngineError('运行包已被外部程序改写，已保留现场。', 'deployment_modified',
+                              '退出相关游戏并检查运行目录。', path=str(self.target))
+
+    def prepare(self, session=None, allowed_sessions=()):
+        self.preflight()
         manager = DependencyService(self.project).resolve()
         self.warnings = list(manager.warnings)
         self.builder = runtime_builder(self.project, self.target, resolved=manager)

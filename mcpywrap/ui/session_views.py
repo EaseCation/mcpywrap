@@ -50,10 +50,12 @@ class SessionControls(QWidget):
         self.restart_btn = QPushButton('重载世界')
         self.restart_btn.setToolTip('停止游戏、重新部署 Mod，再打开同一世界；重要进度请先在游戏内保存')
         self.stop_btn = QPushButton('停止游戏')
+        self.cancel_prepare_btn = QPushButton('取消准备')
+        self.cancel_prepare_btn.clicked.connect(controller.cancel_preparation)
         self.watch = QCheckBox('自动热更')
         self.side = QComboBox(); self.side.addItems(['client', 'server', 'both'])
         self.side.setToolTip('监控端侧；both 仅适合可以安全重复执行的公共模块')
-        for widget in (self.reload_btn, self.restart_btn, self.stop_btn, self.watch, self.side): row.addWidget(widget)
+        for widget in (self.reload_btn, self.restart_btn, self.stop_btn, self.cancel_prepare_btn, self.watch, self.side): row.addWidget(widget)
         self.reload_btn.clicked.connect(lambda: select_reload_file(controller, self))
         self.restart_btn.clicked.connect(controller.restart); self.stop_btn.clicked.connect(controller.stop)
         self.watch.toggled.connect(self.toggle_watch); self.side.currentTextChanged.connect(controller.set_watch_side)
@@ -72,6 +74,8 @@ class SessionControls(QWidget):
     @Slot()
     def refresh(self):
         c = self.controller
+        self.cancel_prepare_btn.setVisible(bool(c.preparing_session))
+        self.cancel_prepare_btn.setEnabled(bool(c.preparing_session) and c.busy)
         self.group_panel.setVisible(bool(c.group))
         self.member.blockSignals(True)
         self.member.clear()

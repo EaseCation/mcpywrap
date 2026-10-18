@@ -16,6 +16,7 @@
 | “刚克隆项目，准备依赖” | `sync`；不重复add，不安装QuMod到site-packages |
 | “给项目加入QuMod” | `add --qumod --script-dir MyMod` |
 | “从这个仓库加入一个依赖” | `add --git <URL>`，保留用户提供的ref和布局参数 |
+| “安装宿主 Python 开发依赖” | `add "package>=version"`；移除用 `remove <package>`，不等于安装到游戏 |
 | “引用本机已有Addon” | `add --path <Addon根目录>` |
 | “升级／回退Git依赖” | 对同一来源和别名再次add，明确传 `--ref` |
 | “移除Git依赖” | `remove --git <声明中的name>`；不用仓库URL或Python包名代替别名 |
@@ -83,7 +84,7 @@ mcpy --project "<项目>" --non-interactive package --json
 mcpy --project "<项目>" --non-interactive remove --git shared --json
 ```
 
-升级按既有别名更新，不通过改名添加第二份占用同一目标的库。更换为fork等不同来源时，明确补充需要保留的subdir/kind/target。移除只删声明，不删缓存或入口；随后检查业务导入和重新组装。
+升级按既有别名更新，不通过改名添加第二份占用同一目标的库。更换为fork等不同来源时，明确补充需要保留的subdir/kind/target。移除只删声明，不删缓存或入口；随后检查业务导入和重新组装。运行中的世界不会因 add/remove 自动换版；应用依赖变化按[本地生命周期](local-development.md#代码部署与世界进度)处理。
 
 旧 `code_libraries` 使用 `remove --library <name>`，不是remove --git。旧格式可继续sync，QuMod快捷添加识别已有兼容声明时不制造重复项；需要迁移格式或改变旧来源时明确处理原声明，不删除业务文件来消除冲突。
 
@@ -107,6 +108,8 @@ export.path相对该项目描述。没有export时工具可识别符合既有目
 ## 缓存、提交与异常处理
 
 用户级不可变Git快照共享下载；项目 `.mcpy/` 保存独立注册节点与组装结果，游戏不直接加载共享源码。`MCPY_CACHE_DIR`用于本机／CI缓存策略，不写进可移植的项目依赖声明。
+
+Windows/macOS 共用锁文件。sync 按固定 Git 提交重新计算跨平台摘要并写回锁，不改变依赖版本、不创建备份；不需删除旧锁或执行专门迁移。两端 CLI 应具备此修复。旧 migrate 参数和 git_lock_migrations 仅为兼容，不把空字段当作迁移完成证据。
 
 提交配置、`mcpy-git.lock.json`、生成的入口和业务代码、.gitignore；忽略.mcpy、.runtime、build和dist。旧格式则保留其 `mcpy-code-libraries.lock.json`。不要提交QuMod源码，不要修改共享缓存来开发依赖。
 

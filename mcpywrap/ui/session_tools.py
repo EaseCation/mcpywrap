@@ -7,6 +7,7 @@ from PySide6.QtCore import QThread, Signal
 class TaskThread(QThread):
     result = Signal(object)
     failed = Signal(str)
+    starting = Signal(object)
     progress = Signal(int, int)
     phase = Signal(str)
 
@@ -16,10 +17,14 @@ class TaskThread(QThread):
 
     def run(self):
         try:
-            self.result.emit(self.function())
+            from ..mcstudio.sessions import observe_start
+            with observe_start(self.starting.emit):
+                self.result.emit(self.function())
         except Exception as error:
             hint = getattr(error, 'hint', None)
-            self.failed.emit(str(error) + ('\n' + hint if hint else ''))
+            details = getattr(error, 'details', {})
+            log = details.get('script_log')
+            self.failed.emit(str(error) + ('\n' + hint if hint else '') + ('\n脚本日志: ' + log if log else ''))
         finally:
             self.function = None
 

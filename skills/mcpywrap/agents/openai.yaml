@@ -1,4 +1,4 @@
 interface:
   display_name: "mcpywrap 开发与游戏联调"
-  short_description: "统一 Windows/macOS 命令开发流程，用双端 Python、热更与日志无交互验收"
-  default_prompt: "使用 $mcpywrap 检查资源和会话能力，通过 Windows/macOS 共用的非交互 CLI 完成启动、双端 Python、热更及日志验收，并结束本次测试会话。"
+  short_description: "按任务选择项目构建、预处理、本地或远程会话、双客户端联调及输入验收"
+  default_prompt: "使用 $mcpywrap，按当前任务选择必要的参考和公开 CLI，核对执行位置与实际能力，完成项目处理或游戏验收，并保留用户要求继续使用的会话。"

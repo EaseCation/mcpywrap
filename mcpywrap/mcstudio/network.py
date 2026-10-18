@@ -62,6 +62,8 @@ def configured_target(config):
 def prepare_project(project_dir, config=None):
     """允许无根 Addon 的连接目录；出现包结构时仍严格校验。"""
     root = Path(project_dir)
+    from ..project_scripts import skipped_network
+    skipped_network(root)
     config = read_project(root) if config is None else config
     if config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
         raise ValueError('网络运行暂时只支持 Addon 或纯连接目录，不支持 Map 项目')

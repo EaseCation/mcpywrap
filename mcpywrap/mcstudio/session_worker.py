@@ -116,6 +116,9 @@ def run(project, session):
     except Exception as exc:
         data.update(state='failed', error=str(exc))
         data['code'] = getattr(exc, 'code', 'launch_failed')
+        from ..project_scripts import ScriptError
+        if isinstance(exc, ScriptError):
+            data['script_error'] = exc.details
         if process and process.poll() is None:
             process.terminate()
             try:

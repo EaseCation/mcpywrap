@@ -67,7 +67,11 @@ def dev_cmd(reload_session):
         dependencies_list = config.get('project', {}).get('dependencies', [])
         
         # 实际构建
-        suc = build(source_dir, target_dir)
+        from ..project_scripts import before, configured, validate_build
+        if configured(source_dir):
+            validate_build(source_dir, target_dir)
+        with before(source_dir, 'before_build'):
+            suc = build(source_dir, target_dir)
         if not suc:
             click.secho("❌ 初始构建失败", fg="red")
             raise click.ClickException('无法启动开发监控')

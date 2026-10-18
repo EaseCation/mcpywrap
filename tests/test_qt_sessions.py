@@ -203,6 +203,37 @@ class GuiTests(unittest.TestCase):
         self.assertIn('fixture failed', self.window.log_output.toPlainText())
         self.assertIsNone(self.window.controller.session)
 
+    def test_preparation_reports_logs_and_can_cancel_only_owned_start(self):
+        from mcpywrap.mcstudio import sessions
+        from mcpywrap.runtime.storage import write
+        sid = 'e'*32
+        directory = sessions.session_path(self.root, sid)
+        write(directory/'session.json', {'session': sid, 'state': 'starting', 'game': None,
+                                        'worker': None, 'project': str(self.root)})
+        def prepare():
+            sessions._notify_start({'session': sid, 'state': 'starting',
+                                    'script': {'script': 'assets'}}, True)
+            (directory/'worker.log').write_text('asset progress\n', encoding='utf-8')
+            end = time.monotonic()+3
+            while not (directory/'stop').exists() and time.monotonic()<end:
+                time.sleep(.01)
+            if not (directory/'stop').exists(): raise AssertionError('preparation could not be cancelled')
+            raise ValueError('script cancelled')
+        self.window.controller.run_task(prepare)
+        self.wait(lambda: self.window.controller.preparing_session == sid)
+        self.window.controller.logs.poll()
+        self.assertIn('asset progress', self.window.controller.logs.snapshot('worker'))
+        with patch.object(sessions, 'read', return_value={'state': 'starting'}):
+            self.assertTrue(self.window.controller.cancel_preparation())
+        self.wait(lambda: not self.window.controller.busy)
+        self.assertIsNone(self.window.controller.preparing_session)
+        self.assertIn('script cancelled', self.window.log_output.toPlainText())
+
+    def test_observing_existing_start_does_not_offer_cancellation(self):
+        self.window.controller._preparing({'session': 'f'*32, 'state': 'starting', 'start_owned': False})
+        self.assertIsNone(self.window.controller.preparing_session)
+        self.assertFalse(self.window.controller.cancel_preparation())
+
     def test_window_close_keeps_owned_and_attached_games_running(self):
         self.window.controller.session='a'*32;self.window.controller.owns_session=True
         self.window.show()

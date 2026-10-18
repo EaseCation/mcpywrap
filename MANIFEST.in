@@ -2,7 +2,7 @@ include LICENSE README.md CHANGELOG.md
 recursive-include mcpywrap/ui/assets *.svg *.png *.icns *.json
 include scripts/build_app_icon.py
 include docs/releasing.md
-include docs/runtime-debug.md
+include docs/runtime-debug.md docs/project-scripts.md
 include docs/runtime-ui.md docs/runtime-player.md
 include docs/input-sequence.md
 include docs/runtime-input.md
@@ -23,12 +23,12 @@ recursive-include mcpywrap/mcstudio/window_capture *.exe *.json
 recursive-include native/window_capture *.cpp *.h
 recursive-include native/runtime_input *.h *.md *.patch
 prune test
+prune .local-notes
+prune docs/investigations
 prune .git
 global-exclude __pycache__ *.py[cod] *.cppconfig *.log
 
 include THIRD_PARTY_NOTICES.md
 include docs/game-backends.md docs/launcher-client-python.md docs/macos-resource-reload.md
-include docs/qt6-development.md docs/shared-log-ui.md docs/release-0.4.0.md
+include docs/qt6-development.md docs/shared-log-ui.md
 include scripts/check_release.py
-
-include docs/release-readiness-0.4.0.md

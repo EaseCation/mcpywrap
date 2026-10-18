@@ -18,7 +18,7 @@ mcpy --local --project <项目> runtime input observe --session <sid> --json
 
 capabilities 的动作注册表包含每个动作的参数 schema、默认值、完成方式及 supported/reason；`keys` 是当前引擎可表达的键。不要仅按 CLI 版本推断运行包能力。未支持动作在整份计划预检时拒绝，不执行前面合法的步骤。
 
-observe 默认在 HUD 返回玩家位置、方向、物品、准星目标及快照；菜单返回紧凑语义 UI 树、节点和快照。可显式使用 `--view player|ui`；UI 支持 `--query/--limit/--offset/--details`。快照中的有效目标、节点角色和 `allowed_actions` 帮助构造计划。HBUI 返回节点不可读的限制，可用键盘导航或后台截图观察，不猜测隐藏节点。
+observe 默认在 HUD 返回玩家位置、方向、物品、准星目标及快照；菜单返回紧凑语义 UI 树、节点和快照。可显式使用 `--view player|ui`；UI 支持 `--query/--limit/--offset/--details`。快照中的有效目标、节点角色和 `allowed_actions` 帮助构造计划。HBUI 返回节点不可读的限制，可用键盘导航或[后台截图](capture.md#截图)观察，不猜测隐藏节点。
 
 ## 提交同一份计划
 
@@ -102,7 +102,7 @@ mcpy runtime input key "CTRL+W" --duration-ms 500 --session <sid> --json
 
 Windows特殊后端会激活并占用游戏前台。统一调度器记录SendInput调用边界；不承诺0–20ms硬实时或游戏消费间隔。旧顶层input-sequence仍保持原有批量提交与调度行为，见[兼容输入参考](input-writing.md)。
 
-macOS Apple Silicon使用同一游戏协议，原生运行包0.4.4起提供 `_mcpy_launcher.monotonic()`，当前会话应报告 `clock_source=launcher.steady_clock`。CLI 0.4.6默认指向该运行包。macOS 26.6.2 / 开发包3.9.100.297020已验证计时、移动跳跃叠加、取消释放、攻击、聊天及UI点击；3.10.100.299889本次仅通过结构识别检查。旧包缺时钟仍返回missing_monotonic_clock；须显式升级资源并新建实例，不自动下载、改包或退回CPU/墙上时间。升级命令见[macOS本地测试](macos-local.md)，原生源码与证据见仓库 `native/runtime_input/README.md`。pointer/text缺能力仍明确拒绝。
+macOS 使用同一游戏协议，时钟能力取决于实例固定的原生包。missing_monotonic_clock 的升级与旧实例规则见[macOS 平台](macos-local.md#游戏输入与资源重载)，不自动换后端或用 CPU/墙钟替代；pointer/text 缺能力仍明确拒绝。
 
 ## Python 与兼容入口
 

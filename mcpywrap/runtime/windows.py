@@ -73,8 +73,8 @@ def run(project, *, new=False, listing=False, delete=None, force=False, clean_al
                 raise EngineError('已有会话的引擎或登录方式与请求不同。', 'session_conflict')
             result = dict(sessions.handoff(current), already_running=True)
             result['source_matches'] = matches_source(project, current)
-            result['hint'] = ('已复用运行中的世界；未重新部署。' if result['source_matches'] else
-                              '已复用运行中的世界；当前源码或依赖变化尚未应用，请热更或停止后重新运行。')
+            result['hint'] = ('已复用运行中的世界；未重新部署、未执行预处理。' if result['source_matches'] else
+                              '已复用运行中的世界；未执行预处理，当前源码或依赖变化尚未应用，请热更或停止后重新运行。')
             return result
         recipe = storage.read(item['config_path'], {})
         engine = discover_engines(project, overrides, recipe.get('version')).require_engine()
@@ -109,13 +109,17 @@ def launch(data, receiver, auth_context=None):
     guard = ExitStack()
     deployment = Deployment(project)
     process = None
+    script_guard = ExitStack()
     try:
+        from ..project_scripts import project_lock, startup_hooks
+        script_guard.enter_context(project_lock(data['project']))
         guard.enter_context(instances.world_lock(world, data))
         plan = data.get('launch') or {}
         engine = (Engine(**plan['engine']) if plan.get('engine') else
                   discover_engines(project, data.get('engine_overrides'), storage.read(config_path, {}).get('version')).require_engine())
         require_resources(engine)
         with deployment.lock():
+            startup_hooks(data, deployment)
             pack = deployment.prepare(session=data['session'])
             data['warnings'] = deployment.warnings
             deployment.begin_launch()
@@ -160,3 +164,5 @@ def launch(data, receiver, auth_context=None):
                 deployment.rollback()
         guard.close()
         raise
+    finally:
+        script_guard.close()

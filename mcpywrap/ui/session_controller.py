@@ -22,6 +22,7 @@ class SessionController(QObject):
         self.session, self.owns_session, self.data = None, False, {}
         self.owned_sessions = set()
         self.group = None
+        self.preparing_session = None
         self.members = []
         self.group_data = {}
         self.all_logs = False
@@ -64,10 +65,35 @@ class SessionController(QObject):
         self._success, self._failure, self._report = success, failure, report
         self._result, self._error = None, None
         self.task = TaskThread(function, self)
+        self.task.starting.connect(self._preparing)
         self.task.result.connect(self._received)
         self.task.failed.connect(self._failed)
         self.task.finished.connect(self._finished)
         self.changed.emit(); self.task.start()
+        return True
+
+    @Slot(object)
+    def _preparing(self, data):
+        if not data.get('start_owned'):
+            return
+        if data['state'] == 'starting':
+            if self.preparing_session != data['session']:
+                self.preparing_session = data['session']
+                self.logs.bind(self.project, self.preparing_session)
+                self.log('正在准备游戏：' + self.preparing_session)
+            script = data.get('script') or {}
+            self.status = '准备中' + (' · ' + script['script'] if script else '')
+        self.changed.emit()
+
+    def cancel_preparation(self):
+        if not self.preparing_session:
+            return False
+        data = sessions.read(self.project, self.preparing_session)
+        if data['state'] != 'starting':
+            self.log('准备已结束，请等待启动结果后使用停止操作。', 'info')
+            return False
+        (sessions.session_path(self.project, self.preparing_session)/'stop').touch()
+        self.log('已请求取消本次准备。', 'warning')
         return True
 
     @Slot(object)
@@ -82,6 +108,9 @@ class SessionController(QObject):
         result, error, success, failure = self._result, self._error, self._success, self._failure
         report = self._report
         task.deleteLater()
+        if self.preparing_session:
+            self.logs.poll()
+            self.preparing_session = None
         if error:
             self.log(error, 'error')
             if failure: failure()
@@ -187,6 +216,12 @@ class SessionController(QObject):
     def poll(self):
         try:
             self.logs.poll()
+            if self.preparing_session and self.busy:
+                data = sessions.read(self.project, self.preparing_session)
+                script = data.get('script') or {}
+                self.status = '准备中' + (' · ' + script['script'] if script else '')
+                self.changed.emit()
+                return
             if self.group:
                 from ..runtime import groups
                 self.group_data = groups.status(self.project, self.group)

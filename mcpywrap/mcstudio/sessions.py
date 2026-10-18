@@ -1,5 +1,7 @@
 """一次运行对应一个会话；记录与日志保留在项目中，无常驻服务。"""
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
 import os
 import subprocess
 import sys
@@ -8,6 +10,24 @@ import uuid
 from pathlib import Path
 
 from .processes import observed_process, background_options
+
+
+_start_observer = ContextVar('session_start_observer', default=None)
+
+
+@contextmanager
+def observe_start(callback):
+    token = _start_observer.set(callback)
+    try:
+        yield
+    finally:
+        _start_observer.reset(token)
+
+
+def _notify_start(data, owned):
+    callback = _start_observer.get()
+    if callback:
+        callback(dict(data, start_owned=owned))
 
 
 def session_path(project, session):
@@ -49,6 +69,12 @@ def start(project, config_path=None, level_id=None, overrides=None, timeout=30, 
           group=None, role=None):
     root = Path(project).resolve()
     session = session_id or uuid.uuid4().hex
+    script_options = {}
+    if network is None:
+        from ..project_scripts import reject_recursion, configured, startup_budget, snapshot_digest
+        reject_recursion()
+        if configured(root):
+            script_options = {'script_budget': startup_budget(root), 'script_config_digest': snapshot_digest(root)}
     directory = session_path(root, session)
     directory.mkdir(parents=True, exist_ok=False)
     record = {'session': session, 'project': str(root), 'state': 'starting', 'game': None,
@@ -62,8 +88,9 @@ def start(project, config_path=None, level_id=None, overrides=None, timeout=30, 
               'engine_overrides': overrides or {}, 'mcs_auth': auth_context is not None,
               'mcs_pid': auth_context.mcs_pid if auth_context else None}
     from .processes import identity
-    record.update(starter=identity(os.getpid()), group=group, role=role)
+    record.update(starter=identity(os.getpid()), group=group, role=role, **script_options)
     save(directory / 'session.json', record)
+    _notify_start(record, True)
     try:
         with (directory / 'worker.log').open('wb') as log:
             process = subprocess.Popen([sys.executable, '-m', 'mcpywrap.mcstudio.session_worker', str(root), session],
@@ -97,7 +124,13 @@ def start(project, config_path=None, level_id=None, overrides=None, timeout=30, 
 def wait_started(project, session, timeout=30, process=None):
     directory = session_path(project, session)
     deadline = time.monotonic() + timeout
-    preparation_deadline = time.monotonic() + 300
+    last_progress = None
+    log_position = 0
+    log_file = None
+    import codecs
+    decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+    preparation_started = time.monotonic()
+    preparation_deadline = preparation_started + 300
     while time.monotonic() < deadline:
         # worker 是记录的唯一写入者，父进程不与其竞争覆盖。
         try:
@@ -107,12 +140,34 @@ def wait_started(project, session, timeout=30, process=None):
                 raise
             time.sleep(0.1)
             continue
+        task = data.get('script') or {}
+        progress = (data['state'], data.get('phase'), task.get('script_state'), task.get('state'))
+        if progress != last_progress:
+            _notify_start(data, process is not None)
+            last_progress = progress
+            if task and not _start_observer.get():
+                import click
+                click.echo('[script] ' + task['script'] + ': ' + task['state'], err=True)
+        if task.get('script_log') and not _start_observer.get():
+            import click
+            if log_file != task['script_log']:
+                log_file, log_position = task['script_log'], 0
+                decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+            try:
+                with Path(log_file).open('rb') as stream:
+                    stream.seek(log_position)
+                    chunk = stream.read(65536)
+                    log_position = stream.tell()
+                if chunk: click.echo(decoder.decode(chunk), nl=False, err=True)
+            except FileNotFoundError:
+                pass
         if data['state'] == 'running':
             return data
         if data['state'] in ('failed', 'exited') or (process is not None and process.poll() is not None):
             from ..engines.host import EngineError
             raise EngineError(f'游戏启动失败: {data.get("error") or data["state"]}；日志: {directory / "worker.log"}',
-                              data.get('code', 'launch_failed'), session=session)
+                              data.get('code', 'launch_failed'), session=session, **data.get('script_error', {}))
+        preparation_deadline = preparation_started + 300 + max(0, data.get('script_budget', 0))
         if data.get('phase') in ('preparing', 'prepared') and time.monotonic() < preparation_deadline:
             deadline = min(preparation_deadline, time.monotonic() + timeout)
         time.sleep(0.1)
@@ -129,6 +184,8 @@ def handoff(data):
               'engine_log_path': data.get('engine_log_path'),
               'mode': data.get('mode', 'local'),
               'window_title_hint': 'Minecraft', 'window_verified': False}
+    if data.get('scripts'):
+        result['scripts'] = data['scripts']
     if data.get('warnings'):
         result['warnings'] = list(data['warnings'])
     if data.get('mode', 'local') == 'local' and data.get('config_path'):

@@ -17,10 +17,14 @@ def launch_world(data, launcher):
     deployment = Deployment(data['project'], target)
     guard = ExitStack()
     process = None
+    script_guard = ExitStack()
     world = Path(plan['data'])/'minecraftWorlds'/data['level_id']
     try:
+        from ..project_scripts import project_lock, startup_hooks
+        script_guard.enter_context(project_lock(data['project']))
         guard.enter_context(instances.world_lock(world, data))
         with deployment.lock():
+            startup_hooks(data, deployment)
             pack = deployment.prepare(session=data['session'])
             data['warnings'] = deployment.warnings
             deployment.begin_launch()
@@ -56,3 +60,5 @@ def launch_world(data, launcher):
                 deployment.rollback()
         guard.close()
         raise
+    finally:
+        script_guard.close()
