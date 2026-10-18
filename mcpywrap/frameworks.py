@@ -5,6 +5,7 @@ from .dependencies import DependencyError, addon_directories
 from .git_projects import declarations
 from .framework_presets import FRAMEWORK_PRESETS
 from .project_dependencies import GitDependencyService
+from .utils.paths import is_link
 
 
 def script_directories(root):
@@ -34,7 +35,7 @@ def framework_preview(root, preset_name, script_dir=None, source=None):
     if not behavior:
         raise DependencyError('框架入口需要包含manifest的行为包')
     target = Path(behavior) / script_dir
-    if target.is_symlink() or (hasattr(target, 'is_junction') and target.is_junction()) or (target.exists() and not target.is_dir()):
+    if is_link(target) or (target.exists() and not target.is_dir()):
         raise DependencyError('脚本目录必须为普通目录')
     mount = script_dir + '/' + preset['folder']
     previous = next((e for e in entries + legacy if e.get('target', '').lower() == mount.lower()), None)

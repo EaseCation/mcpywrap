@@ -29,6 +29,15 @@ def fixture(root, name):
     return root
 
 
+def directory_link(source, target):
+    # Force the non-admin fallback even when CI has symlink privileges.
+    if os.name == 'nt':
+        import _winapi
+        _winapi.CreateJunction(str(source), str(target))
+    else:
+        os.symlink(source, target, target_is_directory=True)
+
+
 class DeploymentTests(unittest.TestCase):
     def setUp(self):
         self.temp = TemporaryDirectory()
@@ -148,14 +157,13 @@ class DeploymentTests(unittest.TestCase):
         self.assertIn('run', error)
 
     def test_runtime_replaced_with_junction_never_writes_its_destination(self):
-        from mcpywrap.mcstudio.symlinks import _create_directory_link
         outside = self.root/'outside'
         outside.mkdir()
         marker = outside/'keep.txt'
         marker.write_text('external data', encoding='utf-8')
         runtime = self.project/'.mcpy/runtime'
         runtime.parent.mkdir(parents=True)
-        _create_directory_link(str(outside), str(runtime))
+        directory_link(outside, runtime)
         with self.assertRaises(EngineError) as error:
             Deployment(self.project)
         self.assertEqual(error.exception.code, 'deployment_modified')
@@ -163,16 +171,49 @@ class DeploymentTests(unittest.TestCase):
 
     def test_build_rejects_link_target_before_resolving_it(self):
         from mcpywrap.builders.project_builder import AddonProjectBuilder
-        from mcpywrap.mcstudio.symlinks import _create_directory_link
         outside = self.root/'outside'
         outside.mkdir()
         marker = outside/'keep.txt'
         marker.write_text('external data', encoding='utf-8')
         alias = self.project/'build-link'
-        _create_directory_link(str(outside), str(alias))
+        directory_link(outside, alias)
         success, _ = AddonProjectBuilder(self.project, alias).build()
         self.assertFalse(success)
         self.assertEqual(list(outside.iterdir()), [marker])
+
+    def test_map_build_rejects_link_before_clearing_destination(self):
+        from mcpywrap.builders.project_builder import MapProjectBuilder
+        outside = self.root/'outside-map'
+        outside.mkdir()
+        marker = outside/'level.dat'
+        marker.write_bytes(b'world to preserve')
+        alias = self.project/'map-output'
+        directory_link(outside, alias)
+        success, _ = MapProjectBuilder(self.project, alias).build()
+        self.assertFalse(success)
+        self.assertEqual(marker.read_bytes(), b'world to preserve')
+
+    def test_inventory_rejects_nested_directory_link(self):
+        deployment, _ = self.publish()
+        outside = self.root/'outside-nested'
+        outside.mkdir()
+        (outside/'keep').write_bytes(b'owned elsewhere')
+        directory_link(outside, deployment.target/'behavior_pack/external')
+        with self.assertRaises(EngineError):
+            inventory(deployment.target)
+        self.assertEqual((outside/'keep').read_bytes(), b'owned elsewhere')
+
+    def test_world_delete_rejects_link_and_preserves_external_world(self):
+        from mcpywrap.runtime import instances
+        outside = self.root/'external-world'
+        outside.mkdir()
+        (outside/'level.dat').write_bytes(b'world to preserve')
+        alias = self.project/'linked-world'
+        directory_link(outside, alias)
+        with patch.object(instances, 'world_path', return_value=alias):
+            with self.assertRaises(EngineError):
+                instances.delete(self.project, [{'level_id': 'world'}])
+        self.assertEqual((outside/'level.dat').read_bytes(), b'world to preserve')
 
     def test_link_rollback_preserves_later_registration(self):
         from mcpywrap.runtime import storage

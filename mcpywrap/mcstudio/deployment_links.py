@@ -2,19 +2,12 @@
 from pathlib import Path
 import hashlib
 import os
-import stat
 
 from ..runtime import storage, occupancy
 from ..engines.host import EngineError
 from ..utils.locks import directory_lock
+from ..utils.paths import is_link
 from .symlinks import _create_directory_link
-
-
-def is_link(path):
-    try:
-        return Path(path).is_symlink() or bool(getattr(Path(path).lstat(), 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0x400))
-    except FileNotFoundError:
-        return False
 
 
 def unlink(path):

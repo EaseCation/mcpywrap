@@ -15,6 +15,7 @@ from ..builders.project_builder import AddonProjectBuilder, _replace_with_retry
 from ..dependencies import DependencyService, read_project
 from ..engines.host import EngineError
 from ..utils.locks import directory_lock
+from ..utils.paths import is_link
 
 _writing = ContextVar('deployment_writes', default=())
 
@@ -62,7 +63,7 @@ def reference(record):
 def inventory(root):
     """Record file bytes and empty directories; ignore only reproducible Python caches."""
     root = Path(root)
-    if root.is_symlink() or getattr(root, 'is_junction', lambda: False)():
+    if is_link(root):
         raise EngineError('运行产物根目录已被替换为链接：' + str(root), 'deployment_modified')
     result = {}
     if not root.is_dir():
@@ -71,7 +72,7 @@ def inventory(root):
         dirs[:] = sorted(d for d in dirs if d != '__pycache__')
         for name in dirs:
             path = Path(current)/name
-            if path.is_symlink() or (getattr(path, 'is_junction', lambda: False)()):
+            if is_link(path):
                 raise EngineError('运行产物中出现目录链接：' + str(path), 'deployment_modified')
             result[path.relative_to(root).as_posix() + '/'] = 'directory'
         for name in sorted(files):
@@ -184,7 +185,7 @@ class Deployment:
         for path in (self.target, *self.target.parents):
             if path == self.project:
                 break
-            if path.is_symlink() or getattr(path, 'is_junction', lambda: False)():
+            if is_link(path):
                 raise EngineError('运行目录已被替换为链接：' + str(path), 'deployment_modified')
 
     def lock(self):
@@ -243,7 +244,7 @@ class Deployment:
         occupancy.require_idle(unauthorized)
         if using and (not previous or previous['structure'] != structure):
             raise EngineError('依赖、包标识或目录结构发生变化，请重新运行。', 'restart_required')
-        if self.target.is_symlink() or getattr(self.target, 'is_junction', lambda: False)():
+        if is_link(self.target):
             raise EngineError('运行输出不能是目录链接。', 'deployment_modified')
         transaction = uuid.uuid4().hex
         directory = self.project/'.runtime/transactions'/transaction

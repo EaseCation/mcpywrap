@@ -63,7 +63,7 @@ class ScriptTests(unittest.TestCase):
         result=self.invoke('script','run','assets','--json')
         self.assertEqual(result.exit_code,0,result.output[-1000:])
         data=json.loads(result.stdout)
-        log=Path(data['scripts'][0]['script_log']).read_text()
+        log=Path(data['scripts'][0]['script_log']).read_text(encoding='utf-8')
         self.assertIn('中文'*100,log)
         self.assertIn('error-channel',log)
 
@@ -76,6 +76,32 @@ class ScriptTests(unittest.TestCase):
         with zipfile.ZipFile(json.loads(result.stdout)['artifact']) as z:
             self.assertEqual(z.read('中文 project_bp/generated.json'),b'{"fresh":true}')
             self.assertFalse(any('tools/' in n for n in z.namelist()))
+
+    def test_skill_generator_example_builds_and_preserves_output_on_invalid_input(self):
+        import re
+        import zipfile
+        guide = Path(__file__).resolve().parents[1]/'skills/mcpywrap/references/script-example.md'
+        text = guide.read_text(encoding='utf-8')
+        self.configure(re.search(r'```python\s*\n(.*?)\n```', text, re.S).group(1))
+        inputs = self.project/'data'
+        inputs.mkdir()
+        csv = inputs/'items.csv'
+        csv.write_text(re.search(r'```csv\s*\n(.*?)\n```', text, re.S).group(1), encoding='utf-8')
+        result = self.invoke('package', '--json')
+        self.assertEqual(result.exit_code, 0, result.output)
+        artifact = Path(json.loads(result.stdout)['artifact'])
+        with zipfile.ZipFile(artifact) as archive:
+            self.assertEqual(json.loads(archive.read('中文 project_bp/MyMod/generated/items.json')),
+                             {'apple': 5, 'stone': 2})
+        previous = artifact.read_bytes()
+        generated = self.project/'behavior_pack/MyMod/generated/items.json'
+        generated_before = generated.read_bytes()
+        csv.write_text('id,value\napple,5\napple,9\n', encoding='utf-8')
+        result = self.invoke('package', '--json')
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertEqual(json.loads(result.stdout)['code'], 'script_failed')
+        self.assertEqual(artifact.read_bytes(), previous)
+        self.assertEqual(generated.read_bytes(), generated_before)
 
     def test_failure_preserves_previous_zip_and_structured_error(self):
         first=self.invoke('package','--json')
@@ -92,6 +118,34 @@ class ScriptTests(unittest.TestCase):
         result=self.invoke('build','--json')
         self.assertEqual(result.exit_code,0,result.output)
         self.assertTrue((self.project/'build/behavior_pack/result.json').exists())
+
+    def test_map_package_hook_preserves_world_and_rejects_pack_identity_changes(self):
+        import zipfile
+        for kind in ('behavior', 'resource'):
+            container = self.project/(kind + '_packs')
+            container.mkdir()
+            (self.project/(kind + '_pack')).rename(container/'main')
+        (self.project/'level.dat').write_bytes(b'original world')
+        (self.project/'db').mkdir()
+        (self.project/'db/world.data').write_bytes(b'original database')
+        self.configure("from pathlib import Path\nPath('behavior_packs/main/generated.json').write_text('{\"map\":true}')\n")
+        config = read_project(self.project)
+        config['tool']['mcpywrap']['project_type'] = 'map'
+        write_project(self.project, config)
+        for options in ((), ('--merge',)):
+            result = self.invoke('package', *options, '--json')
+            self.assertEqual(result.exit_code, 0, result.output)
+            artifact = Path(json.loads(result.stdout)['artifact'])
+            with zipfile.ZipFile(artifact) as archive:
+                self.assertEqual(json.loads(archive.read('behavior_packs/main/generated.json')), {'map': True})
+                self.assertEqual(archive.read('level.dat'), b'original world')
+                self.assertEqual(archive.read('db/world.data'), b'original database')
+        previous = artifact.read_bytes()
+        self.configure("from pathlib import Path\np=Path('behavior_packs/main/manifest.json')\np.write_bytes(p.read_bytes()+b' ')\n")
+        result = self.invoke('package', '--json')
+        self.assertEqual(json.loads(result.stdout)['code'], 'script_config_changed')
+        self.assertEqual(artifact.read_bytes(), previous)
+        self.assertEqual((self.project/'db/world.data').read_bytes(), b'original database')
 
     def test_invalid_target_does_not_execute_script(self):
         config=read_project(self.project);config['tool']['mcpywrap']['target_dir']='.mcpy/runtime/assembled';write_project(self.project,config)
@@ -121,7 +175,7 @@ class ScriptTests(unittest.TestCase):
         self.configure("import sys\nsys.path.insert(0,%r)\nfrom mcpywrap.cli import cli\ncli.main(['build','--json'])\n" % root)
         result=self.invoke('script','run','assets','--json')
         self.assertNotEqual(result.exit_code,0)
-        log=Path(json.loads(result.stdout)['script_log']).read_text()
+        log=Path(json.loads(result.stdout)['script_log']).read_text(encoding='utf-8')
         self.assertIn('script_recursion',log)
 
     def test_nonzero_stops_remaining_hooks(self):
@@ -132,6 +186,51 @@ class ScriptTests(unittest.TestCase):
         result=self.invoke('build','--json')
         self.assertNotEqual(result.exit_code,0)
         self.assertFalse((self.project/'later').exists())
+
+    def test_human_failure_reports_log_path(self):
+        self.configure('raise SystemExit(7)\n')
+        result = self.invoke('script', 'run', 'assets')
+        active = json.loads((self.project/'.mcpy/scripts/active.json').read_text(encoding='utf-8'))
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn(active['log_path'], result.stderr)
+
+    def test_removed_hooks_after_start_reservation_are_rejected(self):
+        from unittest.mock import Mock
+        from mcpywrap.project_scripts import snapshot_digest, startup_hooks
+        data = {'project': str(self.project), 'script_config_digest': snapshot_digest(self.project)}
+        config = read_project(self.project)
+        del config['tool']['mcpywrap']['scripts']
+        del config['tool']['mcpywrap']['hooks']
+        write_project(self.project, config)
+        with self.assertRaises(ScriptError) as caught:
+            startup_hooks(data, Mock())
+        self.assertEqual(caught.exception.code, 'script_config_changed')
+
+    def test_adding_hooks_after_start_reservation_does_not_execute_them(self):
+        from mcpywrap.mcstudio import sessions
+        from mcpywrap.project_scripts import startup_hooks
+        from unittest.mock import Mock
+        config = read_project(self.project)
+        del config['tool']['mcpywrap']['scripts']
+        del config['tool']['mcpywrap']['hooks']
+        write_project(self.project, config)
+        with patch.object(sessions.subprocess, 'Popen'), patch.object(sessions, 'wait_started',
+                side_effect=lambda project, sid, *args: sessions.read(project, sid)):
+            data = sessions.start(self.project)
+        self.configure("from pathlib import Path\nPath('unexpected').touch()\n")
+        with self.assertRaises(ScriptError) as caught:
+            startup_hooks(data, Mock())
+        self.assertEqual(caught.exception.code, 'script_config_changed')
+        self.assertFalse((self.project/'unexpected').exists())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows job membership')
+    def test_fast_exit_cannot_hide_background_child(self):
+        self.configure("import subprocess,sys\nfrom pathlib import Path\np=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'])\nPath('child.pid').write_text(str(p.pid))\n")
+        with self.assertRaises(ScriptError) as caught:
+            with operation(self.project, task='assets'):
+                self.fail('background task was reported as successful')
+        self.assertEqual(caught.exception.code, 'script_background_process')
+        self.assert_process_ended(int((self.project/'child.pid').read_text()))
 
     def test_low_level_builder_and_refresh_do_not_execute_hooks(self):
         from mcpywrap.runtime.deployment import Deployment
@@ -150,6 +249,50 @@ class ScriptTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     with operation(self.project,task='assets'): pass
         self.assertEqual(ids[0],ids[1])
+
+    def test_hook_generation_cannot_replace_a_deployment_with_other_readers(self):
+        from mcpywrap.runtime.deployment import Deployment, inventory
+        from mcpywrap.engines.host import EngineError
+        deployment = Deployment(self.project)
+        with deployment.lock():
+            deployment.prepare()
+            deployment.commit()
+        previous = inventory(deployment.target)
+        previous_record = deployment.record_path.read_bytes()
+        with before(self.project, 'before_run'):
+            with patch('mcpywrap.runtime.deployment.readers', return_value=[{'session': 'a'*32}]):
+                with deployment.lock(), self.assertRaises(EngineError) as caught:
+                    deployment.prepare()
+        self.assertEqual(caught.exception.code, 'deployment_in_use')
+        self.assertTrue((self.project/'behavior_pack/result.json').exists())
+        self.assertEqual(inventory(deployment.target), previous)
+        self.assertEqual(deployment.record_path.read_bytes(), previous_record)
+
+    def test_only_root_hooks_run_and_removed_dependency_files_disappear(self):
+        from mcpywrap.runtime.deployment import Deployment
+        dependency = fixture(Path(self.tmp.name), 'dependency')
+        (dependency/'behavior_pack/dependency.json').write_text('{}', encoding='utf-8')
+        child = read_project(dependency)
+        child['tool']['mcpywrap'].update(scripts={'forbidden': {'cmd': [sys.executable, '-c',
+            "from pathlib import Path; Path('dependency-hook-ran').touch()"]}},
+            hooks={'before_run': ['forbidden']})
+        write_project(dependency, child)
+        record_paths = []
+        for dependencies in ([], ['../dependency'], []):
+            config = read_project(self.project)
+            config['tool']['mcpywrap']['local_dependencies'] = dependencies
+            write_project(self.project, config)
+            with before(self.project, 'before_run'):
+                deployment = Deployment(self.project)
+                with deployment.lock():
+                    deployment.prepare()
+                    deployment.commit()
+            record_paths.append(deployment.record['path'])
+            self.assertEqual((deployment.target/'behavior_pack/dependency.json').exists(), bool(dependencies))
+            self.assertTrue((deployment.target/'behavior_pack/result.json').exists())
+            self.assertFalse((dependency/'dependency-hook-ran').exists())
+            self.assertFalse((self.project/'dependency-hook-ran').exists())
+        self.assertEqual(len(set(record_paths)), 1)
 
     def test_invalid_schema_does_not_execute(self):
         for changes in ({'timeout':True},{'cmd':['echo']},{'env':{'MCPY_EVENT':'bad'}},{'python':'../escape.py'}):
@@ -214,7 +357,10 @@ class ScriptTests(unittest.TestCase):
                 launch(data,SimpleNamespace(port=12345))
 
     def test_timeout_reclaims_descendant(self):
-        self.configure("import subprocess,sys,time\nfrom pathlib import Path\np=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'])\nPath('child.pid').write_text(str(p.pid))\ntime.sleep(60)\n",timeout=.7)
+        # This case needs a real descendant before expiry. The independent .2s
+        # timeout test covers expiry during interpreter startup; .7s here could
+        # correctly time out before child.pid existed on a busy Windows host.
+        self.configure("import subprocess,sys,time\nfrom pathlib import Path\np=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'])\nPath('child.pid').write_text(str(p.pid))\ntime.sleep(60)\n",timeout=5)
         with self.assertRaises(ScriptError) as caught:
             with operation(self.project,task='assets'): pass
         self.assertEqual(caught.exception.code,'script_timeout')
@@ -247,6 +393,12 @@ class ScriptTests(unittest.TestCase):
             time.sleep(.05)
         self.assertEqual(state['state'],'cancelled',state)
         self.assert_process_ended(int((self.project/'child.pid').read_text()))
+        # Publishing a terminal record precedes closing stdout and exiting.
+        # Confirm the supervisor has released its log before removing the fixture.
+        from mcpywrap.mcstudio.processes import observed_process
+        supervisor = observed_process(state['supervisor'])
+        if supervisor:
+            supervisor.wait(timeout=max(.01, deadline-time.monotonic()))
 
     def test_real_cli_has_exactly_one_json_object(self):
         self.configure("import sys\nprint('child stdout');print('child stderr',file=sys.stderr)\n")

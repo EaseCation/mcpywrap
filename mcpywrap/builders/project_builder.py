@@ -10,6 +10,7 @@ from .AddonsPack import AddonsPack
 from .MapPack import MapPack
 from .assembly import assemble_addon, validate_target, is_within, pack_files, rebuild_file
 from ..code_libraries import prepare_libraries
+from ..utils.paths import is_link
 
 
 def _replace_with_retry(source, target):
@@ -29,7 +30,7 @@ def _clear_directory(directory):
     for item in Path(directory).iterdir():
         if item.is_symlink():
             item.unlink()
-        elif hasattr(item, 'is_junction') and item.is_junction():
+        elif is_link(item):
             os.rmdir(item)
         elif item.is_dir():
             shutil.rmtree(item)
@@ -49,8 +50,7 @@ class AddonProjectBuilder:
         self.stable_layout = stable_layout
 
     def initialize(self):
-        if self.requested_target is not None and (self.requested_target.is_symlink() or
-                getattr(self.requested_target, 'is_junction', lambda: False)()):
+        if self.requested_target is not None and is_link(self.requested_target):
             raise DependencyError('构建目标不能是目录链接')
         addon_directories(self.source_dir)
         config = None
@@ -67,7 +67,7 @@ class AddonProjectBuilder:
         self.packs = list(self.dependency_manager.get_all_dependencies().values()) + [self.origin_addon]
         prepare_libraries(self.packs)
         validate_target(self.target_dir, self.source_dir, self.packs)
-        if Path(self.target_dir).is_symlink() or (hasattr(Path(self.target_dir), 'is_junction') and Path(self.target_dir).is_junction()):
+        if is_link(self.target_dir):
             raise DependencyError('构建目标不能是目录链接')
         self.target_addon = AddonsPack(self.project_name, self.source_dir)
         self.target_addon.path = self.target_dir
@@ -125,11 +125,14 @@ class AddonProjectBuilder:
 class MapProjectBuilder:
     def __init__(self, source_dir, target_dir, merge=False):
         self.source_dir = str(Path(source_dir).resolve())
+        self.requested_target = Path(target_dir).absolute() if target_dir else None
         self.target_dir = str(Path(target_dir).resolve()) if target_dir else None
         self.merge = merge
 
     def build(self):
         try:
+            if self.requested_target is not None and is_link(self.requested_target):
+                raise DependencyError('构建目标不能是目录链接')
             from ..runtime.deployment import check_build_target
             check_build_target(self.source_dir, self.target_dir)
             manager = DependencyService(self.source_dir).resolve()

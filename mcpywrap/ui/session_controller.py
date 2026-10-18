@@ -108,10 +108,16 @@ class SessionController(QObject):
         result, error, success, failure = self._result, self._error, self._success, self._failure
         report = self._report
         task.deleteLater()
+        preparing = self.preparing_session
         if self.preparing_session:
             self.logs.poll()
             self.preparing_session = None
         if error:
+            if preparing:
+                self.status = '准备未完成'
+                if self.session:
+                    self.bind_logs()
+                    self.poll()
             self.log(error, 'error')
             if failure: failure()
             self.failed.emit(error)

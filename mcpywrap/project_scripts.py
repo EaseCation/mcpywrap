@@ -164,10 +164,10 @@ def startup_hooks(data, deployment):
     """Called only by local launchers while holding project/world/deployment locks."""
     from .mcstudio import sessions
     project = data['project']
-    if not configured(project):
-        return
     if data.get('script_config_digest') and snapshot_digest(project) != data['script_config_digest']:
         raise ScriptError('准备期间项目配置已变化，请重新运行。', 'script_config_changed')
+    if not configured(project):
+        return
     deployment.preflight()
     from .runtime.deployment import runtime_builder
     runtime_builder(project, deployment.target).initialize()
@@ -295,6 +295,9 @@ def validate_build(project, target):
     from .builders.project_builder import AddonProjectBuilder
     from .dependencies import DependencyService
     from .builders.assembly import validate_target, is_within
+    from .utils.paths import is_link
+    if is_link(target):
+        raise ValueError('构建目标不能是目录链接')
     kind = read_project(project).get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
     check_build_target(project, target)
     if kind == 'addon':

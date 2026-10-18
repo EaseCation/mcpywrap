@@ -5,6 +5,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 from .dependencies import DependencyError
+from .utils.paths import is_link
 
 
 def long_path(path):
@@ -33,7 +34,7 @@ def digest(directory):
     # Compare path components as strings: WindowsPath itself sorts case-insensitively.
     h = hashlib.sha256()
     for path in sorted(Path(directory).rglob('*'), key=lambda p: p.relative_to(directory).parts):
-        if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
+        if is_link(path):
             raise DependencyError(f'代码库不允许链接: {path}')
         if path.is_file():
             rel = path.relative_to(directory).as_posix().encode('utf-8')
@@ -47,7 +48,7 @@ def windows_checkout_digest(directory, crlf=True):
     root = Path(directory)
     h = hashlib.sha256()
     for path in sorted(root.rglob('*'), key=lambda p: tuple(part.lower() for part in p.relative_to(root).parts)):
-        if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
+        if is_link(path):
             raise DependencyError(f'代码库不允许链接: {path}')
         if path.is_file():
             rel = path.relative_to(root).as_posix().encode('utf-8')

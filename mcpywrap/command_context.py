@@ -171,6 +171,8 @@ class OperationGroup(click.Group):
                 click.echo(json.dumps(data, ensure_ascii=True), file=output)
             elif code:
                 click.echo('错误: ' + str((result or {}).get('error') or '操作失败'), err=True)
+                if (result or {}).get('script_log'):
+                    click.echo('脚本日志: ' + result['script_log'], err=True)
                 if (result or {}).get('group'):
                     show_group_result(result)
                 if (result or {}).get('hint'):

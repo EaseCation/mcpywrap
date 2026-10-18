@@ -1,5 +1,6 @@
 """A group's player keeps its own anonymous identity and client preferences."""
 from pathlib import Path
+from ..utils.paths import is_link
 import json
 import os
 import subprocess
@@ -38,12 +39,12 @@ class PlayerProfile:
         for path in (self.root, *self.root.parents):
             if path == self.project:
                 break
-            if path.is_symlink() or getattr(path, 'is_junction', lambda: False)():
+            if is_link(path):
                 raise EngineError('客户端资料目录已被替换为链接。', 'profile_modified')
 
     def lease(self):
         directory = self.root.with_name(self.root.name+'.lease')
-        if directory.is_symlink() or getattr(directory, 'is_junction', lambda: False)():
+        if is_link(directory):
             raise EngineError('客户端占用记录指向了外部目录。', 'profile_modified')
         return occupancy.session_lease(directory, self.root,
                                        self.data, '客户端资料', 'profile_in_use')
@@ -110,8 +111,7 @@ class PlayerProfile:
         if not isinstance(fingerprint, str) or not re.fullmatch(r'[0-9a-f]{64}', fingerprint):
             raise EngineError('无法确认主机部署版本，未启动客机。', 'deployment_unavailable')
         cache = Path(game_root)/'packcache'
-        if (not cache.resolve().is_relative_to(self.root.resolve()) or cache.is_symlink() or
-                getattr(cache, 'is_junction', lambda: False)()):
+        if not cache.resolve().is_relative_to(self.root.resolve()) or is_link(cache):
             raise EngineError('客机包缓存指向了外部目录，已保留原内容。', 'profile_modified')
         receipt = self.root/'received-packs.json'
         try:

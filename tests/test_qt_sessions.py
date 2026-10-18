@@ -228,6 +228,7 @@ class GuiTests(unittest.TestCase):
         self.wait(lambda: not self.window.controller.busy)
         self.assertIsNone(self.window.controller.preparing_session)
         self.assertIn('script cancelled', self.window.log_output.toPlainText())
+        self.assertNotIn('准备中', self.window.controller.status)
 
     def test_observing_existing_start_does_not_offer_cancellation(self):
         self.window.controller._preparing({'session': 'f'*32, 'state': 'starting', 'start_owned': False})

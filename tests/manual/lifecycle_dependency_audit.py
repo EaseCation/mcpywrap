@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--mcs-download-path')
     parser.add_argument('--profile', type=Path, help='Reuse an existing isolated test profile; never use a personal profile')
     parser.add_argument('--ready-timeout', type=float, default=180)
+    parser.add_argument('--with-hook', action='store_true', help='Also verify generated code from before_run')
     parser.add_argument('--resume-instance', help='Retry the first stage in this script\'s existing fixture world')
     args = parser.parse_args()
     if os.name != 'nt':
@@ -134,6 +135,11 @@ def main():
                           '--code', "import sys\n_result = dict((name, getattr(module, 'STATES', {})) "
                           "for name, module in sys.modules.items() if name.endswith('AuditMain.modMain'))")
             assert any(states.get(side) == expected for states in result['value'].values()), result
+            if args.with_hook:
+                generated = call(label+'-generated-'+side, 'runtime', 'py', '--session', session, '--side', side,
+                    '--code', "import sys\n_result = [getattr(module, 'GENERATED', {}) "
+                    "for name, module in sys.modules.items() if name.endswith('AuditMain.modMain')]")
+                assert any(states.get(side) == 'hook-generated' for states in generated['value']), generated
         call(label+'-logs', 'logs', '--session', session, '--tail', '150')
 
     def stop(label, session):
@@ -148,12 +154,18 @@ def main():
     (module/'__init__.py').write_text('', encoding='utf-8')
     (module/'modMain.py').write_text('''from mod.common.mod import Mod
 STATES = {}
+GENERATED = {}
 def record(side):
     try:
         from AuditDependency import VALUE
     except ImportError:
         VALUE = 'absent'
     STATES[side] = VALUE
+    try:
+        from AuditGenerated import VALUE as generated
+        GENERATED[side] = generated
+    except ImportError:
+        pass
     print('[LifecycleAudit] ' + side + '=' + VALUE)
 @Mod.Binding(name='LifecycleAudit', version='1.0.0')
 class Audit:
@@ -165,6 +177,23 @@ class Audit:
         record('server')
 ''', encoding='utf-8')
     (root/'common/behavior_pack/AuditDependency.py').write_text("VALUE = 'dependency-present'\n", encoding='utf-8')
+    if args.with_hook:
+        from mcpywrap.dependencies import read_project, write_project
+        tools = project/'tools'
+        tools.mkdir(exist_ok=True)
+        (tools/'generate.py').write_text("""from pathlib import Path
+root = Path('.')
+count = root/'.mcpy/hook-count'
+count.parent.mkdir(exist_ok=True)
+count.write_text(str(int(count.read_text()) + 1) if count.exists() else '1')
+if (root/'.mcpy/fail-hook').exists():
+    raise SystemExit(7)
+(root/'behavior_pack/AuditGenerated.py').write_text("VALUE = 'hook-generated'\\n", encoding='utf-8')
+""", encoding='utf-8')
+        config = read_project(project)
+        config['tool']['mcpywrap'].update(scripts={'generate': {'python': 'tools/generate.py', 'timeout': 30}},
+                                          hooks={'before_run': ['generate']})
+        write_project(project, config)
     try:
         call('capabilities', 'doctor', '--capabilities')
         first = (start('zero', args.resume_instance) if args.resume_instance else
@@ -174,8 +203,11 @@ class Audit:
         initial = deployment()
         initial_config = json.loads(Path(first['config_path']).read_text(encoding='utf-8'))
         call('add', 'add', '--path', '../common')
+        count_before = (project/'.mcpy/hook-count').read_bytes() if args.with_hook else None
         reused = call('reuse-while-changed', 'run', world, '--no-gui', '--detach')
         assert reused['session'] == first['session'] and reused['source_matches'] is False
+        if args.with_hook:
+            assert (project/'.mcpy/hook-count').read_bytes() == count_before
         assert deployment() == initial
         blocked = call('new-while-changed', 'run', '--new', '--no-gui', '--detach', expect=False)
         assert blocked.get('ok') is False and blocked.get('code') == 'deployment_in_use', blocked
@@ -204,11 +236,21 @@ class Audit:
         for kind in ('behavior_packs', 'resource_packs'):
             assert initial_config['world_info'][kind] == final_config['world_info'][kind]
         stop('stop-zero-again', third['session'])
+        if args.with_hook:
+            failure = project/'.mcpy/fail-hook'
+            failure.touch()
+            rejected = call('failed-hook', 'run', world, '--no-gui', '--detach', expect=False)
+            assert rejected.get('code') == 'script_failed' and rejected.get('script_exit_code') == 7, rejected
+            assert deployment() == final
+            failed = call('failed-hook-state', 'status', '--session', rejected['session'])
+            assert failed['state'] == 'failed' and not failed.get('game'), failed
+            failure.unlink()
         repeat = start('unchanged-restart', world)
         assert deployment() == final
         verify('unchanged-loaded', repeat['session'], 'absent')
         stop('stop-unchanged', repeat['session'])
         (evidence/'result.json').write_text(json.dumps(dict(ok=True, world=world,
+            generated_hook_verified=args.with_hook,
             deployment_path=final['path'], cases=['0-to-1-to-0', 'unchanged-restart', 'same-world-reuse',
             'active-reader-rejection', 'two-independent-worlds', 'old-module-absent', 'stable-global-links']), indent=2), encoding='utf-8')
     finally:

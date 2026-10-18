@@ -1,5 +1,6 @@
 """World recipes and successful initialization are distinct from launch attempts."""
 from pathlib import Path
+from ..utils.paths import is_link
 import os
 import shutil
 import time
@@ -117,7 +118,7 @@ def delete(project, items):
                                '世界正在运行，请先停止。')
         world = world_path(project, item['level_id'])
         with world_lock(world):
-            if world.is_symlink() or getattr(world, 'is_junction', lambda: False)():
+            if is_link(world):
                 raise EngineError('世界目录是链接，拒绝递归删除。', 'instance_invalid')
             if world.exists():
                 shutil.rmtree(world)
