@@ -28,10 +28,10 @@ mcpy --local engine check-updates --json
 
 此命令只发现网易 pe/pe_old 的真实版本和 URL，不下载；compatibility=not_checked 不能当作可运行。首次安装已会查询 pe，无需为了普通启动先检查更新。
 
-已知发布基线为 CLI 0.4.6 默认运行包 0.4.4。需要升级到这套已知资源时可明确指定：
+CLI 0.5.1 默认使用运行包 0.4.5，包含原生游戏截图。全新安装直接 run 即可自动准备；已有安装保留所选来源，升级资源时明确指定：
 
 ```text
-mcpy --local --non-interactive engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.4/catalog.json --json
+mcpy --local --non-interactive engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.5/catalog.json --json
 ```
 
 此 catalog 仍按其来源规则发现 APK，不等于固定旧 APK。旧版本若不在官方频道无法下载时，报告缺失，不猜 URL。更新 CLI/Skill 或重新 runtime install 都不能替换原生包。
@@ -45,7 +45,7 @@ mcpy --local --non-interactive engine install --catalog https://github.com/EaseC
 | 游戏 Python | 本地 client/server；客户端队列需 python.client_queue，使用见[运行时调试](runtime-debug.md) |
 | 无认证网络 | 运行包 0.4.3+ 且 network_connect_protocol=1；服务器须允许开发客户端 |
 | 本地主客机 | 尚不支持；缺 local-dual-client-manual 时启动前拒绝 |
-| 双外服客户端 | 需要独立开发身份协议的原生包；已做候选实验不代表公开 0.4.4 已具备，按实际能力拒绝或使用已明确选择的构建 |
+| 双外服客户端 | 需要独立开发身份协议的原生包；已做候选实验不代表公开 0.4.5 已具备，按实际能力拒绝或使用已明确选择的构建 |
 | MCS 身份 / MCEditor | macOS 不支持；MCS 网络身份可由 Windows 服务提供，编辑器必须 Windows 本机 |
 | 游戏截图 | 需要实例运行包 screenshot_protocol=1；按需获取游戏帧，见[画面采集](capture.md#截图) |
 | 录屏/视频提帧/原始设备输入 | macOS 本地不支持；远程可针对 Windows 会话使用 |
