@@ -232,6 +232,32 @@ class ScriptTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 'script_background_process')
         self.assert_process_ended(int((self.project/'child.pid').read_text()))
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows job membership')
+    def test_worker_rejects_descendant_that_exits_parent_before_first_observation(self):
+        import io
+        from types import SimpleNamespace
+        from mcpywrap import _script_worker as worker
+        marker = self.project/'unobserved-child.pid'
+        script = ("import subprocess,sys\nfrom pathlib import Path\n"
+                  "p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'])\n"
+                  "Path(%r).write_text(str(p.pid))\n" % str(marker))
+        result = self.project/'worker-result.json'
+        spec = dict(command=[sys.executable, '-c', script], timeout=15,
+                    result=str(result), cancel=str(self.project/'cancel'),
+                    parent=worker.identity(os.getpid()), started_at=time.time())
+        # Force the real parent to finish before process-tree enumeration, so
+        # this race is covered even on hosts where periodic sampling catches it.
+        def late_observation(process, known):
+            process.wait(timeout=10)
+            return []
+        with patch.object(worker.sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(json.dumps(spec).encode()))), \
+                patch.object(worker, 'members', side_effect=late_observation):
+            worker.main()
+        data = json.loads(result.read_text(encoding='utf-8'))
+        self.assertEqual(data['code'], 'script_background_process', data)
+        self.assertEqual(data['state'], 'failed')
+        self.assert_process_ended(int(marker.read_text()))
+
     def test_low_level_builder_and_refresh_do_not_execute_hooks(self):
         from mcpywrap.runtime.deployment import Deployment
         d=Deployment(self.project)
