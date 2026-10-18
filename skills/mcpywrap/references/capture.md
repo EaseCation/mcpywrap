@@ -1,4 +1,4 @@
-# Windows 截图、录制与逐帧检查
+# 游戏截图、Windows 录制与逐帧检查
 
 用于截图、录像或提取游戏画面；仅截图时读完下一节即可。远程服务配置另见[远程执行端](remote-testing.md)。
 
@@ -9,15 +9,19 @@
 mcpy --local --project <项目> --non-interactive screenshot --session <sid> --background-only --output <新的PNG路径> --json
 ```
 
-远程将 --local 替换成 --remote <Windows HTTP endpoint>，返回的 image 是调用端路径。截图为游戏客户区物理像素，不含标题栏；组内操作明确选择成员 session。
+Windows 和 macOS 使用相同命令。远程将 --local 替换成 --remote <Windows HTTP endpoint>，返回的 image 是调用端路径。截图为游戏内容区物理像素，不含系统标题栏；组内操作明确选择成员 session。
 
-不占用前台的任务保留 --background-only。默认截图可能从 WGC 后台捕获回退可见窗口；后台捕获失败时不能移除该参数、激活游戏或用前台截图冒充后台结果。最小化/锁屏/游戏暂停渲染可能无法得到有效画面，按实际能力报告。
+不占用前台的任务保留 --background-only。Windows 默认截图可能从 WGC 后台捕获回退可见窗口；后台捕获失败时不能移除该参数、激活游戏或用前台截图冒充后台结果。
 
-需要允许占用前台的旧桌面输入时才读[兼容输入](input-writing.md)；日常 UI/玩家操作读[统一输入](runtime-input.md)。macOS 不提供此 Windows 截图接口，不用 macOS 桌面工具去操作不可见的远端游戏。
+macOS 需要目标实例的运行包支持 `screenshot_protocol=1`，用 `runtime capabilities --session <sid> --json` 的 screenshot 状态检查。旧包返回 capability_missing；更新 CLI 或 Skill 不会升级实例绑定，按[平台页](macos-local.md)选择支持该协议的运行包和新实例。
+
+macOS 从 Launcher 按需读取下一帧，不需要屏幕录制授权或 runtime install；返回 capture=launcher-framebuffer、coordinate_space=game-content。图像去掉 Launcher 菜单栏及其工具浮层，不含系统光标或桌面。两种 background-only 设置均不抢前台、不回退桌面采集。每会话同时一个请求，等待渲染最多约 5 秒，像素上限 16 MiPixels；busy 时等待，capture_timeout 时确认游戏仍在渲染。最小化、锁屏、暂停渲染不保证有新帧，不用高频截图循环模拟录像。
+
+需要允许占用前台的旧 Windows 桌面输入时才读[兼容输入](input-writing.md)；日常 UI/玩家操作读[统一输入](runtime-input.md)。
 
 ## 视频录制与逐帧分析
 
-录制任务先检查执行端 `record` 和 `record-frames` 能力；bootstrap 可重复传入 `--require-capability`。新版 Skill 不代表旧 CLI 或旧原生组件支持录制。视频文件在 Windows 临时目录持续写入，下载到调用端；无需安装 FFmpeg。
+**macOS 本地不支持录屏和视频提帧。** Mac 可作为客户端调用远程 Windows。录制任务先检查执行端 `record` 和 `record-frames` 能力；bootstrap 可重复传入 `--require-capability`。新版 Skill 不代表旧 CLI 或旧原生组件支持录制。视频文件在 Windows 临时目录持续写入，下载到调用端；无需安装 FFmpeg。
 
 ```bash
 mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record start --session <sid> --duration 10 --fps 30 --json

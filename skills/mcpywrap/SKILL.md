@@ -1,6 +1,6 @@
 ---
 name: mcpywrap
-description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、依赖、预处理与打包，启动本地世界或联机会话，进行双客户端联调、Python 热更、UI/玩家操作和 Windows 录制。适用于该工具的实际项目开发与验收；业务 API 仍需查目标版本 ModSDK。
+description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、依赖、预处理与打包，启动本地世界或联机会话，进行双客户端联调、Python 热更、UI/玩家操作、游戏截图和 Windows 录制。适用于该工具的实际项目开发与验收；业务 API 仍需查目标版本 ModSDK。
 ---
 
 # mcpywrap

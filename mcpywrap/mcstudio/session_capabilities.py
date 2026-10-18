@@ -35,6 +35,8 @@ def inspect_session(project, session):
             'effect_verified': False,
         }
     sides = ['client', 'server'] if local else ['client']
+    from .screenshot import supported, UPGRADE_HINT
+    screenshot_supported = supported(data)
     return {
         'schema_version': 1, 'session': session, 'backend': backend.id,
         'state': data['state'], 'mode': data.get('mode'),
@@ -45,6 +47,8 @@ def inspect_session(project, session):
                    'reload_sides': [side for side in sides if side in control.get('python_reload_sides', [])]
                                    if available and (local or guest) else []},
         'reload': reloads,
+        'screenshot': {'state': ('available' if live else 'unavailable') if screenshot_supported else 'unsupported',
+                       'reason': None if screenshot_supported else UPGRADE_HINT},
         'verification': 'entrypoints_only',
         'hint': 'available 表示允许调用，不证明游戏已就绪、API 存在或效果生效；JSON UI 重载后须按 Mod 逻辑重新注册创建界面及绑定回调。',
     }

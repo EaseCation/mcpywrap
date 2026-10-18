@@ -7,11 +7,10 @@ import json
 import os
 from pathlib import Path
 import subprocess
-import struct
 import time
-import zlib
 import uuid
 from typing import NamedTuple
+from .image import png_bytes
 
 
 KEYS = {'ESC': 0x1B, 'ESCAPE': 0x1B, 'ENTER': 0x0D, 'TAB': 9, 'SPACE': 0x20,
@@ -131,21 +130,6 @@ def desktop_state():
         return {'available': available, 'reason': None if available else '当前不是可操作的用户桌面'}
     finally:
         user.CloseDesktop(handle)
-
-
-def png_bytes(width, height, bgra):
-    """将顶向下的 BGRA DIB 编码为 PNG；不保存桌面或其他窗口。"""
-    if width <= 0 or height <= 0 or len(bgra) != width * height * 4:
-        raise ValueError('截图像素尺寸无效')
-    rgb = bytearray(width * height * 3)
-    rgb[0::3], rgb[1::3], rgb[2::3] = bgra[2::4], bgra[1::4], bgra[0::4]
-    rows = b''.join(b'\0' + rgb[n:n + width * 3] for n in range(0, len(rgb), width * 3))
-
-    def chunk(kind, data):
-        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
-
-    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
-            + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
 
 
 class Keyboard(C.Structure):

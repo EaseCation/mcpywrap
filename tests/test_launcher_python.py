@@ -57,7 +57,7 @@ class LauncherPythonTests(unittest.TestCase):
     def test_wrong_process_metadata_rejected_before_connect(self):
         self.channel.metadata.write_text(json.dumps({'protocol': 1, 'pid': 999, 'socket': '/tmp/unused'}))
         self.channel.metadata.chmod(0o600)
-        with patch('mcpywrap.mcstudio.launcher_python.socket.socket') as connect:
+        with patch('mcpywrap.mcstudio.launcher_control.socket.socket') as connect:
             with self.assertRaisesRegex(ValueError, '不属于当前游戏进程'):
                 self.channel.status()
         connect.assert_not_called()

@@ -61,6 +61,16 @@ class SessionCapabilitiesTests(unittest.TestCase):
         self.assertEqual(result['python']['sides'], [])
         self.assertEqual(result['reload']['ui']['state'], 'unavailable')
 
+    def test_screenshot_requires_the_pinned_runtime_protocol(self):
+        self.data.update(backend='macos-arm64', launch={'runtime': str(self.root)})
+        self.assertEqual(self.inspect()['screenshot']['state'], 'unsupported')
+        metadata = self.root/'Contents/Resources/runtime.json'
+        metadata.parent.mkdir(parents=True)
+        metadata.write_text('{"screenshot_protocol":1}')
+        self.assertEqual(self.inspect()['screenshot']['state'], 'available')
+        self.data['state'] = 'exited'
+        self.assertEqual(self.inspect()['screenshot']['state'], 'unavailable')
+
     def test_network_has_no_server_or_reload(self):
         self.data.update(backend='windows', mode='network')
         result = self.inspect()

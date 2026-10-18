@@ -58,6 +58,9 @@ def capabilities():
     if backend.managed_install:
         result['runtime'] = backend.diagnose()
         result['resources_ready'] = result['runtime']['ok']
+        from ..mcstudio.screenshot import supported
+        if supported({'backend': backend.id, 'launch': {'runtime': result['runtime'].get('runtime')}}):
+            result['capabilities'].append('screenshot')
     return result
 
 

@@ -23,6 +23,7 @@ Skill 文件夹、CLI、正在运行的 worker、macOS 原生运行包分别更�
 | 游戏内统一输入 | 调用端 bootstrap `--require-capability unified-input`，目标会话 `runtime input capabilities` |
 | 本机双客户端 | `run/connect --help` 的 --clients、`status --help` 的 --group；本地主客机还要 `local-dual-client-manual` |
 | Windows 录制 | 执行端 doctor 的 record/record-frames 和 media |
+| 游戏截图 | 执行端 doctor 的 screenshot；macOS 再查目标 runtime capabilities 的 screenshot 状态 |
 
 `mcpy --local doctor --capabilities --json` 的 `capabilities` 描述后端能力，`local_capabilities` 可含仅本机的 project-scripts；bootstrap 的 `local_capabilities` 是辅助脚本汇总的本机能力。远端结果看 `remote.capabilities`。字段来自不同接口，不假定它们是同一份列表。能力存在不等于资源已安装、已登录或游戏已就绪。
 
@@ -38,7 +39,8 @@ Skill 文件夹、CLI、正在运行的 worker、macOS 原生运行包分别更�
 | 本地世界 run、实例管理、restart、runtime reload/watch | 本机；显式 --local。macOS 仅 Addon 世界 |
 | 配置 server 的 run、connect、status/logs/stop、runtime py | 按游戏路由；远程只支持网络单会话 |
 | runtime install/input、旧 ui/player | 调用端封装，作用于所选会话的游戏通道；原始 Windows 设备后端另查执行端能力 |
-| screenshot/record、旧桌面输入 | Windows 本机或 Windows 服务；不操作 macOS 桌面代替远端 |
+| screenshot | Windows 或兼容 Launcher 的 macOS 本机会话；远程仅 Windows |
+| record、旧桌面输入 | Windows 本机或 Windows 服务；macOS 本地不支持 |
 | ui | 本机人工 PySide6 项目页 |
 | serve / edit | Windows 本机；edit 不支持远程 MCEditor |
 

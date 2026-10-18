@@ -204,13 +204,13 @@ def start(project, session, duration=10, fps=30, request_id=None, timeout=15):
             if (existing['duration'], existing['fps']) != (duration, fps):
                 raise RecordingError('Request ID already used with different parameters', 'request_conflict', status=409)
         else:
+            media = inspect_media()
+            if not media['record_available']:
+                raise RecordingError(media.get('reason') or 'WGC/software H.264 encoder unavailable', 'capability_missing')
             game = session_game(project, session)
             for item in directory(project, session).glob('*.json'):
                 if read(project, session, item.stem)['state'] in ACTIVE:
                     raise RecordingError('This session already has an active recording', 'busy', status=409)
-            media = inspect_media()
-            if not media['record_available']:
-                raise RecordingError(media.get('reason') or 'WGC/software H.264 encoder unavailable', 'capability_missing')
             data = {'project': str(project), 'session': session, 'recording': request_id,
                     'request_id': request_id, 'duration': duration, 'fps': fps, 'state': 'starting',
                     'created_at': time.time(), 'worker': None, 'native': None, 'game': game,
