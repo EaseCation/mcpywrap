@@ -48,3 +48,17 @@ Windows CI 保留 3.9/3.12/3.14；macOS CI 验证 Qt 的延迟导入、Qt 离屏
 游戏内 UI 的协议与有状态适配器测试见 `tests/test_runtime_ui.py`。在独立测试世界运行 `tests/manual_runtime_ui.py --project <目录> --session <会话> --output <新JSON> --require-background` 可通过公开 CLI 验证节点、后台滚动、点击音频页、主音量调整及恢复、旧快照拒绝与重复请求；运行前保持其他应用前台。脚本不停止传入会话，由创建者在结束后 stop。正式 UI 功能与内部引擎接口边界见 [runtime-ui.md](runtime-ui.md)。
 
 玩家操作与队列的状态机测试见 `tests/test_runtime_player.py`。`tests/manual_runtime_player.py` 使用已准备的独立生存世界验证进食、等待、选槽、朝向、蓄力射箭及重复请求；会消耗食物和箭，并恢复朝向、选槽。准备条件及参数见 [runtime-player.md](runtime-player.md)。
+
+## 项目脚本回归
+
+用户契约见 [项目脚本](project-scripts.md)。`project_scripts.py` 负责根项目任务与合作锁；`_script_worker.py` 是通过绝对路径启动的内部有限任务监督进程。低层 builder、Deployment.prepare/refresh 不自动执行 hooks。
+
+`tests/test_project_scripts.py` 使用真实子进程、临时项目及模拟游戏启动，覆盖 JSON 透传、命令位置、串行失败、取消/超时、父进程被杀后的子进程清理和 native/Windows 准备入口。Qt 准备进度与所有权取消在 `test_qt_sessions.py` 中验证。Windows Job Object 路径须由 Windows CI/实机验证，macOS 测试不能替代。
+
+## 文档与 Skill 的维护边界
+
+面向用户和 AI 的命令用法以 `skills/mcpywrap/SKILL.md` 及其 references 为单一维护来源。主文件只保留调用契约、任务路由和影响决策的共通边界；每篇参考围绕一个实际任务，可独立完成该任务，不以源码模块或提交批次划分文章。参数以公开 CLI 帮助和目标能力核对，旧协议留在兼容入口。
+
+修改公开能力时，更新对应的唯一参考页和必要的主文件路由；README 与 docs 中的用户入口指向它，不复制整份操作流程。验证参考链接可在单独复制的 Skill 中使用，示例能经公开 CLI/配置解析，简单任务不必读取安装、调试、录制等无关章节。Skill 测试应验证示例/协议行为，不锁定段落措辞。
+
+`docs/` 只保存长期有效的架构、协议、构建/发布规则及维护说明；可复用的自动化/人工验收程序留在 tests。临时计划、竞品调研、逐轮审计、推进状态、机器路径与当次验收日志放入 Git 忽略的 `.local-notes/` 或 `test/`。这些目录同时被 sdist 排除，发布检查不得把本地工作笔记当必需文件。

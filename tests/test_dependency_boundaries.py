@@ -4,7 +4,7 @@ import inspect
 import json
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from click.testing import CliRunner
 from watchdog.events import FileCreatedEvent, FileDeletedEvent, FileModifiedEvent, FileMovedEvent
@@ -156,16 +156,19 @@ class Boundaries(ProjectFixture):
         self.assertEqual(archive.read_bytes(), before)
 
     def test_run_edit_and_network_validate_before_start(self):
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
+        from runtime_support import launch_world
         edit = importlib.import_module('mcpywrap.commands.edit_cmd')
         (self.main / 'behavior_pack/a.dll').touch()
-        with patch.object(run, 'setup_global_addons_symlinks') as links, patch('mcpywrap.mcstudio.sessions.start') as start:
-            result = self.call('run', '--detach', '--no-gui')
-            self.assertNotEqual(result.exit_code, 0)
-            self.assertIn('原生二进制', json.loads(result.stdout)['error'])
+        with patch('mcpywrap.runtime.windows.discover_engines') as discover, \
+                patch('mcpywrap.runtime.windows.require_resources'), \
+                patch('mcpywrap.mcstudio.deployment_links.ManagedLinks.publish') as links, \
+                patch('mcpywrap.mcstudio.game.open_game') as start:
+            discover.return_value.require_engine.return_value = Mock(version='3.10')
+            with self.assertRaisesRegex(DependencyError, '原生二进制'):
+                launch_world(self.main, self.main/'.runtime/test.cppconfig', 'test')
             links.assert_not_called()
             start.assert_not_called()
-        with patch.object(edit, 'open_editor') as launch, self.assertRaises(DependencyError):
+        with patch.object(edit, 'open_editor') as launch, self.assertRaisesRegex(ValueError, '原生二进制'):
             edit.open_edit(self.main, raise_errors=True)
         launch.assert_not_called()
         with self.assertRaises(DependencyError):
@@ -173,8 +176,17 @@ class Boundaries(ProjectFixture):
 
     def test_run_json_warns_for_host_dependency(self):
         self.packages('example>=1')
-        with patch(DIST, return_value=FakeDist()), patch('mcpywrap.mcstudio.sessions.start', return_value={}), patch(
-                'mcpywrap.mcstudio.sessions.handoff', return_value={'session': 'test'}):
+        from runtime_support import prepare_packs
+        from mcpywrap.mcstudio.discovery import Engine
+        engine = Engine('game.exe', '3.10', str(self.root/'engine'), str(self.root), 'fixture')
+        def worker(*args, **kwargs):
+            prepare_packs('main', self.main, raise_errors=True)
+            return {}
+        with patch(DIST, return_value=FakeDist()), patch('mcpywrap.mcstudio.sessions.start', side_effect=worker), \
+                patch('mcpywrap.runtime.windows.discover_engines') as discover, \
+                patch('mcpywrap.runtime.windows.require_resources'), \
+                patch('mcpywrap.mcstudio.sessions.handoff', return_value={'session': 'test'}):
+            discover.return_value.require_engine.return_value = engine
             result = self.call('run', '--detach', '--no-gui')
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn('仅安装于工具环境', json.loads(result.stdout)['warnings'][0])

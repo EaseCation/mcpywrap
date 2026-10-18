@@ -20,6 +20,12 @@ class SessionController(QObject):
         self.project, self.backend = str(Path(project).resolve()), backend
         self.engine_overrides = {key: value for key, value in (engine_overrides or {}).items() if value is not None}
         self.session, self.owns_session, self.data = None, False, {}
+        self.owned_sessions = set()
+        self.group = None
+        self.preparing_session = None
+        self.members = []
+        self.group_data = {}
+        self.all_logs = False
         self.task, self.watcher = None, None
         self.workspace_busy = False
         self.watch_side = 'client'
@@ -59,10 +65,35 @@ class SessionController(QObject):
         self._success, self._failure, self._report = success, failure, report
         self._result, self._error = None, None
         self.task = TaskThread(function, self)
+        self.task.starting.connect(self._preparing)
         self.task.result.connect(self._received)
         self.task.failed.connect(self._failed)
         self.task.finished.connect(self._finished)
         self.changed.emit(); self.task.start()
+        return True
+
+    @Slot(object)
+    def _preparing(self, data):
+        if not data.get('start_owned'):
+            return
+        if data['state'] == 'starting':
+            if self.preparing_session != data['session']:
+                self.preparing_session = data['session']
+                self.logs.bind(self.project, self.preparing_session)
+                self.log('正在准备游戏：' + self.preparing_session)
+            script = data.get('script') or {}
+            self.status = '准备中' + (' · ' + script['script'] if script else '')
+        self.changed.emit()
+
+    def cancel_preparation(self):
+        if not self.preparing_session:
+            return False
+        data = sessions.read(self.project, self.preparing_session)
+        if data['state'] != 'starting':
+            self.log('准备已结束，请等待启动结果后使用停止操作。', 'info')
+            return False
+        (sessions.session_path(self.project, self.preparing_session)/'stop').touch()
+        self.log('已请求取消本次准备。', 'warning')
         return True
 
     @Slot(object)
@@ -77,7 +108,16 @@ class SessionController(QObject):
         result, error, success, failure = self._result, self._error, self._success, self._failure
         report = self._report
         task.deleteLater()
+        preparing = self.preparing_session
+        if self.preparing_session:
+            self.logs.poll()
+            self.preparing_session = None
         if error:
+            if preparing:
+                self.status = '准备未完成'
+                if self.session:
+                    self.bind_logs()
+                    self.poll()
             self.log(error, 'error')
             if failure: failure()
             self.failed.emit(error)
@@ -86,30 +126,122 @@ class SessionController(QObject):
             if success: success(result)
         self.changed.emit()
 
-    def start(self, identity=None, auth_context=None, world_config=None):
-        if self.session:
-            self.log('请先保存退出当前游戏。', 'warning'); return False
+    def start(self, identity=None, auth_context=None, world_config=None, clients=1):
+        active = self.session and (self.data.get('state') in ('starting', 'running') or
+                                   self.data.get('state') == 'failed' and bool(self.data.get('game')))
+        if active and clients == 1:
+            self.log('请先停止当前游戏；重要进度请先在游戏内保存。', 'warning'); return False
         options = {'overrides': self.engine_overrides} if self.engine_overrides else {}
         if world_config is not None: options['world_config'] = world_config
+        if clients != 1:
+            options['clients'] = clients
+            if active:
+                if self.group_data.get('kind') == 'local':
+                    host = next(m for m in self.members if m['role'] == 'host')
+                    identity = sessions.read(self.project, host['session']).get('level_id') or identity
+                else:
+                    identity = self.data.get('level_id') or identity
         return self.run_task(lambda: self.backend.start_session(self.project, identity, auth_context, **options), self.attach, report=False)
 
     @Slot(object)
     def attach(self, result):
-        self.session = result['session']
-        self.owns_session = not result.get('already_running', False)
+        if not result.get('group') and result.get('session'):
+            from ..runtime import groups
+            record = groups.membership(self.project, result['session'])
+            if record:
+                result = dict(groups.status(self.project, record['group']), session=result['session'],
+                              owned_sessions=[] if result.get('already_running') else [result['session']])
+        previous_group, previous_owned = self.group, self.owned_sessions
+        previous_role = next((m['role'] for m in self.members if m.get('session') == self.session), None)
+        self.group = result.get('group')
+        self.members = result.get('members', [])
+        self.group_data = result if self.group else {}
+        self.session = result.get('session') or next((m.get('session') for m in self.members if m.get('session')), None)
+        if self.group and self.group == previous_group and previous_role:
+            self.session = next((m['session'] for m in self.members if m['role'] == previous_role), self.session)
+        self.owned_sessions = (set(result.get('owned_sessions', ())) if self.group else
+                               {self.session} if self.session and not result.get('already_running', False) else set())
+        if self.group and self.group == previous_group:
+            active_ids = {member.get('session') for member in self.members}
+            self.owned_sessions.update(previous_owned & active_ids)
+        self.owns_session = self.session in self.owned_sessions
         self.data = result
-        self.logs.bind(self.project, self.session)
-        self.log('游戏会话已启动：' + self.session, 'success')
+        if self.session:
+            self.bind_logs()
+        self.log(('联调组已记录，仍有成员需要处理：' if result.get('ok') is False else '游戏会话已启动：')
+                 + str(self.group or self.session), 'warning' if result.get('ok') is False else 'success')
+        if result.get('error'): self.log(result['error'], 'error')
+        if result.get('hint'): self.log(result['hint'], 'info')
         self.started.emit(result); self.changed.emit(); self.poll()
+
+    def bind_logs(self):
+        if self.all_logs and self.group:
+            self.logs.bind_group(self.project, self.members)
+        elif self.session:
+            self.logs.bind(self.project, self.session)
+
+    def select_member(self, session):
+        if self.busy or not any(m.get('session') == session for m in self.members):
+            return
+        self.session = session
+        try:
+            self.data = sessions.read(self.project, session)
+        except ValueError:
+            self.data = {'session': session, 'state': 'failed', 'mode': 'network'}
+        self.owns_session = session in self.owned_sessions
+        self.bind_logs(); self.poll()
+
+    def set_all_logs(self, enabled):
+        self.all_logs = enabled
+        self.bind_logs()
+
+    def connect(self, host, port=19132, clients=2):
+        from ..mcstudio.network import ServerTarget
+        from ..runtime import groups
+        target = ServerTarget(host, port)
+        operation = (lambda: groups.start_network(self.project, self.backend, target, self.engine_overrides)) if clients == 2 else (
+            lambda: self.backend.connect(target, project_dir=self.project, engine_overrides=self.engine_overrides, detach=True))
+        return self.run_task(operation, self.attach, report=False)
+
+    def group_action(self, action):
+        if not self.group or not self.available:
+            return False
+        from ..runtime import groups
+        group = self.group
+        def perform():
+            if self.watcher:
+                self.watcher.stop()
+            return groups.restart(self.project, group=group) if action == 'restart' else groups.stop(self.project, group)
+        def finished(result):
+            self.watcher = None
+            if action == 'restart': self.attach(result)
+            else: self.poll()
+        return self.run_task(perform, finished)
 
     @Slot()
     def poll(self):
         try:
             self.logs.poll()
+            if self.preparing_session and self.busy:
+                data = sessions.read(self.project, self.preparing_session)
+                script = data.get('script') or {}
+                self.status = '准备中' + (' · ' + script['script'] if script else '')
+                self.changed.emit()
+                return
+            if self.group:
+                from ..runtime import groups
+                self.group_data = groups.status(self.project, self.group)
+                self.members = self.group_data['members']
             if not self.session: return
             self.data = sessions.read(self.project, self.session)
             state = self.data['state']
-            self.status = self.backend.label + ' · ' + ('世界已就绪' if self.data.get('world_ready') else state) + ' · ' + self.session[:8]
+            role = next((m['role'] for m in self.members if m.get('session') == self.session), '')
+            self.status = self.backend.label + ' · ' + role + ' · ' + ('世界已就绪' if state == 'running' and self.data.get('world_ready') else state) + ' · ' + self.session[:8]
+            if self.group:
+                if self.group_data['state'] != 'ready' and self.watcher and not self.busy:
+                    self.set_watching(False)
+                self.changed.emit()
+                return
             if state not in ('starting', 'running') and not self.busy:
                 alive = self.data.get('game') and checked_process(self.data['game'])
                 if alive:
@@ -139,14 +271,36 @@ class SessionController(QObject):
             if watcher: watcher.stop()
             return sessions.stop(self.project, session)
         def finished(result):
-            self.watcher = None; self._end_session(); self.stopped.emit(result)
+            self.watcher = None
+            if self.group:
+                self.poll()
+            else:
+                self._end_session()
+            self.stopped.emit(result)
         return self.run_task(perform, finished)
+
+    def interrupt_group(self):
+        if not self.group or not self.available:
+            return False
+        from ..runtime import groups
+        group, owned, watcher = self.group, tuple(self.owned_sessions), self.watcher
+        def perform():
+            if watcher:
+                watcher.stop()
+            groups.stop_owned(self.project, group, owned)
+        def finished(_):
+            self.watcher = None
+            self.poll()
+        return self.run_task(perform, finished, report=False)
 
     def restart(self):
         if not self.session or not self.available: return False
         session, watcher = self.session, self.watcher
         def perform():
             if watcher: watcher.stop()
+            if self.group:
+                from ..runtime import groups
+                return groups.restart(self.project, session=session)
             data = sessions.read(self.project, session)
             sessions.stop(self.project, session)
             overrides = self.engine_overrides or data.get('engine_overrides') or {}
@@ -166,13 +320,17 @@ class SessionController(QObject):
 
     def reload_file(self, filename, side='client'):
         if not self.session: return False
-        from ..commands.dev_cmd import changed_reload_targets
+        from ..runtime.targets import changed_reload_targets
         from ..mcstudio.hot_reload import reload_session
         session = self.session
         def perform():
             targets = changed_reload_targets(self.project, [str(filename)])
             if not targets: raise ValueError('此文件不能直接热更，请重新部署并重载世界。')
             (kind, target), _ = next(iter(targets.items()))
+            if self.group:
+                from ..runtime import groups
+                return groups.reload(self.project, self.group, kind, target,
+                    source=Path(filename).read_bytes() if kind == 'python' else None, side=side)
             return reload_session(self.project, session, kind, target,
                 source=Path(filename).read_bytes() if kind == 'python' else None, side=side)
         return self.run_task(perform)
@@ -192,11 +350,12 @@ class SessionController(QObject):
         if self.watcher or not self.session: return False
         from ..mcstudio.hot_reload import SessionWatcher
         sides = ('client', 'server') if self.watch_side == 'both' else (self.watch_side,)
-        self.watcher = SessionWatcher(self.project, self.session, self.watch_message.emit, sides=sides)
+        self.watcher = SessionWatcher(self.project, None if self.group else self.session,
+                                      self.watch_message.emit, sides=sides, group=self.group)
         def failed(): self.watcher = None
         return self.run_task(self.watcher.start, failure=failed, report=False)
 
     def dispose(self):
-        if self.busy or self.watcher or (self.session and self.owns_session):
-            raise RuntimeError('请先完成会话操作、停止监控并保存退出拥有的游戏')
+        if self.busy or self.watcher:
+            raise RuntimeError('请先完成当前操作并停止监控')
         self.timer.stop(); self.logs.finish()

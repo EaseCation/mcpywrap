@@ -1,201 +1,56 @@
 ---
 name: mcpywrap
-description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、依赖和 QuMod，并在 Windows 本机/远程或 Apple Silicon macOS 本地世界及无认证联机会话中调试、读取 UI 节点和操控玩家；桌面截图/输入/录制仅 Windows。注入的 mcpy.* 仅限调试，禁止用于业务代码。
+description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、依赖、预处理与打包，启动本地世界或联机会话，进行双客户端联调、Python 热更、UI/玩家操作和 Windows 录制。适用于该工具的实际项目开发与验收；业务 API 仍需查目标版本 ModSDK。
 ---
 
 # mcpywrap
 
-使用公开 CLI；无需通读仓库 docs、CLAUDE.md 或源码。先确定项目操作发生在哪台机器，以及游戏使用 Windows 本机、Windows 远程还是 Apple Silicon macOS 本地后端。通过同一套 run/status/logs/stop/runtime 接口操作，先读取 doctor --capabilities 的实际能力。
+本 Skill 目录是 AI 操作 mcpywrap 的用法来源。先按用户任务选下面的一篇参考；只在出现相应子任务时再沿链接读取，不通读所有参考，也不把仓库设计草案当作现行用法。实际安装是否支持某能力，用 CLI 帮助与能力查询核对；Skill 更新不会更新 CLI、worker 或原生运行包。
 
-## Windows/macOS 共用的纯命令开发入口
+## 调用约定
 
-本地 Addon 开发默认采用同一套命令，不按平台编写两份启动/调试/热更流程。AI 使用 `--local --project <目录> --non-interactive`，启动必须显式使用 `run --no-gui --detach --json`。人工交互式 `run` 默认显示日志和热更调试小窗；AI 使用 --no-gui 明确抑制小窗。macOS 首次运行通过网易 pe 动态发现最新开发者资源，校验和结构检查后安装，并在 stderr 显示进度；`mcpy ui` 打开完整项目管理页。无需操作 Qt/TUI 或原生窗口；游戏仍需要图形会话和 GPU，这不是无显示服务运行。
+- 使用公开 CLI。示例中的 `mcpy` 指本机已确认的可执行命令；需要安装、升级或不确定执行位置时才读[安装与路由](references/setup.md)。
+- 全局参数在子命令前：`mcpy --local --project <已有绝对目录> --non-interactive <命令>`。远程操作明确换成 `--remote <Windows服务HTTP地址>`，失败不回退本机；项目目录仍属于调用端。
+- 有限命令加 `--json`；检查退出码和 `ok/error/code/hint`。`dev`、`runtime watch`、`serve` 是持续命令，不加 JSON。脚本尾参置于 `--` 之后。
+- AI 启动本地游戏用 `run --no-gui --detach --json`，不操作 Qt/TUI；游戏仍需要图形会话和 GPU。保存返回的 session/group、项目及远程 endpoint，后续不换目标。
+- **业务代码禁止依赖 `mcpy.*`。** `mcpy.input/ui/player/api` 仅由 runtime install 临时注入调试会话，不是 ModSDK 或可分发依赖。宿主生成脚本用工具 Python 3，游戏代码仍受内置 Python/目标 ModSDK 约束。
+- `running`、请求 `completed/triggered` 不等于玩法效果已验证。只结束自己创建或用户指定的会话；unknown 不盲目重发，busy 不清锁或杀无关进程。
 
-先读 [本地无交互开发与验收](references/local-development.md)：涵盖会话能力查询、就绪检查、双端 Python、JSON UI 重载、日志及保存退出。`runtime capabilities --session <sid> --json` 返回当前实例的能力，不能仅从宿主平台推断；旧实例固定旧运行包。优先公共 CLI，不直接调用 `_mcpy_launcher`、JNI、Safaia 或读取控制凭据。
+## 按当前任务选择阅读入口
 
-## 强制边界：mcpy.* 仅限临时调试
+| 用户正在做什么 | 先读这一篇 | 何时才继续读其他页 |
+|---|---|---|
+| 安装 CLI、检查环境、分清本机/远端 | [安装与路由](references/setup.md) | macOS 资源问题转平台页；Windows HTTP 服务转远程页 |
+| 新建项目、Mod/SDK、构建、打包、编辑器、PyPI 分发 | [项目工作流](references/project-workflow.md) | 涉及依赖或预处理时再读对应页 |
+| 加 Python/本地/Git 依赖、QuMod、克隆恢复、升级回退 | [依赖与 QuMod](references/project-dependencies.md) | 无需先读启动或输入协议 |
+| 配置/运行宿主脚本、构建前生成资源、解释 dev 行为 | [项目脚本](references/project-scripts.md) | 真要编写生成器再读其样例；不引入自动预处理 watch |
+| 启动/重开/停止本地世界、代码未应用、部署占用 | [本地会话生命周期](references/local-development.md) | 世界参数转设置页；实际热更/执行 Python 转调试页 |
+| 自定义种子、地形、难度、游戏规则 | [世界设置](references/instance-world-settings.md) | 这些是实例创建参数，不是项目配置 |
+| 两名玩家、多世界、组查询/重试/停止/热更 | [双客户端联调](references/dual-clients.md) | 普通输入绑定选中的成员，再读输入页 |
+| 连接外部服务器、可选 MCS 身份 | [网络会话](references/network-sessions.md) | 只有跨机执行才读 Windows 服务部署 |
+| 配置/使用 Windows HTTP 远程服务 | [远程执行端](references/remote-testing.md) | 不支持远程世界实例、双客户端或资源部署 |
+| 已有会话执行 Python、模块/资源热更、runtime watch | [运行时调试](references/runtime-debug.md) | 组操作转双客户端页；不必重读启动教程 |
+| 移动/攻击/操作 UI、观察节点 | [统一输入](references/runtime-input.md) | 能力/参数按目标会话查询，不猜旧协议 |
+| 截图、录制视频、下载、逐帧检查 | [画面采集](references/capture.md) | 需要操作玩家时才读输入协议 |
+| macOS 安装/升级运行包、能力与引擎限制 | [macOS 平台](references/macos-local.md) | 不为普通运行每次重读安装细节 |
+| 已有明确错误或结果未知 | [故障定位](references/troubleshooting.md) | 先按错误定位，再读相应操作页 |
 
-**严禁在任何业务代码中使用或依赖 `mcpy.*`，包括 `mcpy.input`、`mcpy.ui`、`mcpy.player`、`mcpy.api` 及其别名、封装或间接调用。** 这些能力仅在执行 `runtime install` 后临时注入当前调试会话；正常启动或发布后的游戏运行环境中不存在，不是 ModSDK，也不是可分发的游戏依赖。
+## 当前工作方式的关键变化
 
-本文及参考文档中的 `mcpy.*` 示例只供 Agent 通过 `runtime py` 执行临时探针、观察和测试操作。不得复制进 Mod、Addon、客户端/服务端业务模块或任何随游戏发布的脚本，也不得把注入或安装控制层作为业务运行的前置条件。业务功能必须使用目标引擎正式支持的 ModSDK 或项目已有框架；例如 `mcpy.api` 的调用须改为正式导入相应端的 SDK。提交或打包业务改动前，检查新增代码未引入上述调试依赖。命令行工具 `mcpy` 不受此 Python 命名空间限制。
+- 世界保存进度，部署决定代码：`--new` 只创建世界；再次 run 若接管已有会话，不应用新代码，也不执行预处理。具体更新选择见本地生命周期页。
+- 普通 build/dev 不写运行目录；运行资源由受控部署发布。同版多世界可以并行，有其他读者时不能单方面换版。
+- 两名玩家使用组；输入/Python/截图选具体 session，组热更与停止选 group。本地 `waiting_for_join` 需要用户点击局域网卡片，不是启动失败。
+- 宿主任务使用 `script`；`runtime py` 才是在游戏执行。钩子按构建/打包/实际本地启动触发，runtime watch 和客机重试不运行它们。
+- 查询与 GUI 依赖刷新只读；关闭管理/调试窗口保留游戏。取消准备与停止已经启动的游戏是不同操作。
 
-## 按任务选择控制入口
+## 仅在继续旧脚本时阅读
 
-普通输入只有一条推荐流程：`runtime install` → `runtime input capabilities` → `runtime input observe` → `runtime input run --file <plan.json>` → `runtime input status/cancel`。所有键盘、玩家与节点动作使用同一份 steps 计划，自动/显式排时共用规则，不选择 sequence/timeline。详见 [统一输入协议](references/runtime-input.md)。
+新输入任务统一使用 `runtime input`。旧入口的参数不能混进新 steps 协议；兼容入口从常规帮助隐藏，但可直接查其 `--help`。
 
-游戏内能力按当前会话查询，不自动安装或改用桌面后端。观察返回玩家目标或当前UI节点，页面改变后重新观察；HBUI节点不可读时用严格后台截图补图。需要原始设备测试才显式选择计划 backend=windows-sendinput，它会占用Windows前台。
-
-## 安装与前置检查
-
-- macOS 单调时钟修复使用 CLI 0.4.6 默认配套的原生运行包 0.4.4。旧资源需显式升级并新建实例，当前会话以 `clock_source=launcher.steady_clock` 为准；具体命令与实测范围见 [macOS 本地测试](references/macos-local.md)。
-
-- 统一输入入口要求 CLI 0.4.2+。bootstrap 可要求调用端 unified-input；随后以当前会话 runtime input capabilities 的动作/时钟支持为准。已有会话重新 runtime install 更新游戏控制层；显式 Windows 设备后端还要求新worker，更新Skill或CLI不会替换既有worker。
-
-- macOS 后端、Qt6 和会话能力查询要求 CLI 0.4.0+；候选版未上 PyPI 时按仓库验收文档安装对应 wheel，不把已更新的 Skill 当作 CLI 已升级。
-- Skill 文件夹和 CLI 分别安装，更新一端不会自动更新另一端。两台机器都复制完整 Skill，并在各自机器上检查 CLI。
-- 使用已有 uv 运行 `uv run --no-project --python 3.12 "<skill>/scripts/bootstrap.py"`，无需假定 PATH 中存在 `python`；Windows 也可用 [bootstrap.ps1](scripts/bootstrap.ps1)。
-- 默认复用已有安装；更换来源需 `--upgrade`，可选 `--version`、`--git-ref <完整 SHA>`、`--editable-path <本机目录>`。PowerShell 对应 `-Upgrade/-Version/-GitRef/-EditablePath`。
-- 使用本机 bootstrap 返回的 `command` 执行后续 CLI；示例中的 `mcpy` 均指这个路径，不跨机器复用它。
-- Windows 服务端：bootstrap 加 `--local --require-capability serve`，再用 `mcpy --local doctor --capabilities --json`。需要登录时额外检查 `mcs-auth` 组件并由用户登录 MCS。
-- Apple Silicon macOS 本地：bootstrap 加 `--local --require-capability macos-local-worlds`，再用 `mcpy --local engine doctor --json` 检查资源。安装和限制见 [macOS 本地测试](references/macos-local.md)。资源未就绪时 run 会从内置发行源自动安装；也可提前执行 engine install。安装成功仍须验证游戏就绪。
-- macOS 远程端：bootstrap加 `--remote <地址> --require-capability remote-client --require-capability network-sessions --require-capability unified-input --require-capability py`；截图另查screenshot。调用端需要统一协议，执行端游戏操作复用py；原始Windows后端另需执行端新worker。只在继续旧脚本时检查runtime-ui/runtime-player、key/mouse/input-sequence兼容能力。
-- 本机能力看 `local_capabilities`，Windows 服务能力看 `remote.capabilities`。`remote.ok=false` 时停止远程流程；组件具备不表示已登录、窗口已就绪或已进服。
-- `bootstrap --remote` 只做检测，不保存路由。每次远程调用明确传 `--remote <endpoint>`，或确认当前进程确实继承了 `MCPY_REMOTE`；不依赖上一次终端调用的 export。
-- 先检查相关 `--help` 和能力；不要把新版 Skill 配上旧 CLI 后猜参数。统一注入、UI/玩家封装和严格后台截图需调用端 CLI 0.3.17+；执行端须支持 `py`，远程严格后台截图还须执行端 0.3.17+。局域网细节见[远程测试](references/remote-testing.md)。
-- 统一时间编排需调用端 CLI 0.3.19+；更新 CLI 后对已有游戏会话重新 `runtime install`。Windows `input-sequence` 的远程执行端也需 0.3.19+ 并报告该能力；不要把旧版 `sequence` 已存在当成支持 `at_ms`。
-- Git项目依赖和框架快捷添加从0.3.8提供；bootstrap分别用 `--require-capability git-dependencies`、`--require-capability framework-presets` 检查，不以版本号0.3.7推断具备。缺失时显式选择包含这些能力的版本或源码安装。
-
-## 执行位置与参数
-
-全局参数放在子命令之前：`mcpy --project "<本机已有目录>" --remote <地址> --non-interactive <命令> --json`。
-路由优先级为 CLI → `MCPY_REMOTE` → 本机项目 `[tool.mcpywrap].remote_url`；`--local` 强制本机执行。远端失败不回退。
-
-| 操作 | 执行位置 |
+| 旧脚本使用的入口 | 专用参考 |
 |---|---|
-| init/add/remove/mod/modsdk/sync/build/package/dev/publish | 调用端本机，配置远端后也不迁移项目文件 |
-| doctor/connect/status/logs/stop/screenshot/key/mouse/input-sequence、record、runtime py | 配置的 Windows 服务；没有远端配置则由本机后端处理，桌面截图/输入仅 Windows |
-| runtime ui | 调用端封装，通过同一会话的 client Python 通道在游戏内执行 |
-| runtime player、runtime install | 同上；一次注入 UI、玩家动作和客户端 API 简写 |
-| runtime reload、runtime watch | Windows 或 Apple Silicon macOS 本地测试世界，显式使用 --local |
-| 配置服务器目标的 run | 本机校验项目与依赖，远端只连接服务器 |
-| 本地世界 run、实例管理 | Windows 或 Apple Silicon macOS 本机，明确使用 `--local`；macOS 目前仅 Addon，远端不支持世界实例 |
-| ui | Windows/macOS 的共用 PySide6 界面，仅供人工操作；Agent 仍用 CLI |
-| serve、edit | Windows 本机；macOS 不支持 MCEditor |
-
-`--project` 必须是调用端路径且目录已存在；纯连接不需要 init。远程实际会话保存在 Windows 的 serve 数据目录。
-远程结果中的 `project/image` 是调用端路径；`remote_project/executable/log_path/engine_log_path` 是 Windows 信息。读取远程日志用 logs，不在 macOS 打开 Windows 路径。
-
-Windows/macOS 共用依赖锁；克隆后用 `sync --json` 恢复。sync 按固定 Git 提交重新计算跨平台摘要并写回锁，不改变依赖版本，也不创建备份或要求迁移。两端 CLI 都应包含此修复；首次使用新的源码缓存需联网获取固定提交。
-
-## 项目工作流
-
-有限命令使用 `--non-interactive --json`，检查退出码和 `ok/error/hint`；保留用户已选择的项目路径与配置。
-
-| 任务 | 子命令 |
-|---|---|
-| 新建／接入 | `init --name demo --type addon` 或 `--type map` |
-| 包依赖 | `add "package-name>=1.0"` / `remove package-name` |
-| 本地 Addon 引用 | `add --path ../common` / `remove --path ../common` |
-| Git 项目依赖 | `add --git <URL> --ref <提交或标签>` / `remove --git <依赖名>` |
-| QuMod 快捷添加（仍是 Git 依赖） | `add --qumod --script-dir MyMod`；等价于 `add --framework qumod --script-dir MyMod` |
-| 模板／SDK | `mod --name DemoMod` / `modsdk --version <版本>` |
-| 构建／ZIP | `build` / `package`；地图要合并资源时用 `package --merge` |
-| 同步／安装项目 | `sync` / `sync --install` |
-| 为用户打开编辑器 | Windows 本机 `edit --detach`；启动不等于界面任务完成 |
-
-初始化不覆盖已有配置、不隐式安装 SDK 或依赖。本地引用选 Addon 根目录，无需先初始化，不自动成为可分发包依赖。
-
-依赖操作前先区分来源；Git、QuMod、克隆恢复和版本管理任务读[Git 依赖与快捷添加](references/project-dependencies.md)：
-
-- `add <Python包>` 安装到工具 Python 环境；没有识别出的 Addon 内容会标为“仅开发环境”，不会进入游戏产物。`sync --install` 的额外安装步骤及 ModSDK 补全库也属于工具环境。
-- `add --path` 引用本地 Addon；`add --git` 获取并注册远程项目，依据项目描述或明确布局组装游戏代码与资源。它们不是向游戏执行 pip install。
-- QuMod 是 Git 依赖的快捷预设。新脚本目录会生成入口，已有业务代码保留；不要为了使用快捷命令先创建一套原生 Mod 模板，也不要把上游源码复制进业务仓库。
-- 克隆已配置项目后优先执行一次 `sync`，不要重新 `init` 或重复 `add`。这恢复依赖，不下载引擎，也不保证全部工具环境依赖已安装。
-
-游戏使用内置 Python，不读取工具环境的 site-packages；原生扩展或依赖外部安装步骤的库不能直接用于游戏。处理 import 错误时检查组装后的代码和加载入口，不通过反复 pip 安装框架解决。
-构建时主项目优先；检查 package 返回的 `artifact`。`dev` 持续输出文本，不用 JSON；依赖声明变化后重启监控。
-网易Add-on生产包用公开 `mcpy package` 导出，不自行重压缩或更改包名。打包器需保留行为包entities空目录以满足平台结构检查；仅脚本Addon不应为此创建虚构实体。发布前检查实际ZIP，旧CLI可能尚未包含此修复；本地加载或上传201不证明平台自测通过。
-检查 ZIP 的实际内容及游戏脚本加载日志；pip 安装、系统 Python 导入或构建成功都不能代替游戏验收。`publish` 的 PyPI 分发与游戏 ZIP 分发不同。
-涉及具体玩法时，原版 API、事件、枚举和 JSON 组件须查证目标网易版本；不能套用 Java 版或通用 Bedrock 的名称。若提供了 netease-modsdk MCP，可查询精确接口、端侧、参数和备注；未查到的能力明确标为未验证。
-`publish --yes` 仅在用户请求真实上传时调用；卸载和实例删除也需相应明确选项。
-
-## 游戏会话
-
-新建不同地形、难度、种子或游戏规则的测试实例时，读[实例世界设置](references/instance-world-settings.md)。使用 `run --new` 的直接参数，无需先创建再修改文件；世界设置属于实例，不写入项目 pyproject.toml。
-
-Windows 用户在专用、已登录未锁屏的桌面设置 `MCPY_REMOTE_TOKEN` 后运行 `mcpy --local serve` 并保持控制台打开；默认 `0.0.0.0:18765`，不加 `--json`。
-远程首次设置按需读[远程测试](references/remote-testing.md)，不要把监听地址 0.0.0.0 当作客户端地址。
-
-| 目标 | 启动命令 |
-|---|---|
-| Windows/macOS 本地 Addon 世界（先准备资源） | `mcpy --local --project "<项目>" --non-interactive run --no-gui --detach --json` |
-| Windows/macOS 本机临时服务器 | `mcpy --local --project "<会话目录>" --non-interactive connect <游戏服务器地址> --port 19132 --detach --json` |
-| 远程临时服务器 | `mcpy --remote <Windows服务地址> --non-interactive connect <游戏服务器地址> --port 19132 --detach --json` |
-| 远程项目目标 | `mcpy --remote <地址> --project "<调用端项目>" --non-interactive run --detach --json` |
-
-macOS 联机要求 CLI 0.4.3+ 和运行包 0.4.3+（声明 `network_connect_protocol=1`）；仅支持允许无认证中国版客户端的服务器。旧 0.4.0 运行包不具备此能力，更新 Skill 或 CLI 不等于运行包升级。具体检查见 [macOS 本地测试](references/macos-local.md)。
-
-固定游戏目标在项目 `[tool.mcpywrap.server]` 填 `host/port`。连接不装配本地 Mod，网络模式不支持 Map、`--new` 或世界实例 ID。
-远程机器路径只在 Windows serve 参数中配置，客户端仅可覆盖 `--engine-version`；本机 connect 可使用原有引擎覆盖参数。
-`MCPY_REMOTE_TOKEN` 是服务默认要求的访问令牌；可信网络可显式用 `mcpy --local serve --no-token` 关闭认证，此时忽略已有令牌，可访问该端口的设备均可执行游戏客户端 Python。先检查 `serve --help` 是否支持该参数。`--mcs-auth` 才是本次游戏的 MCS 登录身份，二者互不替代。仅用户要求登录身份时添加该选项。
-
-1. 保存启动返回的 `endpoint`（远程时）、`project`、`session`、进程身份和日志位置；后续操作始终绑定相同 endpoint 与 session。
-2. 用相同全局参数调用 `status --session <id> --json`、`logs --session <id> --source game --tail 100 --json`；source 也可选 engine/worker。
-3. `running/identity_provided/sent` 只说明对应阶段；Mod 加载、进服、交互效果分别用日志标记或截图确认。
-4. 一次性测试结束 stop；用户要求保留时报告会话 ID。busy 时先列举，不停止不属于本任务的会话。
-
-启动响应丢失用相同 endpoint 的 `status --list --json` 找回；输入超时不盲目重试。
-人工交互式本地 run 默认显示紧凑的彩色日志与热更小窗，Windows/macOS 共用同一控制器；不弹出项目管理页或世界设置确认框。AI 始终显式使用 --non-interactive run --no-gui --detach --json。--no-gui、--detach、--json 和非交互输入均抑制调试小窗；不隐藏游戏。小窗关闭只隐藏视图，游戏结束会清理小窗。带小窗的前台运行 Ctrl+C 调用同一 stop 流程；Windows 保存保证仍以平台能力为准。远程始终用 detach。
-
-## 统一输入：观察、提交、查询
-
-游戏就绪后执行 `runtime install --session <sid> --json`，注入临时 `mcpy.input`、玩家/UI适配与客户端API。默认用公开CLI，所有 mcpy.* 严格只限临时调试。安装不把这些能力加入业务包。
-
-```text
-mcpy --local --project <项目> runtime input capabilities --session <sid> --json
-mcpy --local --project <项目> runtime input observe --session <sid> --json
-mcpy --local --project <项目> runtime input run --session <sid> --file <plan.json> --request-id <32位小写hex> --json
-mcpy --local --project <项目> runtime input status --session <sid> --operation <operation_id> --details --json
-mcpy --local --project <项目> runtime input cancel --session <sid> --operation <operation_id> --json
-```
-
-计划顶层schema_version=1、steps列表，backend默认game；JSON组合keys为有序数组。步骤action为key/key_down/key_up/wait、player.*、ui.*或pointer.*，公共时序只有at_ms/delay_ms/duration_ms。详细动作参数、默认值、键支持与限制由capabilities同一注册表给出；示例与失败处理见 [统一输入协议](references/runtime-input.md)。人工单次组合可用 `runtime input key "CTRL+W" --duration-ms 500`，它生成同一计划，不是另一执行模式。
-
-先读capabilities返回的参数schema，再按observe返回的有效目标/节点构造计划。新JSON不接受旧hold_ms、type、at、clock或顶层事件列表；不要为了“兼容”自行改写输入后端。session绑定游戏会话，UI snapshot绑定本次节点观察，operation_id/request_id绑定输入操作；transport.request_id只表示RPC传输。原始鼠标按钮写pointer.down/up，不能作为负键码填进key。
-
-
-省略at_ms时按前一步计划结束加delay_ms编译，delay不是实际结束后的固定sleep；需要实际等待用wait。完整key从实际按下后保持duration_ms并释放，边沿down/up可在同一计划独立重叠。所有步骤按列表，组合按数组，不自动修饰键排序。迟到默认继续记录，可设max_lateness_ms中止；没有模拟tick对齐。
-
-每个会话只有一个写操作，包括计划等待区间；允许observe/status。玩家动作执行时观察目标并检查expect；UI计划首版每次一个节点动作，绑定当前快照，页面变化后重新observe。返回pending后查原operation_id；传输请求ID在transport，不能用它代替输入操作ID。unknown不重发，释放未确认保持busy并用input stop重试。input stop不退出游戏，顶层stop才结束会话。
-
-游戏内动作不等于原始键鼠设备事件。player.look/选槽/攻击不能冒充原始mouse/wheel边沿；只有原始设备测试显式设置windows-sendinput。缺能力直接报告，不自动安装、切版本、改模式或抢前台。Mac旧运行包缺可靠单调时钟时明确不支持新计划，不用time.clock/墙上时间或30Hz回调计数兜底。
-
-旧player/ui、顶层key/mouse/input-sequence和相应Python方法仍保留兼容行为，从默认帮助隐藏。需要继续旧脚本时读 [兼容输入写法](references/input-writing.md)、[旧UI参考](references/runtime-ui.md)、[旧玩家参考](references/runtime-player.md)，日常Agent不必学习这些入口。
-
-## 视频录制与逐帧分析
-
-录制任务先检查执行端 `record` 和 `record-frames` 能力；bootstrap 可重复传入 `--require-capability`。新版 Skill 不代表旧 CLI 或旧原生组件支持录制。视频文件在 Windows 临时目录持续写入，下载到调用端；无需安装 FFmpeg。
-
-```bash
-mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record start --session <sid> --duration 10 --fps 30 --json
-mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive runtime input run --session <sid> --file <移动计划.json> --json
-mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record status --session <sid> --recording <rid> --json
-mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record download --session <sid> --recording <rid> --output ./captures/clip.mp4 --json
-mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record frames --session <sid> --recording <rid> --frame 0 --frame 30 --output ./captures/frames --json
-```
-
-移动计划使用 steps=[{"action":"player.move","forward":1,"duration_ms":2000}]；先完成 runtime install，再input observe确认HUD与玩家状态。保存 start 返回的 `recording` 作为 rid，保持同一 endpoint、project 和 session。start 在首帧写入后返回，随后可同时执行运行时动作；查询至 `completed` 再下载／提帧。返回 `video/images/manifest` 是调用端路径。Windows 本机将全局路由替换为 `--local --project "<Windows项目>"`，其余参数相同。
-
-时长为整数 1–300 秒，帧率为整数 1–60 FPS，默认 10 秒／30 FPS，无音频。每个会话一次录制。固定视频帧可能重复源画面或跳过游戏呈现画面，不能据此保证完整捕获游戏每一帧；PNG 是编码后画面。检查清单中的 `frame/time/source_time/repeated`，查看下载的 PNG，再结合日志判断逻辑是否通过。
-
-`time` 是视频内的秒数；`source_time` 是 Windows 单调时钟秒数，不是 Unix 时间，原始值保留在 `source_time_100ns`。高分辨率／高帧率可能超过机器编码能力，`encoder_too_slow` 时降低帧率或使用较小游戏窗口，不通过隐藏丢帧将失败当作完成。
-
-提帧 `--frame` 从 0 开始，可重复，单次最多 100 个；也可改用重复的 `--at <秒>`，取 `floor(秒 × fps)`，两者互斥。输出目录及 MP4 路径必须不存在。需要连续分析时分批选择帧，避免一次提供全部图片。
-
-提前结束使用 `record stop`，不停止游戏；游戏结束也会结束录像。短片若成功封装仍可下载，检查 `truncated/end_reason`。start 超时先用 `record status --session <sid> --list` 找回，不盲目重录；显式 `--request-id <32位小写hex>` 可找回同一请求。下载中断可重试到尚不存在的目标路径。
-
-执行端产物完成后保留 24 小时，后续命令或服务启动清理过期文件；游戏退出后仍可下载。任务结束且文件已下载后可执行 `record delete --session <sid> --recording <rid>`，仅删除执行端产物。需要时读[远程录制与故障处理](references/remote-testing.md#视频录制)。
-
-## 已启动会话的 Python 与热更
-
-使用前检查本机或远端 `py` 能力，并确认 `status` 的会话仍在运行。游戏使用内置 Python 2；脚本文件在调用端按 UTF-8 读取，远程模式传输代码内容。
-
-```bash
-mcpy --local --project "<本机项目>" --non-interactive runtime py --session <id> --side client --code "1 + 1" --json
-mcpy --remote <endpoint> --non-interactive runtime py --session <id> --file ./probe.py --json
-```
-
-本地世界可选 `--side server`，远程联机仅客户端。跨平台基线使用同步调用；仅在当前会话 `python.client_queue=true` 时使用 `--no-wait/--wait-until/py-result`，远程不支持这些队列选项，不能忽略等待条件直接执行。检查 `state`、`stdout`、`stderr`、`value` 和 `error`；`unknown` 表示请求可能已经在游戏中执行，先查日志与状态，不自动重试。脚本副作用由调用者负责，优先调用项目明确的测试函数。
-
-热更支持 Windows/macOS 本地世界；手动目标必须属于当前项目的包，成功投递仍需观察游戏效果：
-
-```powershell
-mcpy --local --project "<本机项目>" runtime reload python --session <id> --module MyMod.client.logic --json
-mcpy --local --project "<本机项目>" runtime reload python --session <id> --module MyMod.server.logic --side server --json
-mcpy --local --project "<本机项目>" runtime reload ui --session <id> --json
-mcpy --local --project "<本机项目>" runtime watch --session <id>
-```
-
-`runtime reload` 提供 `shader`、`material` 和 `particle` 入口，实际支持取决于后端和引擎；macOS 新运行包支持 JSON UI 定义重载（需重新创建自定义界面），旧运行包及当前 Material/Shader 返回 unsupported，已有粒子文件可热更，详见 [macOS 本地测试](references/macos-local.md)。引擎没有对应接口或已知会阻塞时返回 `unsupported`。3.9.0.401155／3.10.0.420447 的 Shader 已禁用；JSON UI 的 `triggered` 只表示重载请求已投递，须用画面确认效果。`runtime watch` 在成功组装文件后触发重载，停止监控不会停止游戏。不要对远程联机会话执行热更。
-
-含服务端组件初始化的Python模块必须在服务端执行热更；服务端热更要求0.3.13+的CLI与新启动worker。工具在发送源码前检查worker声明的端侧能力，旧worker不支持时先正常保存并重启自己的会话。返回`reload_side_mismatch`表示执行端侧未确认，可能已有副作用，不自动重试。资源热更只能在客户端；watch 默认客户端，服务端模块须用 --side server，--side both 仅用于可安全重复执行的公共模块；不会自动重建现有类实例或事件订阅。首次runtime执行前先确认游戏加载完成；Safaia已连接不代表脚本系统已初始化。
+| key/mouse、旧组合键与写法 | [兼容输入](references/input-writing.md) |
+| input-sequence | [旧编排](references/input-sequence.md) |
+| runtime ui | [旧 UI](references/runtime-ui.md) |
+| runtime player | [旧玩家队列](references/runtime-player.md) |
+| runtime player timeline | [旧时间线](references/runtime-key-timeline.md) |

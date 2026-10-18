@@ -280,7 +280,7 @@ class LogAndSessionTests(unittest.TestCase):
             path.mkdir(parents=True)
             data = {'session': session, 'state': 'running', 'worker': {'pid': 1}, 'game': {'pid': 2}}
             sessions.save(path / 'session.json', data)
-            with patch.object(sessions, 'checked_process', return_value=None):
+            with patch.object(sessions, 'observed_process', return_value=None):
                 self.assertEqual(sessions.read(directory, session)['state'], 'failed')
                 self.assertEqual(sessions.stop(directory, session)['state'], 'exited')
             with self.assertRaises(ValueError):
@@ -295,7 +295,8 @@ class LogAndSessionTests(unittest.TestCase):
 
     def test_worker_listener_ready_before_game_and_failure_cleanup(self):
         from mcpywrap.mcstudio import session_worker as worker
-        command = importlib.import_module('mcpywrap.commands.run_cmd')
+        from mcpywrap.engines.windows import WindowsBackend
+        from mcpywrap.engines.backend import LaunchedGame
         with tempfile.TemporaryDirectory() as directory:
             session = uuid.uuid4().hex
             path = sessions.session_path(directory, session)
@@ -304,14 +305,12 @@ class LogAndSessionTests(unittest.TestCase):
                     'engine_overrides': {}, 'log_path': str(path / 'game.log')}
             sessions.save(path / 'session.json', data)
 
-            def start_game(*args, **kwargs):
-                self.assertTrue(kwargs['no_gui'])
-                self.assertNotEqual(kwargs['output_path'], data['log_path'])
-                with socket.create_connection(('127.0.0.1', kwargs['logging_port'])) as client:
+            def start_game(data, receiver, auth_context):
+                with socket.create_connection(('127.0.0.1', receiver.port)) as client:
                     client.sendall(b'EARLY_LOG\n')
-                return False, None
+                return LaunchedGame(None)
 
-            with patch.object(command, '_run_game_with_instance', side_effect=start_game):
+            with patch.object(WindowsBackend, 'launch', side_effect=start_game):
                 worker.run(directory, session)
             record = json.loads((path / 'session.json').read_text(encoding='utf-8'))
             self.assertEqual(record['state'], 'failed')

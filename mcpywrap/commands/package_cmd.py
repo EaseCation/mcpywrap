@@ -35,36 +35,43 @@ def package_cmd(merge):
         if project_type not in ('addon', 'map'):
             raise ValueError('当前仅支持 Addon 和 Map 项目的打包')
 
-        dist = source / 'dist'
-        dist.mkdir(exist_ok=True)
-        destination = dist / f'{name}-{version}.zip'
-        # 临时构建与 ZIP 独立于现有产物，全部成功后才替换同版本分发包。
-        with tempfile.TemporaryDirectory(prefix='_temp_package_', dir=dist) as temporary:
-            output = Path(temporary) / 'build'
-            builder = (AddonProjectBuilder(source, output) if project_type == 'addon'
-                       else MapProjectBuilder(source, output, merge))
-            success, error = builder.build()
-            if not success:
-                raise click.ClickException(f'构建失败: {error}')
-            archive = Path(temporary) / 'package.zip'
-            with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                if project_type == 'addon':
-                    # 新构建器保留源包目录名；分发包仍遵循 PR 的 name_bp/name_rp 约定。
-                    for kind, suffix in (('behavior', 'bp'), ('resource', 'rp')):
-                        folder = getattr(builder.target_addon, kind + '_pack_dir')
-                        # 网易上传错误码24检查行为包entities目录；纯脚本Addon也保留
-                        # 空目录条目，不创建虚构实体，不修改项目源码或外层包名。
-                        if kind == 'behavior' and folder and Path(folder).is_dir():
-                            (Path(folder) / 'entities').mkdir(exist_ok=True)
-                        _zip_dir_keep_empty(zipf, folder, f'{name}_{suffix}')
-                else:
-                    _zip_dir_keep_empty(zipf, output, '')
-            os.replace(archive, destination)
+        from ..project_scripts import before, configured, validate_build
+        if configured(source):
+            validate_build(source, source/'dist'/'_script_preflight')
+        with before(source, 'before_package') as scripts:
+            dist = source / 'dist'
+            dist.mkdir(exist_ok=True)
+            destination = dist / f'{name}-{version}.zip'
+            # 临时构建与 ZIP 独立于现有产物，全部成功后才替换同版本分发包。
+            with tempfile.TemporaryDirectory(prefix='_temp_package_', dir=dist) as temporary:
+                output = Path(temporary) / 'build'
+                builder = (AddonProjectBuilder(source, output) if project_type == 'addon'
+                           else MapProjectBuilder(source, output, merge))
+                success, error = builder.build()
+                if not success:
+                    raise click.ClickException(f'构建失败: {error}')
+                archive = Path(temporary) / 'package.zip'
+                with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    if project_type == 'addon':
+                        # 新构建器保留源包目录名；分发包仍遵循 PR 的 name_bp/name_rp 约定。
+                        for kind, suffix in (('behavior', 'bp'), ('resource', 'rp')):
+                            folder = getattr(builder.target_addon, kind + '_pack_dir')
+                            # 网易上传错误码24检查行为包entities目录；纯脚本Addon也保留
+                            # 空目录条目，不创建虚构实体，不修改项目源码或外层包名。
+                            if kind == 'behavior' and folder and Path(folder).is_dir():
+                                (Path(folder) / 'entities').mkdir(exist_ok=True)
+                            _zip_dir_keep_empty(zipf, folder, f'{name}_{suffix}')
+                    else:
+                        _zip_dir_keep_empty(zipf, output, '')
+                os.replace(archive, destination)
     except (OSError, ValueError) as exc:
+        from ..project_scripts import ScriptError
+        if isinstance(exc, ScriptError):
+            raise
         raise click.ClickException(f'打包失败: {exc}') from exc
 
     click.secho(f'✅ 打包成功！分发文件路径: {destination}', fg='green')
-    return {'artifact': str(destination)}
+    return {'artifact': str(destination), **({'scripts': scripts} if scripts else {})}
 
 
 def _zip_dir_keep_empty(zipf, src_dir, dst_root):

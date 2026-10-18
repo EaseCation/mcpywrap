@@ -27,6 +27,10 @@ def capabilities(command, remote=None, local=False):
     local_flag = ['--local'] if '--local' in help_text else []
     run_help = invoke([command, 'run', '--help']).stdout
     features = ['project', 'json', 'sessions', 'package']
+    if re.search(r'^\s+script\s', help_text, re.M):
+        script_help = invoke([command, 'script', '--help'])
+        if script_help.returncode == 0 and all(re.search(r'^\s+'+name+r'\s', script_help.stdout, re.M) for name in ('list', 'run')):
+            features.append('project-scripts')
     add_help = invoke([command, 'add', '--help']).stdout
     if '--git' in add_help and '--ref' in add_help:
         features.append('git-dependencies')

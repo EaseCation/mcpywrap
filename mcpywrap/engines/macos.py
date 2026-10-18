@@ -18,6 +18,11 @@ def instances(project):
     found = []
     for path in root.glob('*/instance.json'):
         item = install.read_json(path)
+        from ..runtime.storage import read
+        meta = read(Path(project)/'.runtime/instances'/(item['level_id'] + '.json'), {})
+        saved = (path.parent/'data/minecraftWorlds'/item['level_id']/'level.dat').is_file()
+        item['state'] = ('ready' if meta.get('last_ready_at') else 'legacy_existing' if saved and not meta
+                         else meta.get('state', 'unverified'))
         item['config_path'] = str(path.with_name('world.cppconfig'))
         if Path(item['config_path']).is_file():
             from ..mcstudio.runtime_cppconfig import read_cppconfig
@@ -28,14 +33,14 @@ def instances(project):
 
 def active_session(project, level_id):
     from ..mcstudio import sessions
-    for path in (Path(project)/'.runtime/sessions').glob('*/session.json'):
-        data = sessions.read(project, path.parent.name)
-        if data.get('backend') == 'macos-arm64' and data.get('level_id') == level_id:
+    from ..runtime import occupancy
+    for record in occupancy.active(project):
+        if record.get('backend') == 'macos-arm64' and record.get('level_id') == level_id:
+            data = sessions.read(project, record['session'])
             if data['state'] in ('starting', 'running'):
                 return data
-            from ..mcstudio.processes import checked_process
-            if data.get('game') and checked_process(data['game']):
-                raise EngineError('旧会话进程尚未退出。', 'busy', '先 stop --session ' + data['session'] + '，确认退出后再启动。')
+            raise EngineError('旧会话尚未正常退出。', 'recovery_required',
+                              '先 stop --session ' + data['session'] + '，确认退出后再启动。')
     return None
 
 
@@ -68,7 +73,8 @@ def pinned_runtime(item):
     application = optional_runtime_application(app, game)
     return {'runtime': str(app), 'application': str(application), 'game': str(game), 'profile': plan['profile'], 'runtime_id': plan['runtime_id'],
             'compat_report': compatibility, 'cppconfig_protocol': meta.get('cppconfig_protocol'),
-            'network_connect_protocol': meta.get('network_connect_protocol')}
+            'network_connect_protocol': meta.get('network_connect_protocol'),
+            'developer_identity_protocol': meta.get('developer_identity_protocol')}
 
 
 def run(project, *, new=False, listing=False, delete=None, clean_all=False, force=False,
@@ -77,8 +83,8 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
     from ..dependencies import read_project
     from ..command_context import json_output, human_interaction
     from ..mcstudio import sessions
-    from ..remote.service import directory_lock
-    from ..mcstudio.runtime_cppconfig import prepare_cppconfig, creation_settings, saved_world_settings
+    from ..utils.locks import directory_lock
+    from ..mcstudio.runtime_cppconfig import creation_settings
     if world_config is not None:
         if not new or instance_prefix or listing or delete or clean_all:
             raise EngineError('自定义世界配置仅用于新建实例', 'invalid_world_options')
@@ -119,15 +125,24 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
         return {'deleted': [item['level_id'] for item in targets], 'backend': 'macos-arm64'}
     if json_output() and not detach:
         raise click.UsageError('run --json 需要 --detach；通过 status/logs/stop 管理会话')
-    from ..builders.project_builder import AddonProjectBuilder
     with directory_lock(Path(project)/'.runtime/macos'):
         items = instances(project)
-        item = _match(items, instance_prefix) if instance_prefix else (items[0] if items and not new else None)
+        available = [item for item in items if item['state'] in ('ready', 'legacy_existing')]
+        if items and not new and not instance_prefix and not available:
+            raise EngineError('没有成功进入过世界的可用实例。', 'instance_not_ready',
+                              '使用 run ' + items[0]['level_id'] + ' 重试，或 --new 新建。')
+        item = _match(items, instance_prefix) if instance_prefix else (available[0] if available and not new else None)
         if item:
             current = active_session(project, item['level_id'])
             if current:
+                from ..runtime.deployment import matches_source
+                if current['state'] == 'starting':
+                    current = sessions.wait_started(project, current['session'])
+                if overrides.get('engine_version') and overrides['engine_version'] != current['launch']['engine_version']:
+                    raise EngineError('已有会话的引擎与请求不同。', 'session_conflict')
                 return dict(sessions.handoff(current), already_running=True,
-                            hint='已复用运行中的实例；修改 Mod 后请先 stop，再 run 以重新部署。')
+                            source_matches=matches_source(project, current),
+                            hint='已复用运行中的实例；未执行预处理，修改 Mod 后请先 stop，再 run 以重新部署。')
             state = item['installation']
         else:
             state = ensure_runtime()
@@ -152,45 +167,18 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                         'config_path': str(directory/'world.cppconfig')}
                 install.write_json(directory/'instance.json', {k: v for k, v in item.items() if k != 'config_path'})
             directory = Path(item['config_path']).parent
-            builder = AddonProjectBuilder(project, directory/'assembled')
-            success, error = builder.build()
-            if not success:
-                raise EngineError(error, 'build_failed')
-            # Normalize the builder's configured pack directory names for the existing
-            # launcher helper; no second dependency resolver or Mod entry generator.
-            import tempfile
-            stage = Path(tempfile.mkdtemp(prefix='.packs-', dir=directory))
-            try:
-                for kind in ('behavior', 'resource'):
-                    pack = Path(getattr(builder.target_addon, kind + '_pack_dir'))
-                    if pack.is_dir(): (stage/(kind + '_pack')).symlink_to(pack.resolve(), target_is_directory=True)
-                if (directory/'packs').exists(): shutil.rmtree(directory/'packs')
-                stage.rename(directory/'packs')
-            finally:
-                if stage.exists(): shutil.rmtree(stage)
             plan = {'runtime': state['runtime'], 'game': state['game'], 'data': str(directory/'data'),
                     'application': state.get('application'),
                     'cache': str(directory/'cache'), 'engine_version': version,
-                    'compat_report': state.get('compat_report')}
-            config_path = Path(item['config_path'])
-            if supports_config:
-                legacy = None
-                if not config_path.exists() and world_config is None and (directory/'data').exists():
-                    # Migrate the actual saved world, not today's tool defaults.
-                    legacy = {'world_info': saved_world_settings(directory/'data/minecraftWorlds'/item['level_id']/'level.dat')}
-                prepare_cppconfig(config_path, version, item['name'], item['level_id'], '',
-                    config.get('project', {}).get('name', 'project'),
-                    [str(directory/'packs/behavior_pack')] if (directory/'packs/behavior_pack').is_dir() else [],
-                    [str(directory/'packs/resource_pack')] if (directory/'packs/resource_pack').is_dir() else [],
-                    world_config if world_config is not None else legacy)
-                plan['cppconfig'] = str(config_path)
-            else:
-                # Existing immutable runtimes still use the previous launch protocol.
-                # Never pretend they can apply edited cppconfig settings.
-                if config_path.exists():
-                    raise EngineError('此运行包不能读取 cppconfig，请安装新版并新建实例。', 'runtime_incompatible')
-                plan.update(packs=str(directory/'packs'), world_id=item['level_id'], world_name=item['name'])
-                config_path = directory/'instance.json'
+                    'compat_report': state.get('compat_report'),
+                    'prepare_world': {'supports_config': supports_config, 'name': item['name'],
+                                      'settings': world_config, 'package': config.get('project', {}).get('name', 'project')}}
+            config_path = directory/('world.cppconfig' if supports_config else 'instance.json')
+            from ..runtime import instances as records
+            records.attempt(project, dict(item, creation_time=item['created_at']), None, world_config)
+            if world_config is None and not config_path.exists():
+                from ..runtime.storage import read
+                plan['prepare_world']['settings'] = read(records.record_path(project, item['level_id']), {}).get('creation_settings')
             data = sessions.start(project, str(config_path), item['level_id'],
                                   backend='macos-arm64', launch=plan)
     result = sessions.handoff(data)
@@ -207,7 +195,7 @@ def launch_session(data):
         from ..mcstudio.network import ServerTarget, unauthenticated_config
         config = unauthenticated_config(
             SimpleNamespace(version=plan['engine_version'], download_dir=plan['game']),
-            ServerTarget(**data['network']['target']))
+            ServerTarget(**data['network']['target']), data['network'].get('player'))
         install.write_json(Path(plan['cppconfig']), config)
     app = Path(plan['runtime'])
     helper = app/'Contents/Resources/launcher/run_netease_dev.py'
@@ -272,6 +260,11 @@ class MacOSBackend(GameBackend):
         from .macos_network import connect
         return connect(target, **options)
 
+    def prepare_guest(self, host):
+        raise EngineError('当前 macOS 运行包尚未完成本地卡片加入适配，未启动联调组。',
+                          'local_join_unavailable',
+                          '单客户端和已支持的外部服务器连接仍可使用；需要具备本地菜单联机能力的运行包。')
+
     def watch_directory(self, project, data):
         return Path(data['config_path']).parent/'assembled'
 
@@ -279,39 +272,40 @@ class MacOSBackend(GameBackend):
         return [dict(item, creation_time=item['created_at']) for item in instances(project)]
 
     def deploy(self, project, data):
-        from ..builders.project_builder import AddonProjectBuilder
-        from ..remote.service import directory_lock
-        directory = Path(data['config_path']).parent
-        with directory_lock(directory/'deploy-lock'):
-            builder = AddonProjectBuilder(project, directory/'assembled')
-            success, error = builder.build()
-            if not success: raise EngineError(error, 'build_failed')
-            for kind in ('behavior', 'resource'):
-                source = Path(getattr(builder.target_addon, kind + '_pack_dir'))
-                if not source.is_dir(): continue
-                identity = str(uuid.UUID(install.read_json(source/'manifest.json')['header']['uuid']))
-                target = Path(data['launch']['data'])/'games/com.netease'/(kind + '_packs')/('dev_' + identity)
-                if not target.is_dir():
-                    raise EngineError('包标识已变化，请保存退出后重新运行。', 'restart_required')
-                if target.is_symlink():
-                    if target.resolve() != source.resolve():
-                        raise EngineError('运行包链接与组装目录不匹配，请重新运行实例。', 'restart_required')
-                    continue
-                # Compatibility for older runtimes: atomically update their copied packs.
-                wanted = set()
-                for path in source.rglob('*'):
-                    if not path.is_file(): continue
-                    relative = path.relative_to(source); wanted.add(relative)
-                    dest = target/relative
-                    if dest.is_file() and dest.read_bytes() == path.read_bytes(): continue
+        from ..runtime.deployment import refresh
+        pack = refresh(project, data)
+        self.sync_runtime_packs(data, pack)
+
+    def sync_runtime_packs(self, data, pack):
+        # Older native runtimes copy packs instead of linking them. Preserve
+        # that protocol while publishing files through one guarded entry point.
+        for kind in ('behavior', 'resource'):
+            source = Path(getattr(pack, kind + '_pack_dir'))
+            if not source.is_dir(): continue
+            from ..mcstudio.deployment_links import pack_uuid
+            identity = pack_uuid(source)
+            target = Path(data['launch']['data'])/'games/com.netease'/(kind + '_packs')/('dev_' + identity)
+            if not target.is_dir():
+                raise EngineError('包标识或运行包发生变化，请重新运行。', 'restart_required')
+            if target.is_symlink():
+                if target.resolve() != source.resolve():
+                    raise EngineError('运行包链接发生变化，请重新运行。', 'restart_required')
+                continue
+            from ..runtime.deployment import inventory
+            before, after = inventory(target), inventory(source)
+            for name, digest in after.items():
+                if name.endswith('/'):
+                    (target/name).mkdir(parents=True, exist_ok=True)
+                elif before.get(name) != digest:
+                    dest = target/name
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     temporary = dest.with_name('.mcpy-' + uuid.uuid4().hex)
                     try:
-                        shutil.copy2(path, temporary); temporary.replace(dest)
+                        shutil.copy2(source/name, temporary); temporary.replace(dest)
                     finally:
                         temporary.unlink(missing_ok=True)
-                for path in target.rglob('*'):
-                    if path.is_file() and path.relative_to(target) not in wanted: path.unlink()
+            for name in before.keys() - after.keys():
+                if not name.endswith('/'): (target/name).unlink()
 
     def reload_restriction(self, data, kind):
         launch = data.get('launch') or {}
@@ -368,9 +362,29 @@ else:
 
     def launch(self, data, receiver, auth_context=None):
         from .preferences import NativePreferences
-        self.preferences = NativePreferences(data['project'], data['launch']['data'],
-                                             install.home()/'preferences/macos').prepare()
-        return LaunchedGame(launch_session(data), capture_output=False)
+        if data.get('mode') == 'local':
+            self.preferences = NativePreferences(data['project'], data['launch']['data'],
+                                                 install.home()/'preferences/macos').prepare()
+            from ..runtime.native import launch_world
+            return launch_world(data, launch_session)
+        from contextlib import ExitStack
+        from ..mcstudio import sessions
+        guard = ExitStack()
+        try:
+            if data.get('group'):
+                from ..runtime.profiles import PlayerProfile
+                profile = PlayerProfile(data)
+                guard.enter_context(profile.lease())
+                profile.prepare()
+            self.preferences = NativePreferences(data['project'], data['launch']['data'],
+                                                 install.home()/'preferences/macos').prepare()
+            sessions.require_launch_requested(data['project'], data['session'])
+            data['phase'] = 'prepared'
+            sessions.save(directory/'session.json', data)
+            return LaunchedGame(launch_session(data), capture_output=False, guard=guard)
+        except BaseException:
+            guard.close()
+            raise
 
     def finish(self, data):
         if getattr(self, 'preferences', None):

@@ -1,87 +1,68 @@
-# Apple Silicon macOS 本地测试
+# Apple Silicon macOS：资源与平台差异
 
-先执行 `mcpy --local doctor --capabilities --json`。必须实际报告 `macos-local-worlds`；不要仅凭存在 run 命令推断支持。功能可用与资源就绪分别看 capabilities、resources_ready。Intel Mac 不支持原生本地后端；Apple Silicon 上的 Rosetta Python 仍可启动 arm64 游戏。
+仅在安装/升级资源、解释平台能力或引擎限制时读本页。普通启动、世界保留和部署规则见[本地生命周期](local-development.md)，不用为 macOS 编写另一套日常操作流程。
 
-```sh
+## 安装与检查
+
+```text
+mcpy --local doctor --capabilities --json
 mcpy --local engine doctor --json
-mcpy --local --non-interactive engine install --json  # 可选：提前准备；run 也会自动安装
-mcpy --local --project <Addon项目> --non-interactive run --no-gui --detach --json
+mcpy --local --non-interactive engine install --json
 ```
 
-mcpy 内置 EaseCation 的固定 HTTPS 启动器发布源；首次 run 自动通过网易 pe 发现并下载最新开发者 APK，不向用户索要 catalog 或 APK 路径。显式 --catalog、MCPY_RUNTIME_CATALOG 和已保存来源优先于默认值，适合开发者覆盖；--apk 只用于已有匹配 APK 的离线导入。下载和提取进度在 stderr，--json 的 stdout 保持单个结果对象。失败时按实际网络/校验/空间错误处理，不反复猜 URL 或改用未经适配的上游启动器。
+需要 macos-local-worlds 能力；Intel Mac 不支持原生本地后端，Apple Silicon 上的 Rosetta Python 可启动 arm64 游戏。engine install 是可选的提前准备；首次 run 资源缺失时会自动安装，不要求用户提供 catalog 或 APK。
 
-默认资源目录为 ~/Library/Application Support/mcpy，MCPY_ENGINE_HOME 可隔离。无需 Homebrew、Wine、已安装的 Launcher 或 MPay 账号。发布目录中的 APK profile 只是构建验收基线。正式目录声明 apk_source=netease-pe；首次安装动态发现完整版本和 URL，从实际 APK 校验开发者身份与 ARM64 核心、计算摘要，再做结构兼容检查。官方首次下载没有预先发布的可信 SHA-256；HTTPS 来源、ETag 分段一致性、ZIP 校验和结构检查通过后记录摘要，后续缓存/运行按该摘要校验。
+默认通过固定 HTTPS 启动器发行源及网易 pe 动态发现开发者 APK。显式 --catalog、MCPY_RUNTIME_CATALOG 或已保存来源优先；--apk 仅用于已有匹配 APK 的离线导入。下载/提取进度写 stderr，stdout JSON 保持独立。
 
-支持离线 Addon 世界和源码 Python Mod，使用既有项目构建/依赖能力。支持 cppconfig_protocol=1 的新运行包可按实例选择地形、模式、难度、种子及规则，见[实例世界设置](instance-world-settings.md)；旧运行包仍使用原来的平坦创造启动参数。默认重开最新实例，--new 新建；run --list 列出，run <ID前缀> 指定。项目 .runtime/macos/instances 保存世界，每个实例固定运行包与 APK。安装新版不会迁移原世界；发现版本不匹配时说明原因，不自动删除/重建。已有实例的 Mod 修改需先 stop 再 run，运行中再次 run 只返回现有会话。
+资源默认位于 `~/Library/Application Support/mcpy`，MCPY_ENGINE_HOME 可隔离测试。无需 Wine、Homebrew 游戏环境、MPay 账号或安装另一套 Launcher。网络、校验、空间或结构检查失败按原错误处理，不猜 CDN 版本路径，不关闭系统保护。
 
-run 返回进程启动，随后 status 的 world_ready=true 表示已观察到 HUD；还需验证客户端/服务端日志和实际玩法。日志使用 logs --source engine/game/worker。源码构建通过并不证明服务端 Mod 执行。
+官方动态 APK 初次下载没有预发布可信摘要；工具在来源、下载一致性、归档和结构检查后记录实际摘要。不能把缓存校验误说成官方签名身份背书。最低声明 macOS 13.0；已记录游戏实测为 26.6.2，运行包 ad-hoc 签名未公证，不能据此保证最低系统/Gatekeeper 全部通过。
 
-```sh
-mcpy --local --project <项目> runtime py --session <sid> --side client --code "print('client probe')" --json
-mcpy --local --project <项目> runtime py --session <sid> --side server --code "print('server probe')" --json
-mcpy --local --project <项目> stop --session <sid> --json
+## 实例固定版本与升级
+
+每个世界实例固定运行包与 APK；engine install 不迁移既有世界。旧实例继续使用旧资源，新能力通常需要升级后 run --new。若用户要保留世界，先说明绑定与能力限制，不擅自删除重建或直接改旧实例的版本号。
+
+```text
+mcpy --local engine check-updates --json
 ```
 
-客户端使用 launcher-jni，启动期间可以 --no-wait 提交并用 runtime py-result 按 request_id 查询；--wait-until 是无副作用的客户端 Python 就绪表达式。超时先查原请求，勿重复提交有副作用代码。服务端仍走原有 Safaia，仅进入世界后可用，不给服务端加客户端队列参数。runtime install/ui/player 继续通过公共客户端通道工作；注入的 mcpy.* 仍严格仅用于临时调试。
+此命令只发现网易 pe/pe_old 的真实版本和 URL，不下载；compatibility=not_checked 不能当作可运行。首次安装已会查询 pe，无需为了普通启动先检查更新。
 
-暂不支持本地 Map、MCS 身份、MCEditor 及 Windows screenshot/key/mouse/input-sequence/record。需要它们时使用显式 Windows --remote，不静默回退或尝试登录。macOS 前台 run 的 Ctrl+C 请求保存退出；一次性测试结束必须 stop 并确认进程退出，关闭自己创建的窗口。
+已知发布基线为 CLI 0.4.6 默认运行包 0.4.4。需要升级到这套已知资源时可明确指定：
 
-最低版本为 macOS 13.0，游戏实测仅 26.6.2；包目前 ad-hoc 签名，未公证，不宣称已验证最低系统或 Gatekeeper。失败时提供实际错误及日志，不能建议全局关闭系统保护。
-
-
-Windows 与 macOS 共用 PySide6 界面：人工使用 `mcpy --local --project <项目> ui`；人工 run 默认只显示游戏和紧凑调试小窗，Agent 使用 --non-interactive run --no-gui --detach --json。界面提供依赖管理、Mod 模板、实例、运行资源引导、Debug 日志、双端 Python、文件热更、自动监控、保存退出和重新部署重载世界。MCEditor 在 macOS 明确禁用。
-
-`runtime watch --session <sid> --side client|server|both` 与 GUI 共用监控服务，停止监控保留游戏。模块热更只对已加载模块执行源码，修改实例方法、事件注册、新增入口或资源应保存重载世界，避免重复注册。both 仅适合可安全重复执行的公共模块。
-
-新运行包声明 addon_link_protocol=1 时，行为包/资源包软链接到实例 assembled 目录，多依赖仍由统一组装器合并；不复制第二份运行包。旧运行包固定在原实例，保留复制兼容流程。Qt 与原生启动器有各自的系统下限：本机 Qt 6.11.2 的 Mach-O 最低 macOS 13.0，正式原生运行包也统一要求 macOS 13.0；最低版本的实际游戏表现仍需单独验证。
-
-人工交互式 mcpy run 或通过 mcpy ui 启动游戏后自动出现可折叠、可置顶的彩色日志小窗，与主界面共享会话、日志和监控。关闭小窗只隐藏视图；结束测试仍使用 stop 或“保存退出”，不能把小窗消失当成游戏已退出。新会话不要另起 studio_server_ui --port 监听器。
-
-当前开发包 3.9.100.297020 的资源热更范围：已有微软粒子 JSON 更新后新建发射器已实测生效，回执仍只为 triggered/effect_verified=false；新增粒子文件未被识别时需重载世界。JSON UI 使用声明 json_ui_reload_protocol=1 的新运行包（local6 起），通过同一个 runtime reload ui 命令更新定义；旧包的 Ctrl+R 仍无效，安装新版后需显式启动新实例。原生重载会使现有自定义控件失效，此 APK 不触发 UiInitFinished；需按 Mod 原有逻辑重新 RegisterUI/CreateUI 和绑定回调，不使用旧控件句柄，也不把调试模块 _mcpy_launcher 写入业务代码。只验证了现有文件中的定义变化；新文件/复杂继承需单独验收。材质和 Metal Shader 仍返回 unsupported，不使用 ForceReloadResourcePack 绕过提示。True/triggered 只是已投递，不证明解析成功或界面已更新；错误 JSON 也可能被接受，需核对实际画面和文字。
-
-日常开发和 AI 操作遵循 [Windows/macOS 公共无交互流程](local-development.md)，不需要编写平台专用脚本。上述安装与引擎限制是后端差异，run/status/logs/runtime/stop 的调用方式相同。
-
-FPS/VSync、画质、GUI 缩放、音量和输入偏好由 mcpy worker 按用户保存并在新会话导入，位置是引擎资源根目录下的 `preferences/macos`。这些不是 cppconfig 世界设置；不要为每个新实例重新配置。运行中的其他实例不会即时跟随，重开时读取最新值；先正常保存退出以确保游戏完成原生配置写入。
-
-版本发现使用 `mcpy --local engine check-updates --json`：实时查询网易 pe/pe_old，返回真实完整版本和 URL；不得递增版本号或猜测 CDN 路径。该命令只检查，不下载或替换实例。新版本 compatibility=not_checked 需实际 APK 校验与结构兼容检查，不能把“发现版本”当作“可运行”。无需先执行此命令：首次 run 的自动安装已经查询 pe。已有本地版本/实例继续运行；缺失的旧版本若不在官方频道中则不可下载，不猜 CDN 路径。
-
-## 无认证服务器连接
-
-已安装旧运行包时，先正常结束自己的会话，再升级资源并重新 connect：
-
-```sh
-mcpy --local engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.4/catalog.json
-```
-
-此命令仍通过网易 pe 发现当前 APK；保留旧资源和原世界绑定。connect 使用当前已选资源，旧单人实例继续使用原运行包。
-
-需要 CLI 0.4.3+ 和原生运行包 0.4.3+（声明 `network_connect_protocol=1`）。首次安装使用配套运行包；旧 0.4.0 运行包需要显式升级，更新 CLI 不会替换已有世界的绑定。`doctor --capabilities` 的 network-sessions 表示后端入口，实际 connect 还会核对运行包；旧包返回 runtime_incompatible，不切换到单人世界。
-
-```sh
-mcpy --local --project <已有会话目录> --non-interactive connect 127.0.0.1 --port 19132 --detach --json
-mcpy --local --project <同一目录> status --session <sid> --json
-mcpy --local --project <同一目录> runtime py --session <sid> --side client --code "print('network client')" --json
-mcpy --local --project <同一目录> stop --session <sid> --json
-```
-
-connect 不读取项目配置；固定目标可以在项目 `[tool.mcpywrap.server]` 中设置 host/port，再使用同一套 `run --no-gui --detach --json`。网络会话不会创建世界实例或装配本地 Mod；不能组合 --new/实例 ID/世界选项。每次连接独立保存数据和日志，共享用户画面及输入偏好。
-
-`running` 仅表示进程已启动。macOS `connection_verified=true` 表示此会话曾观察到进入 HUD，并非持续在线探活，也不表示已通过身份认证；需要当前状态时用客户端 Python/日志验证。90 秒未进入 HUD 会失败并关闭本次游戏。失败后检查 logs --source engine/worker、服务端日志、协议版本及离线配置，不尝试账号登录。
-
-仅支持客户端 Python 与 runtime install；游戏内输入另查当前会话 capabilities（旧 C++ 运行包可能缺少统一输入所需的单调时钟），不因注入成功就断言输入可用。服务端 Python 与本地 Mod 热更禁用，服务端逻辑仍由服务器管理。3.10.100.299889 已用本机 Nemisys + SynapseAPI + Nukkit 验证无认证进服；测试端须关闭 Nemisys xbox-auth 并按 SynapseAPI 的调试开关强制 NetEase 玩家。不能推断公开服务器或其他版本一定接受连接。当前网络策略允许目标 UDP 端口和 DNS，不包含外部 HTTP 资源包下载；需要这种资源分发的服务器尚未验收。
-
-## 统一输入时钟修复（CLI 0.4.6 / 运行包 0.4.4）
-
-旧运行包的游戏内 Python 2 缺少单调时钟，统一输入返回 `missing_monotonic_clock`。
-CLI 0.4.6 默认选择运行包 0.4.4；已有安装仍保留原来源与世界绑定，需要显式升级：
-
-```sh
+```text
 mcpy --local --non-interactive engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.4/catalog.json --json
-mcpy --local --project <项目> --non-interactive run --new --no-gui --detach --json
-mcpy --local --project <项目> runtime install --session <新会话> --json
-mcpy --local --project <项目> runtime input capabilities --session <新会话> --json
 ```
 
-确认 `clock_source=launcher.steady_clock` 和所需动作的 `supported=true`。仅升级 CLI、
-重新注入旧会话或重开旧实例都不会替换原生运行包。macOS 26.6.2 / 开发包3.9.100.297020
-的计时、移动跳跃、取消释放、攻击、聊天和UI点击已实测通过；3.10.100.299889完成结构检查。
+此 catalog 仍按其来源规则发现 APK，不等于固定旧 APK。旧版本若不在官方频道无法下载时，报告缺失，不猜 URL。更新 CLI/Skill 或重新 runtime install 都不能替换原生包。
+
+## 平台能力边界
+
+| 能力 | 当前边界 |
+|---|---|
+| 本地世界 | Addon；Map 尚未接入。Map 需 Windows 本地运行，远程服务不提供世界实例 |
+| 世界参数 | 运行包 cppconfig_protocol=1；选项见[世界设置](instance-world-settings.md) |
+| 游戏 Python | 本地 client/server；客户端队列需 python.client_queue，使用见[运行时调试](runtime-debug.md) |
+| 无认证网络 | 运行包 0.4.3+ 且 network_connect_protocol=1；服务器须允许开发客户端 |
+| 本地主客机 | 尚不支持；缺 local-dual-client-manual 时启动前拒绝 |
+| 双外服客户端 | 需要独立开发身份协议的原生包；已做候选实验不代表公开 0.4.4 已具备，按实际能力拒绝或使用已明确选择的构建 |
+| MCS 身份 / MCEditor | macOS 不支持；MCS 网络身份可由 Windows 服务提供，编辑器必须 Windows 本机 |
+| 桌面截图/录制/原始设备输入 | macOS 不提供 Windows 接口；远程可针对 Windows 会话使用，不回退操作 Mac 桌面 |
+
+网络使用与结果判断见[网络会话](network-sessions.md)。3.10.100.299889 曾在本机允许无认证的 Nemisys/SynapseAPI/Nukkit 测试栈验证进服，不能推及公开服务器。当前网络运行包对外 HTTP 资源包下载未完成验收；需要这类分发时不能宣称完整支持。
+
+## 游戏输入与资源重载
+
+- 运行包 0.4.4 提供单调时钟，目标会话应报告 clock_source=launcher.steady_clock。旧包 missing_monotonic_clock 需明确升级并新建实例，不替换为 CPU/墙钟或旧输入协议。统一输入步骤见[输入页](runtime-input.md)。
+- 输入计时、移动跳跃、取消释放、攻击、聊天和 UI 点击已在 26.6.2 / 开发包 3.9.100.297020 验证；3.10.100.299889 的时钟适配记录为结构检查，不能说成同等游戏输入实测。
+- JSON UI 需要 json_ui_reload_protocol=1；旧包 Ctrl+R 无效。重载后须重新创建业务界面和回调，不依赖 UiInitFinished 自动重建。3.9.100.297020 与 3.10.100.299889 已有定义重载验证，新文件/复杂继承仍需单独确认。
+- 已有微软粒子文件更新后检查新建发射器；新增粒子可能需要重开世界。Material/Metal Shader 当前返回 unsupported，不通过宽泛资源刷新接口绕过。
+- 原生结构预检失败返回 unsupported_engine_structure；JSON UI 的局部定位失败可只关闭该能力。发现新 APK 不自动启用未验证的资源接口。
+
+重载语义、端侧和实际效果验收统一见运行时调试页，不把 triggered 当作画面成功。
+
+## 用户偏好与运行文件
+
+画面、音量、GUI 缩放和输入偏好由 worker 按用户保存到资源根 `preferences/macos`，新会话导入；它们不是 cppconfig 世界设置，运行中的其他实例不即时跟随。正常退出以便原生配置写回。
+
+addon_link_protocol=1 的运行包读取实例 assembled 目录；旧包有复制兼容流程。不要修改内部链接、直接写 assembled 或开启额外监听器。Qt 与 CLI 共用会话服务，窗口关闭与停止游戏的规则见本地生命周期页。

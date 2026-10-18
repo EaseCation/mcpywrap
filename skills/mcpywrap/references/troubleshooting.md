@@ -1,67 +1,74 @@
-# 遇到问题时再读
+# 按现象定位，不重跑整条流程
 
-| 现象 | 下一步 |
+先保存目标 project/endpoint/session/group、退出码、error/code/hint 和日志位置，再选下表。查询状态不触发构建或预处理；unknown 不代表没执行。
+
+## 准备、部署与生命周期
+
+| 错误或现象 | 下一步 |
 |---|---|
-| 没有 `--project` 或 `status` | 当前 CLI 版本缺少能力；选择支持此 Skill 的版本或源码提交重新安装，不猜测参数。 |
-| uv 报 Python 版本链接失效 | Python bootstrap 用 `--python <本机解释器路径>`，PowerShell 用 `-Python <路径>`，避免依赖失效的次版本链接。 |
-| `init` 拒绝已有配置 | 直接使用现有项目，必要时执行 `sync`；不要删除配置来绕过保护。 |
-| 本地依赖结构无效 | 检查引用是否为 Addon 根目录，是否包含有 manifest 的行为包或资源包。 |
-| Python 依赖未安装 | 按错误提示执行明确的 `add "requirement"`。本地目录引用不会自动安装其包依赖。 |
-| 仅开发环境／游戏中 import 失败 | 包安装于工具环境，不会自动进入游戏；检查实际 Addon 内容、游戏解释器兼容性与加载日志。 |
-| 游戏包包含原生二进制 | 将开发依赖移出游戏包，或使用适配游戏的纯 Python 实现；不要删除校验或反复安装来绕过。 |
-| 游戏或皮肤未找到 | 先确认执行位置。远程任务在 Windows 上补齐资源／修改 serve 参数，不在 macOS 安装游戏或指定 Windows 路径。 |
-| 指定版本不存在 | 从 doctor 的候选中选择用户认可的完整版本，不静默升级。 |
-| 游戏启动失败或超时 | 查看会话状态、`worker.log`、SDK 的 `game.log` 和引擎的 `engine.log`；避免无依据重复启动。 |
-| PID 身份不匹配 | 不终止该进程；会话可能过期，重新确认目标。 |
-| 运行正常但没有加载证据 | 查找日志标记或查看会话截图；本机可使用 Computer Use，远程用下载的图片；不能以进程存活判定加载成功。 |
-| unauthorized | 检查两端 MCPY_REMOTE_TOKEN；它和 MCS 登录无关。 |
-| remote_unavailable / protocol_mismatch / capability_missing | 检查 Windows 服务地址与相应端版本；不回退本机或反复升级到同一旧版本。 |
-| JSON 失败 | 读取 `error/hint` 与 stderr；补齐缺少参数，不向 stdin 注入向导答案。 |
+| 缺少命令/选项/能力 | 核对实际 CLI 和目标 worker/运行包；见[安装](setup.md)，不靠更新 Skill 猜支持 |
+| init 拒绝已有配置 | 使用原项目，需要恢复依赖时 sync；不删配置 |
+| source_matches=true，但修改表格没生效 | 只比较当前包文件；接管会话没执行预处理，见[项目脚本](project-scripts.md) |
+| already_running | 已接管，不是重启/重新部署；按[生命周期](local-development.md)选择更新方式 |
+| busy / deployment_in_use / world_in_use | 同项目 status --list 查真实读者/世界占用；只停止自己拥有或用户指定的目标，不清锁 |
+| managed_output | build/dev 指向运行目录；改用独立构建目录，游戏更新走 runtime 或重新 run |
+| restart_required | 依赖、身份、布局等变化不能当前热更；停止相关读者后重开原世界，不靠 --new 绕过 |
+| source_changed | 装配期间输入变了；停止持续写入，稳定后重新发起，不无限重试 |
+| deployment_modified | 运行产物被外部改写；保留现场，核对改动和所属会话，不清空全局包 |
+| recovery_required | 进程身份/退出或事务恢复无法确认；保留恢复路径与日志，先查 status/worker/engine，不删记录或按进程名杀进程 |
+| instance_not_ready | 失败创建不是默认可用世界；按提示显式重试该实例，或用户确需新世界时 --new |
+| 游戏启动超时/响应丢失 | status --list 找回；观察者超时不获得取消别人启动的权限 |
+| PID 身份不匹配 | 不操作这个 PID；确认旧会话是否已结束，不能把复用 PID 当原游戏 |
+| 已退出但担心保存 | Windows 进程退出不保证世界保存；重要世界应先在游戏内正常保存 |
 
-`--non-interactive` 不禁止游戏窗口，`run --no-gui` 只关闭辅助 GUI。
-发布、卸载和实例删除分别使用其明确选项，非交互不等同于同意这些操作。
+## 双客户端与项目脚本
 
-## 截图与键盘输入
+| 错误或现象 | 下一步 |
+|---|---|
+| waiting_for_join | 客机等待用户点击指定局域网卡片；不要重开第二个独立世界 |
+| group_not_ready / 玩家未确认 | status --group 查成员与加入目标；有界等待，保留仍成功的主机 |
+| group_required | 用 group 更新；单 session 不能绕过组协调 |
+| resource_sync_unverified | 当前组资源热更不支持；重开整组并重新加入，不只更新主机 |
+| partial / 某成员失败 | 逐成员/端侧核验；仅重试合适的失败成员，不宣称整组回滚或整组成功 |
+| script_failed / script_timeout / script_cancelled | 查 script、script_exit_code、script_log；本次后续流程未继续，但源码可能已改 |
+| script_config_invalid / script_not_found | 核对主项目任务表、命令路径与工具解释器，不向游戏环境 pip install |
+| script_config_changed | 前置任务改了配置/锁/包身份/世界配置；先修任务，再显式重发 |
+| script_recursion | 不在脚本里递归调用 mcpy 写操作；组合逻辑放进脚本语言 |
+| script_recovery_required | 按 script_state 核对本次脚本进程与后代；未确认退出不删 active/锁记录 |
 
-新协议的迟到、unknown、busy与释放重试见 [统一输入](runtime-input.md#目标界面与清理)。以下仅为旧接口兼容处理：`input-sequence` 的迟到、批次部分提交与释放结果见 [编排失败处理](input-sequence.md#读结果与处理失败)。它没有玩家队列的动作 status；远程超时后不重复提交。
+用法分别见[双客户端](dual-clients.md)和[项目脚本](project-scripts.md)。外部生成器或已开启 watcher 可能消费脚本写到源码的半成品；暂停监控再处理，不能期待自动源码回滚。
 
-新游戏操作使用runtime input，按原operation_id查询status，并用observe判断实际效果；需要补图时用 `screenshot --background-only`。后台能力不可用时报告限制，不自动改用桌面键鼠。
-以下 key/mouse 故障处理仅适用于用户允许占用前台的桌面输入任务：兼容脚本传入本机 project、同一远端 endpoint 和 session，不能直接指定任意 PID。焦点失败时激活游戏；遮挡或屏幕外错误时调整窗口。游戏启动加载期可能暂时没有窗口，等待后重试。
-截图默认先尝试 Windows Graphics Capture 的后台客户区捕获；系统、窗口或游戏渲染不支持时会自动回退到可见客户区捕获，并在 JSON 中标记 `capture_fallback`。后台捕获不承诺最小化、锁屏、遮挡停止渲染或独占全屏场景；全黑时在 Windows 改用窗口化模式。本机可按环境能力使用 Computer Use，不能让 macOS 工具操作不可见的远端桌面。
-需要保持后台时必须保留 `--background-only`；捕获失败不移除该参数重试，也不激活或调整游戏窗口来绕过约束。
-窗口命令只负责发送输入；游戏不响应时先查看最新截图，不要直接追加重复按键。
+## 依赖与环境
 
-键名未覆盖时可用 VK/SC/E0 代码。Fn 等硬件层按键、Windows 安全组合键不能保证软件模拟；系统快捷键和媒体键可能由系统处理而非游戏。
-长按或组合移动时若游戏失去焦点，脚本会停止等待并释放本次按键。释放失败必须先检查键盘状态，不能直接重复动作。
+- 仅开发环境 / 游戏 import 失败：检查实际组装内容、入口和游戏解释器；不是反复 pip 安装的理由。Git/QuMod、跨平台锁与源码缓存问题见[依赖页](project-dependencies.md)。
+- 游戏包原生二进制：把工具依赖移出包，使用适配游戏的实现，不绕过校验。
+- uv Python 链接失效：bootstrap.py 用 --python <本机解释器>，PowerShell 用 -Python <路径>。
+- 找不到引擎/皮肤：本机 doctor；远端在 Windows 服务端准备资源和路径。macOS 原生资源错误见[平台页](macos-local.md)。
+
+## 网络与登录
+
+- unauthorized：检查 HTTP 服务两端 MCPY_REMOTE_TOKEN；不是 MCS 登录问题。
+- remote_unavailable / protocol_mismatch / capability_missing：检查 endpoint 和相应端版本，不回退本机。路径与启动规则见[远程执行端](remote-testing.md)。
+- component_unavailable：确认当前构建包含 Windows 原生登录组件；只有明确源码开发任务才去仓库开发文档构建，普通 Skill 用户不需要源码。
+- studio_unavailable：由用户登录 MC Studio；多个实例需明确目标。component_blocked 按策略错误报告，不自动装证书/关闭保护。
+- identity_provided、authenticated、connection_verified 属于不同验证阶段；按[网络会话](network-sessions.md)核对，不把任一字段当作全部业务成功。
+
+## 输入与截图
+
+新输入的 unknown/busy/释放失败，按[统一输入](runtime-input.md#目标界面与清理)查原 operation_id，修复后 input stop 重试释放，不重发计划。后台截图失败按[画面采集](capture.md#截图)报告限制，不自动抢前台或替换后端。
+
+只有继续旧脚本时读[兼容输入](input-writing.md)或[旧编排失败处理](input-sequence.md#读结果与处理失败)。原始设备操作确实允许前台时，才处理焦点、窗口尺寸/遮挡；不能让调用端桌面工具恢复不可见的远端窗口。
 
 ## 录制与提帧
 
-- `capability_missing`：检查执行端 doctor 的 media；源码安装先编译新版原生组件，发布安装需更新 Windows CLI；不通过安装 FFmpeg 修复系统录制能力。
-- `busy`：同会话已有录像，或产物正在下载／提帧。先查询任务，录制不占用键鼠输入锁。
-- `recording_timeout`：启动结果未知，用错误 hint 中的 ID 或 `record status --session <sid> --list` 找回；不要直接重复启动新任务。
-- `truncated=true`：读取 end_reason，可能提前 stop、最小化、游戏退出或采集停滞。可下载的短片只表示已成功封装。
-- `invalid_response`：传输或清单校验失败，目标不会发布；确认两端版本／服务后重新下载。视频结束不代表游戏逻辑验证成功。
-- `expired/deleted`：执行端临时产物已清理，调用端下载文件不受影响；24 小时内及时下载。
+- capability_missing：检查执行端 media/原生组件，不通过安装 FFmpeg 修复 Windows 系统录制能力。
+- busy：同会话已有录像或产物处理中，先查原任务；录制不占输入操作锁。
+- recording_timeout：用错误返回 ID 或 record status --session <sid> --list 找回，不立刻再录。
+- truncated：核对 end_reason；短片封装完成不证明业务完成。
+- invalid_response：校验失败未发布目标，检查两端后重试到新目标；expired/deleted 则源产物已清理。
 
-## 网络与登录组件
-
-- `connect --help` 没有 `--detach`：旧 CLI 只有前台网络连接，不能用于会话窗口脚本。显式选择具备网络会话的版本／源码后升级；不改脚本接受任意 PID。
-- 本机 connect 的 project 决定本机会话位置；远程 connect 的会话在 Windows serve data-dir。后续用返回的 endpoint/session/project，不把 remote_project 当成本机目录。
-- 远程启动必须 --detach，之后通过 stop 停止；只有本机网络支持前台 Ctrl+C 停游戏。
-- `doctor --mcs-auth --json` 的组件结果与游戏资源诊断分别报告。`component_available` 只表示文件具备；`trust_verified/login_verified` 为 false，不能推断证书可信或账号已登录。
-- `component_unavailable`：优先使用正式发布包。仓库不保存编译后的桥接组件，Git／可编辑安装可能缺失；只有源码开发任务才参考仓库的 `docs/mcs-auth.md` 构建，并设置 `MCPY_MCS_BRIDGE_DIR`。单独复制的 Skill 无需附带仓库文档。
-- `studio_unavailable`：由用户打开并登录 MC Studio；多个实例时明确目标。`component_blocked`：报告策略阻止，不自动安装证书或关闭保护。身份过期需重新登录并重启测试，当前不自动刷新。
-- `identity_provided=true` 表示已提供 MCS 身份，`authenticated=false`、`connection_verified=false` 表示工具尚未证明服务端认证／进服。按日志或界面验证，不把这些字段简单视为成功或失败。
-
-键盘使用 `+` 或空格表示同时按住，例如 `key W A --hold-ms 1000` 斜向移动，`key CTRL+W SPACE --hold-ms 500` 同时冲刺跳跃，实际效果依游戏设置。
-默认按住 80 ms；命名修饰键先按下，逆序释放，期间持续检查焦点。不提供跨调用持续 key-down。
-`VK:0xNN` 为 Windows 虚拟键，`SC:0xNN` 为物理扫描码，`E0:0xNN` 为扩展扫描码；OEM 键含义依键盘布局，`NUMPAD_ENTER` 与 `ENTER` 分开。
+完整操作与保留期见[画面采集](capture.md)。
 
 ## Windows 编码
 
-Skill 的 Python 脚本和 CLI 的 JSON 使用 ASCII 转义，`json.loads`／`ConvertFrom-Json` 会还原中文及特殊字符；不要对原始 JSON 文本查找中文日志标记。
-bootstrap.ps1 保留 UTF-8 BOM，以便 Windows PowerShell 5.1 正确读取源码，并显式使用 UTF-8 子进程管道；不要另存为 ANSI 或移除 BOM。
-脚本调用 Python CLI 时指定 UTF-8，接受可选 BOM。会话中的 SDK／引擎日志兼容 UTF-8、GBK/GB18030 输入，统一写成 UTF-8；按完整行解码后脱敏。
-PowerShell 5.1 的 `>`／`Out-File` 默认可能生成 UTF-16 文件，需另存 JSON 时显式用 `Out-File -Encoding utf8`，读取使用 UTF-8（允许 BOM），不要依赖系统默认编码。
-
-远程连接与鼠标操作的问题见[远程测试](remote-testing.md)。远端不可用不会切换为本机运行；macOS 上仅安装 CLI 客户端不需要 Qt 或 Windows 游戏。
+JSON 的 ASCII 转义由 json.loads/ConvertFrom-Json 还原，不对原始 JSON 查中文标记。脚本读写明确 UTF-8，接受 BOM；bootstrap.ps1 保留 UTF-8 BOM 和管道编码。PowerShell 5.1 的 > / Out-File 默认可能生成 UTF-16，写 JSON 明确 -Encoding utf8。SDK/引擎日志兼容 UTF-8、GBK/GB18030 输入，CLI 保存为 UTF-8。

@@ -1,40 +1,7 @@
-# 游戏运行时 Python 与热更
+# 运行时调试：维护者入口
 
-严禁业务代码依赖 `mcpy.*`：这些方法仅存在于临时注入的调试会话，正常游戏运行环境不提供它们；业务实现须使用正式 ModSDK 或项目框架。
+用户命令、端侧、结果状态和热更限制统一维护在内置 Skill 的 [运行时调试](../skills/mcpywrap/references/runtime-debug.md)。启动/世界/部署规则见 [本地生命周期](../skills/mcpywrap/references/local-development.md)，多人协调见 [双客户端](../skills/mcpywrap/references/dual-clients.md)。本页不再复制另一套操作说明。
 
-连接游戏后执行 `runtime install` 一次注入 `mcpy.ui` / `mcpy.player` / `mcpy.api`，再按文字节点或玩家状态操作。详见 [游戏内 UI 自动化](runtime-ui.md)和[玩家动作与连续队列](runtime-player.md)。
+实现定位：`mcstudio/runtime_debug.py` 管理游戏调试请求；`mcstudio/hot_reload.py` 和 `runtime/groups.py` 处理单会话/组更新；`runtime/watch.py` 观察源码事件；实际运行文件写入经 `runtime/deployment.py`。worker 按真实进程身份建立通道和归属，旧 worker 的能力不能由新版 CLI 推定。
 
-`mcpy runtime` 控制已启动的游戏会话。其中 `runtime py` 通过 MC Studio 游戏内置的 Safaia 调试协议执行 Python 2。Windows 会话 worker 按游戏 PID 定向发现连接，并把返回日志关联到请求 ID。无需加载调试 Mod；普通游戏日志仍保留在会话的 `game.log`。
-
-```powershell
-mcpy --local --project D:\mods\demo run --no-gui --detach --json
-mcpy --local --project D:\mods\demo runtime py --session <id> --side client --code "1+1" --json
-mcpy --local --project D:\mods\demo runtime py --session <id> --side server --file .\probe.py --json
-mcpy --local --project D:\mods\demo runtime reload python --session <id> --file .\behavior_pack\MyMod\config.py --json
-mcpy --local --project D:\mods\demo runtime reload python --session <id> --module MyMod.server.logic --side server --json
-mcpy --local --project D:\mods\demo runtime reload ui --session <id> --json
-mcpy --local --project D:\mods\demo runtime watch --session <id>
-```
-
-本地世界支持客户端和服务端脚本，远程联机会话仅支持客户端。远程 `serve` 默认必须配置 `MCPY_REMOTE_TOKEN`，调用端使用相同令牌；可信网络可显式使用 `serve --no-token` 关闭认证，并忽略已有令牌。`--file` 在调用端读取 UTF-8，不向 Windows 发送文件路径。
-
-`state=completed` 表示脚本返回；`failed` 包含异常；`unavailable` 表示连接未就绪；`unknown` 表示等待超时，代码可能继续运行，不能自动重试。同一会话的前一个未知请求结束前会拒绝新的脚本。执行结果限制 256 KiB，代码限制 32 KiB。
-
-Python 热更要求模块已加载，使用当前项目或已装配依赖包内的源码更新该模块命名空间。它不会自动重建已存在的类实例、事件订阅或游戏世界状态。`runtime watch` 只对成功组装的变更触发热更；停止监控不停止游戏。顶层 `py`、`reload` 和 `dev --reload-session` 暂时保留为旧脚本兼容入口，不再出现在常规帮助中。
-
-从0.3.13起，手动Python热更可显式`--side server`；默认client只适合客户端或不执行端侧API的纯逻辑模块。服务端模块在client上下文重新初始化可缓存无效组件，不能只检查模块执行成功。资源热更仅client；watch仍沿用client默认值。
-
-worker启动时在现有control.json声明`python_reload_sides`。服务端热更在建立执行连接前检查该字段；旧worker缺失能力时不会收到源码，须正常保存并重启会话。客户端热更保留旧worker兼容。返回端侧与请求不一致，或成功结果缺失端侧时，结果为unknown／reload_side_mismatch；可能已有副作用，不能自动重试。更新CLI不会替换正在运行的worker。
-
-## 已知资源限制
-
-| 引擎 | Python 执行 | Python 模块热更 | JSON UI | Particle | Material | Shader |
-|---|---|---|---|---|---|---|
-| 3.9.0.401155 | 客户端/服务端 | 已加载模块，可手动/自动更新 | triggered，须确认实际效果 | 取决于引擎 API | 不提供接口 | 禁用 |
-| 3.10.0.420447 | 客户端/服务端 | 已加载模块，可手动/自动更新 | triggered，须确认实际效果 | 请求回执不证明效果 | 不提供接口 | 禁用 |
-
-JSON UI 的 `triggered` 只代表重载请求已投递（Windows 按键路径，macOS 新运行包原生定义重载）；必须用画面或业务日志确认实际界面变化。Shader 在上述版本返回 `unsupported`，不会冒险自动调用。其他引擎版本仍需先用隔离测试世界验证资源重载接口。
-
-## macOS 资源边界
-
-Android 开发包 3.9.100.297020 / ANGLE Metal：Python 支持双端模块更新；已有微软粒子文件更新后须检查新发射器；JSON UI 的 Ctrl+R 不刷新定义，声明原生重载协议的运行包使用原生入口，需重新注册/创建自定义界面及绑定回调。旧运行包、当前材质和 Shader 返回 unsupported。资源加载接受回执为 triggered、effect_verified=false，不代表效果已验证。接口边界见 [macOS 资源热更参考](macos-resource-reload.md)。
+Windows 服务端/客户端通道与 macOS 客户端队列实现不同，调用者使用公共能力查询。原生平台资源适配与证据见 [macOS 资源实现说明](macos-resource-reload.md)，通用回归入口见 [开发与验证](development.md)。

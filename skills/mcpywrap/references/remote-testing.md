@@ -1,103 +1,52 @@
-# 两端安装与调用
+# Windows HTTP 远程执行端
 
-本页用于首次设置局域网测试。区分三个地址：Windows 测试服务的 HTTP 地址、游戏服务器的 IP/端口、本机项目目录。
-两台机器分别安装 CLI 和完整 Skill；bootstrap 返回的 command 只属于执行 bootstrap 的那台机器。
-统一注入与 UI/玩家操作使用调用端 CLI 0.3.17+、执行端 `py` 能力；严格后台截图要求执行端也为 0.3.17+。main 分支 Skill 可能领先 CLI，仍须检查能力，不能仅靠版本号或安装成功判定可用。
+用于设置服务、连接另一台 Windows 或排查跨机路由。单机连接游戏服务器不需要本页，直接读[网络会话](network-sessions.md)。
 
-## Windows：准备执行端
+## Windows 准备服务
 
-在已登录、未锁屏的测试桌面中执行；下列 mcpy 代表 Windows bootstrap 返回的 command，路径有空格时 PowerShell 用 `& "<路径>"`。
+两端各自安装 CLI 和完整 Skill，命令路径不通用。安装方式见[安装与路由](setup.md)。Windows 需已登录、未锁屏的图形桌面，并有匹配 MC Studio 引擎；服务不会自动注册后台任务或修改防火墙。
 
-```powershell
-& "<skill目录>\scripts\bootstrap.ps1" -Local -RequireCapability serve
+```text
 mcpy --local doctor --capabilities --json
 mcpy --local doctor --json
 mcpy --local serve
 ```
 
-服务是持续的前台控制台程序，不传 --json，保持窗口打开。--local 避免已有 MCPY_REMOTE／项目配置把诊断送往其他电脑。
-默认监听 `0.0.0.0:18765`，客户端填写 Windows 的实际局域网 IP，不填写 0.0.0.0。会话保存在 `.local/share/mcpywrap/remote`。
-可用 `serve --host/--port/--data-dir` 调整；引擎 EXE／下载目录也在此设置。服务不注册后台任务或修改防火墙，按本机网络条件允许访问。
-默认在启动前必须在 Windows 设置 `MCPY_REMOTE_TOKEN`，并在 macOS 设置同一个值。可信网络可显式使用 `mcpy --local serve --no-token` 关闭认证；此时忽略 Windows 已有令牌，调用端无需配置令牌，可访问该端口的设备均可执行游戏客户端 Python。先检查 `serve --help` 是否支持该参数。令牌和游戏的 `--mcs-auth` 无关。
-需要 MCS 身份时，在 Windows 额外检查 `mcpy --local doctor --mcs-auth --json`，由用户打开并登录 MCS。
-Git／可编辑安装可能缺少 CI 生成的桥接组件；使用包含组件且支持 serve 的发布构建，或在明确的源码开发任务中另行构建。不要通过安装旧发布版意外丢失 serve 能力。
+serve 为持续前台命令，不加 --json。默认监听 `0.0.0.0:18765`，客户端使用 Windows 的实际 IP，不能连接 0.0.0.0。可用 --host/--port/--data-dir 修改；游戏 EXE 和下载目录覆盖也由服务端配置。
 
-## macOS：检查与调用
+默认需在 Windows 与调用端设置相同 MCPY_REMOTE_TOKEN。仅在用户明确选择无认证服务时用 `serve --no-token`；它忽略已有令牌，能访问端口的设备可执行客户端 Python。HTTP 令牌不是 MCS 游戏身份；登录流程见网络会话页。
 
-只需要 uv、CLI 和 Skill，不安装 MC Studio、游戏或 Qt。下列路径都是 macOS 路径；mcpy 代表本机 bootstrap 返回的 command。
+Git/可编辑安装可能缺少 CI 生成的原生组件，按 doctor 的实际诊断处理，不自动安装旧版丢失当前功能。服务会话保存在 data-dir，默认用户目录下 `.local/share/mcpywrap/remote`。
 
-```bash
-uv run --no-project --python 3.12 "<skill>/scripts/bootstrap.py" --remote http://192.168.1.20:18765 --require-capability remote-client --require-capability network-sessions --require-capability unified-input --require-capability py --require-capability screenshot
-mcpy --remote http://192.168.1.20:18765 doctor --capabilities --json
-mcpy --remote http://192.168.1.20:18765 --non-interactive connect 192.168.1.10 --port 19132 --detach --json
-mcpy --remote http://192.168.1.20:18765 logs --session <id> --source game --tail 100 --json
-mcpy --remote http://192.168.1.20:18765 runtime install --session <id> --json
-mcpy --remote http://192.168.1.20:18765 runtime input capabilities --session <id> --json
-mcpy --remote http://192.168.1.20:18765 runtime input observe --session <id> --json
-mcpy --remote http://192.168.1.20:18765 screenshot --background-only --session <id> --output ./captures/game.png --json
-mcpy --remote http://192.168.1.20:18765 stop --session <id> --json
+## 调用端检查
+
+调用端无需运行 Windows 游戏，也不通过本机桌面操作代替远端。mcpy 在某些平台安装时可能自带 Qt，但跨机命令不需要打开它。
+
+```text
+uv run --no-project --python 3.12 "<skill>/scripts/bootstrap.py" --remote http://192.168.1.20:18765 --require-capability remote-client --require-capability network-sessions --require-capability py
+mcpy --remote http://192.168.1.20:18765 --non-interactive doctor --capabilities --json
 ```
 
-bootstrap 的 --remote 只检查，不保存设置；上述每条命令显式携带地址，适用于彼此独立的 Agent 终端调用。
-也可在能持续继承环境的进程中设置 MCPY_REMOTE，或在本机项目配置 remote_url。改变目录或开新进程后，重新确认实际路由，不假设之前的 export 仍生效。
-登录任务额外使用 bootstrap 的 `--require-capability mcs-auth` 并在 connect/run 添加 --mcs-auth；检查 remote.mcs_auth，不以 macOS 本机 component_available=false 判失败。
-游戏服务器必须从 Windows 可达；macOS 上的 localhost 不是 Windows 的 localhost。相同局域网里的 HTTP 服务地址和游戏服务器地址也可能完全不同。
-init/add/build/package 仍操作 macOS 项目；只有配置 `[tool.mcpywrap.server] host/port` 的 run 可以远程执行，不上传或装配本地 Mod。
-远程联机会话可用 `mcpy --remote <地址> runtime py --session <id> --code "1+1" --json` 执行客户端 Python；不支持服务端执行或远程热更。超时是结果未知，不自动重发。
+需要输入或截图时再要求 unified-input / screenshot，不给单纯日志任务强加无关能力。bootstrap --remote 只检测；每次独立调用明确 --remote，或确认当前进程继承 MCPY_REMOTE。`remote.ok=false` 时先处理服务问题，不回退本机。
 
-新任务的所有输入使用调用端0.4.2+的 runtime input run --file，游戏内步骤通过执行端py通道完成；文件只在调用端读取。原始Windows设备测试显式设置backend=windows-sendinput，并要求执行端新worker；不会改用调用端桌面或另一后端。操作ID与transport请求ID分开，未知结果查原operation_id。时间属于执行端，不能与Mac本地时钟相减。旧input-sequence保留原提交日志与无持久查询语义，仅用于兼容脚本，见[旧编排说明](input-sequence.md)。
+然后按[网络会话](network-sessions.md)启动和验证。游戏服务器必须从 Windows 可达；例如调用端的 localhost 不能自动成为 Windows 服务器地址。
 
-## 返回字段与脚本参数
-
-| 字段 | 应如何使用 |
+| 路径/标识 | 含义 |
 |---|---|
-| bootstrap.command | 本机 CLI 路径；辅助脚本 --command 使用它，不使用游戏 EXE |
-| endpoint + session | 远程会话的组合身份；后续操作始终复用同一个服务地址和会话 ID |
-| project | 调用端已有目录，用于本机配置和后续 --project |
-| remote_project / executable | Windows 路径信息，不在 macOS 打开或执行 |
-| log_path / engine_log_path | Windows 日志位置；客户端通过 logs --source game/engine/worker 读取 |
-| image | 截图已保存到调用端的路径，可以直接查看 |
+| bootstrap.command | 调用端 mcpy 路径，辅助脚本 --command 使用它 |
+| endpoint + session | 远程会话身份，后续保持同一组合 |
+| project | 调用端已有目录；项目命令和脚本仍在此运行 |
+| remote_project、executable、log_path | Windows 路径，不在调用端打开/执行；日志通过 logs 获取 |
+| image、video、images | 下载完成后的调用端路径，可查看 |
 
-CLI 的 --remote/--local/--project/--non-interactive 放在子命令前；--json 可在子命令后。
-game_window.py 的公共参数放在 screenshot/key/mouse 之前，后面的参数透传给该动作。以下桌面输入示例仅在用户允许占用游戏前台时使用：
+远程仅支持网络单会话，不支持本地世界/实例管理、双客户端、Qt/MCEditor、服务端 Python、本地资源部署或 reload/watch。Windows 本地世界和 macOS 本地 Addon 均使用各自 --local，不把远程接口当另一台机器的文件同步工具。
 
-```bash
-uv run --no-project --python 3.12 "<skill>/scripts/game_window.py" --project "/本机已有目录" --remote http://192.168.1.20:18765 --session <id> --command "/bootstrap返回的command" key SHIFT+W --hold-ms 500
-```
+Windows serve 退出会处理其所属游戏；调用端命令结束不自动停止远程会话。需持续服务时保持服务进程与图形会话。
 
-本机世界只在 Windows 使用 `--local --project <Windows项目>`；远程不支持世界实例、实例删除、Qt 或编辑器。
-远程启动必须 --detach，不能套用本机的前台等待方式。Windows serve Ctrl+C 停止所属游戏；macOS 调用结束不会自动停止会话。
+## 观察与恢复
 
-## 视频录制
+游戏输入见[统一输入](runtime-input.md)，Windows 截图/录制见[画面采集](capture.md)。操作对象必须绑定同一服务和 session；失败不转用调用端键鼠或默认桌面截图。
 
-两端使用包含 record 命令的 CLI，Windows 必须安装新版原生组件、具备 WGC 与系统 H.264 编解码器，并保持登录未锁屏。先运行 `doctor --capabilities --json`，检查 `record/record-frames` 和 `media`；组件文件存在不代表窗口已就绪。
+响应丢失先同 endpoint 的 status --list 找回。服务异常退出后使用原 data-dir 启动可查找所属会话；无法核对 PID 身份时不按进程名批量终止。输入 unknown 查原 operation_id，不能以 HTTP 请求超时推断操作未执行。
 
-录制从首帧写入后返回任务 ID，在后台独立执行；期间输入使用统一runtime input计划，原始设备计划仅在允许占用前台时显式选择。按 Skill 主文档的 start → input → status → download → frames 流程操作，不需要读取源码。兼容入口支持：
-
-```bash
-uv run --no-project --python 3.12 "<skill>/scripts/game_window.py" --project "<调用端项目>" --remote <endpoint> --session <sid> --command "<bootstrap返回的command>" record start --duration 10 --fps 30
-uv run --no-project --python 3.12 "<skill>/scripts/game_window.py" --project "<调用端项目>" --remote <endpoint> --session <sid> --command "<bootstrap返回的command>" record frames --recording <rid> --at 1.0 --at 2.0 --output ./captures/frames
-```
-
-服务只接受归属该会话的录制 ID，客户端不能传 Windows 输出路径。MP4 和提帧 ZIP 分块下载，校验长度／哈希后才发布调用端文件；断线不会留下完整目标文件名，可重新下载，暂不支持断点续传。
-
-任务状态 `starting/recording/finalizing` 尚不可下载；`completed` 可下载。`failed/interrupted/cancelled` 没有可发布视频，`expired/deleted` 已无产物。窗口最小化、锁屏、关闭、尺寸变化或连续 3 秒没有新采集帧会结束录制，不自动回退桌面捕获。正常遮挡仍可能因游戏暂停渲染而提前结束。
-
-## 鼠标与截图
-
-以下鼠标和窗口恢复流程仅用于允许占用前台的任务；后台操作遵循 [统一输入协议](runtime-input.md)，后台截图失败不通过激活游戏来绕过。
-
-- 截图是可见游戏客户区的物理像素，不包含标题栏；点击、移动、滚轮和拖拽需 --x/--y/--width/--height，参考最近截图。
-- drag 增加 --to-x/--to-y/--duration-ms；--keys SHIFT 等修饰键在动作结束后释放。--button right/middle 选择按钮，默认 left；double-click 为双击。
-- scroll --delta -120 向下滚一格，仍需上述坐标与宽高。relative --dx 100 --dy 0 --duration-ms 200 不需要绝对坐标，效果取决于输入模式和灵敏度。
-- 触屏模式下可在视角区域 drag；相对位移 sent 不能单独证明转向成功。F11 切换模式、F3 循环调试层，按截图确认。
-- 操作最长 60 秒，不支持跨请求一直按住。尺寸变化、遮挡、失焦或屏幕外时先恢复环境；foreground 错误由 Windows 端激活目标游戏，macOS 的 Computer Use 不能直接解决它。
-
-## 找回与自动验证
-
-busy 时用相同 endpoint 的 status --list 查询，不停止无关任务。启动超时可通过请求 ID 找回；`connect --request-id <原 ID>` 必须保持完全相同参数。
-输入超时视为结果未知：runtime input先用原operation_id查status，再observe刷新观察；旧runtime ui/player仅按兼容语义查询；桌面输入按允许的截图方式确认，不盲目重发。客户端断线后可重连查询；服务异常退出后，用相同 data-dir 重启可以找回所属会话。
-会话／日志实际保存在 Windows data-dir。删除前停止游戏；PID 身份不匹配时拒绝操作，不改成按进程名终止。
-远程自动验证用 `smoke.py --project <调用端目录> --remote <地址> --connect <服务器> --expect-log <标记>`，需要时追加 --mcs-auth。
-Windows 本地世界用 `smoke.py --local --project <Windows项目> --game`；不要在远程配置下用 --game，也不要把纯连接目录用于默认打包流程。
-smoke 默认等 90 秒，--expect-log 可重复；不提供标记只报告启动，并始终停止自己创建的会话。需要保持游戏或进行多步截图交互时，直接使用 CLI 会话命令。
+兼容旧自动化时，`scripts/game_window.py` 的 --project/--remote/--session/--command 放在动作之前，动作后的参数透传。新任务优先公开 CLI；旧 key/mouse/input-sequence 的写法见[兼容输入](input-writing.md)。

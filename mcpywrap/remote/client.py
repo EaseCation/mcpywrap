@@ -164,6 +164,8 @@ def routed_command(name, parameters):
     if not endpoint:
         return False, None
     p = dict(parameters)
+    if p.get('group') or p.get('clients', 1) != 1:
+        raise click.UsageError('远程服务当前仅支持单会话；双客户端联调请使用 --local。')
     if name == 'py' and (p.get('no_wait') or p.get('wait_until') is not None):
         raise click.UsageError('远程会话不支持客户端队列或等待条件；请使用同步 runtime py。未发送代码。')
     client = Client(endpoint, project_dir())

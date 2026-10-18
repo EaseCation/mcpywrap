@@ -2,11 +2,11 @@
 
 本页为旧入口兼容参考。日常新任务统一使用 [runtime input](runtime-input.md)；旧行为仍保留，不自动更换后端。
 
-**仅限临时调试：严禁在任何业务代码中使用或依赖本页的 `mcpy.*`。** 它们只存在于已注入的调试会话，正常游戏运行时不存在；以下 Python 示例仅通过 `runtime py` 执行，不可复制到随游戏发布的脚本。业务实现须使用正式 ModSDK 或项目框架，完整边界见 [主 Skill](../SKILL.md#强制边界mcpy-仅限临时调试)。
+**仅限临时调试：严禁在任何业务代码中使用或依赖本页的 `mcpy.*`。** 它们只存在于已注入的调试会话，正常游戏运行时不存在；以下 Python 示例仅通过 `runtime py` 执行，不可复制到随游戏发布的脚本。业务实现须使用正式 ModSDK 或项目框架，完整边界见 [主 Skill](../SKILL.md#调用约定)。
 
 统一安装：`mcpy --local --project <项目> runtime install --session <sid> --json`。远程换成 `--remote <endpoint>`。安装只在游戏内注入客户端函数，不要求控制服务器；UI、玩家层共享会话与输入互斥。0.3.18 起不按引擎版本号限制，按实际原生函数及 SDK 方法是否存在报告能力；存在接口仍需核对实际效果。
 
-主 Skill 的方法表足以完成常规操作。CLI 名称把下划线换成连字符，例如 `runtime player select-slot 3`、`look-at 10.5 65.5 20.5`；所有 CLI 都带 `--session`，需要时加 `--json`。
+常规新操作使用统一输入；只有继续旧脚本才使用下列方法。CLI 名称把下划线换成连字符，例如 `runtime player select-slot 3`、`look-at 10.5 65.5 20.5`；所有 CLI 都带 `--session`，需要时加 `--json`。
 
 ## 一次提交吃东西和射箭
 
@@ -39,7 +39,7 @@ mcpy --local --project <项目> runtime player status --session <sid> --operatio
 0.3.19+ 的所有队列统一先编译时间表：`at_ms` 可省略，自动取前一步计划结束加本步 `delay_ms`；显式 `at_ms` 不能早于上一步计划结束，同一步不同时填 `delay_ms`。返回 `plan` 为补齐时间的计划；`started_ms` 是执行器开始调用时刻，`finished_ms` 是确认完成时刻。固定 100 ms 步骤间隔已移除，动作校验及游戏 tick 仍会造成迟到。完整规则与 Windows 快切后端见 [连续动作编排](input-sequence.md)。
 
 - `action` 使用 Python 方法名：`move / look / look_at / select_slot / key / jump / sneak / attack / use_item / dig / eat / shoot`，或 `wait`。
-- 参数同主 Skill 表。`wait` 的动作参数为 `duration_ms`，也可设置排时字段。`delay_ms` 相对前一步的**计划结束**，不是执行时再追加的一段固定 sleep。
+- 参数以该旧入口的 --help 和会话 capabilities 为准。`wait` 的动作参数为 `duration_ms`，也可设置排时字段。`delay_ms` 相对前一步的**计划结束**，不是执行时再追加的一段固定 sleep。
 - 队列中的 `attack / use_item / dig / eat / shoot` **不用填 snapshot**。控制层在执行到该步时重新观察并绑定快照，而不是复用提交计划时的旧目标。
 - 可选 `expect` 支持 `selected_slot`、`item` 和 `target`。`target` 可指定 `type`、方块 `x/y/z` 或 `entityId`；例如 `{"target":{"type":"Block","x":10,"y":65,"z":20}}`。不符合断言时不执行该步，并停止后续步骤。
 - 最多 32 步，计划截止最多 120 秒（包括显式排时空隙），总执行上限 125 秒，含 5 秒调度余量；单次输入持续 20–10000ms，单次等待/步骤前延迟 0–10000ms。不能嵌套队列或插入任意 Python。

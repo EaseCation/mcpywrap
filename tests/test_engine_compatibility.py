@@ -51,7 +51,7 @@ class PreflightTests(unittest.TestCase):
                     with self.assertRaises(EngineError) as raised:
                         self.run_preflight()
                 self.assertEqual(raised.exception.code, 'unsupported_engine_structure')
-                data = json.loads(Path(raised.exception.details['diagnostic_path']).read_text())
+                data = json.loads(Path(raised.exception.details['diagnostic_path']).read_text(encoding='utf-8'))
                 self.assertEqual(data['stage'], 'native_compatibility')
                 self.assertEqual(data['engine_version'], 'future')
                 self.assertFalse(self.report.exists())

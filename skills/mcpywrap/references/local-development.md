@@ -1,69 +1,68 @@
-# Windows/macOS 本地无交互开发与验收
+# 本地世界：启动、更新与停止
 
-适用于本地 Addon 世界。对两个平台使用相同命令、参数、JSON 解析和生命周期；后端选择由 mcpy 完成。安装来源仍有区别：Windows 通过 MC Studio 准备引擎；Apple Silicon 首次 run 自动准备原生运行包/APK，也可提前 engine install，见 [macOS 安装](macos-local.md)。不支持的功能明确报告，不自动换平台、登录或切到桌面输入。
+用于 Windows/macOS 本地世界；两名玩家直接读[双客户端](dual-clients.md)，外部服务器读[网络会话](network-sessions.md)。普通启动不需要加载输入协议、录制或所有平台安装细节。
 
-## 纯命令契约
+## 启动与找回
 
-统一前缀：`mcpy --local --project <绝对项目目录> --non-interactive`，以下每条有限命令最后添加 `--json`。全局参数在子命令前。stdout 是单个 JSON，stderr 可含构建诊断；同时检查退出码、ok、state、error、hint，不从退出码零推断游戏业务效果。
-
-这里“无头”是 mcpy 控制端无需 Qt 管理页、日志小窗、TUI 或人工点击。Minecraft 仍有原生窗口并需要图形会话/GPU。不要承诺 SSH 无显示服务运行或游戏无渲染模式。人工 run 默认带调试小窗，AI 必须显式使用 run --no-gui --detach --json；--no-gui 不能用于隐藏游戏窗口。
-
-| 步骤 | 公共命令 | 结果检查 |
-|---|---|---|
-| 安装能力 | `doctor --capabilities` | CLI/宿主具备需要的能力 |
-| 运行资源 | `doctor` | Windows 按 hint 手动安装 MC Studio；macOS 资源缺失由首次 run 自动安装，失败后检查实际错误 |
-| 构建 | `build` | 组装成功只证明文件构建，不证明 Mod 已运行 |
-| 启动/复用 | `run --no-gui --detach` | 保存 session；需要独立验收世界才加 --new |
-| 会话能力 | `runtime capabilities --session <sid>` | schema_version=1，control.available；reload 各项 state |
-| 状态/找回 | `status --session <sid>` / `status --list` | running 仅表示进程存活；丢失启动响应先找回 |
-| 日志 | `logs --session <sid> --source game --tail 200` | source 还可为 engine/worker；检查双端 Mod 标记 |
-| 客户端 Python | `runtime py --session <sid> --side client --file <脚本.py>` | state=completed，side=client，检查 stdout/stderr/value/error |
-| 服务端 Python | `runtime py --session <sid> --side server --file <脚本.py>` | 同上，side=server；只用于自己的本地世界 |
-| Python 热更 | `runtime reload python --session <sid> --side client --module Mod.client.logic` | 模块必须已加载；服务端模块用 --side server |
-| JSON UI 热更 | `runtime reload ui --session <sid>` | triggered 仅代表请求已投递；须重新创建 UI 并核对文本/效果 |
-| 粒子/材质/Shader | `runtime reload <kind> --session <sid> --file <资源文件>` | 先看当前会话对应能力与限制 |
-| 结束会话 | `stop --session <sid>` | 确认 exited；失败时保留并报告，不批量强杀 |
-
-macOS 原生后端的 stop 请求保存后退出；Windows 沿用现有进程停止机制，不能将退出成功当作新增的存档保存保证。需要保留重要存档时，先通过游戏正常退出世界。
-
-`runtime capabilities` 只读本机会话和运行包声明，不调用游戏代码，不暴露内部控制凭据。available 表示入口允许调用，尚未证明游戏就绪、具体 API 存在或资源生效。unsupported 应按 reason 处理；unavailable 先核对会话/worker。旧 worker 的 client_queue 可能为 null，不能当成支持。远端仍用 doctor --capabilities；本地会话能力查询不静默回退远端/本机。
-
-基线全部使用同步 `runtime py`。启动期异步队列只在 python.client_queue=true 时使用；不要把 macOS 特有的队列要求加到 Windows/远端公共流程。unknown/queued/running 的请求不重复提交有副作用脚本；支持队列的会话通过原 request_id 查询，其他会话保留证据并检查日志。server reload 还需 python.reload_sides 包含 server。
-
-## 就绪与验收脚本
-
-首次执行业务验收前，用同一客户端通道检查已进入世界和 HUD。以下是只读探针，可以间隔轮询并设置截止时间：
-
-```python
-try:
-    import mod.client.extraClientApi as api, gui
-    _result = api.GetLevelId() not in (None, -1, '-1') and gui.get_top_screen() == 'hud_screen'
-except (ImportError, AttributeError):
-    _result = False
+```text
+mcpy --local --project <项目> --non-interactive run --no-gui --detach --json
+mcpy --local --project <项目> --non-interactive status --session <sid> --json
+mcpy --local --project <项目> --non-interactive logs --session <sid> --source game --tail 100 --json
+mcpy --local --project <项目> --non-interactive runtime capabilities --session <sid> --json
 ```
 
-True 仍不证明服务端 Mod 正常。客户端/服务端分别使用日志标记、断言和 `_result` 验收；游戏脚本为 Python 2，文件 UTF-8。脚本抛出异常或结果未确认时停止，不自动重放任意代码。
+先保存 session、instance、config_path 和日志路径。status 的 running 只是进程阶段；world_ready 表示观察到世界就绪，正常 Mod 加载还需双端日志或业务探针。source 可选 game/engine/worker；准备脚本输出位于 worker 日志及其 script_log。
 
-需要可重复的一次性验收时复用技能的 smoke.py：
+`--no-gui` 只抑制辅助窗口，游戏仍需图形会话/GPU。人工 run 默认有日志小窗，完整项目页用 ui。Qt 准备阶段可看任务和取消自己发起的准备；关闭管理/调试窗口不代表游戏已退出。
 
-```sh
-python <skill>/scripts/smoke.py --command <bootstrap返回的mcpy路径> --project <项目> --local --game --client-file <客户端验收.py> --server-file <服务端验收.py> --expect-log <Mod加载标记> --timeout 90
+| 意图 | 用法与结果 |
+|---|---|
+| 打开默认世界 | run；默认按创建顺序选择可用实例，失败创建不会无提示成为默认 |
+| 选择已有世界 | `run <实例ID前缀> --no-gui --detach --json` |
+| 查看世界实例 | `run --list --json`；与 `status --list --json` 的会话/组列表不同 |
+| 新建世界 | run --new；种子/地形等参数见[世界设置](instance-world-settings.md) |
+| 复用已运行世界 | 返回 already_running，不重新部署、不运行 before_run；检查 source_matches/hint |
+| 重新加载当前项目代码 | 停止相关会话后 run 原实例；也可 `restart --session <sid> --json` |
+| 启动响应丢失 | 同一项目 status --list 找回，不立刻再次 --new |
+| 明确删除世界 | `run --delete <前缀> --force --json`；仅用户要求删除时使用，不作为修启动的方法 |
+
+restart 会产生新 session，世界 ID 保留；需要 MCS 身份的会话按提示重新 run 并提供本次身份。旧 session 可查历史，不能继续向它发送输入。实例是世界，session 是一次进程运行，group 是联调成员关系。
+
+## 代码部署与世界进度
+
+**世界保存进度，重新运行使用当前项目代码；--new 不保存旧代码快照。** Addon 无论依赖数量都先组装，再通过受控部署给游戏读取；修改源码不等于活动游戏立即看到新内容。
+
+| 变化/需求 | 应采取的操作 |
+|---|---|
+| 未改代码，启动另一个独立世界 | 可共享同版部署；同一个实际世界路径仍独占 |
+| 有变化，但已有会话被 run 接管 | source_matches/hint 说明当前包文件是否一致；新源码没有因接管而应用 |
+| 修改已加载 Python 模块 | 按端侧使用 runtime reload/watch，见[调试](runtime-debug.md) |
+| 增删依赖、包身份或结构变化 | 停止相关读者后重新 run；需要恢复依赖时先 sync |
+| 另一个世界仍读同一部署 | 普通换版或单会话热更可能被拒绝；不能 --new、改 UUID 或清锁绕过 |
+| 运行输出被外部改写/恢复未完成 | 保留文件和诊断，先查 status/logs；见[故障定位](troubleshooting.md) |
+
+本机世界不会自动保留多版本 A/B 部署。独立目录也不自动意味着 Windows 引擎按相同 UUID 加载不同版本；不要通过手工链接或改 UUID 构造未经支持的隔离。
+
+项目可声明 before_run，只有真正准备本地进程时执行。`source_matches=true` 只比较当前可组装文件，不证明包外素材已经生成；完整触发矩阵与副作用边界见[项目脚本](project-scripts.md)。
+
+## 就绪与结束
+
+已有目标会话后，执行游戏 Python、验证模块或热更才读[运行时调试](runtime-debug.md)。world_ready 尚未到达时继续有界查询；连接可用与脚本系统完成初始化不是同一状态。
+
+```text
+mcpy --local --project <项目> --non-interactive stop --session <sid> --json
 ```
 
-该脚本通过公共 CLI 打包并新建独立世界，等待世界就绪，两个脚本各执行一次，收集日志和结构化结果，finally 中停止自己启动的会话。任一验收失败整体返回非零；unknown 不重试脚本。仅需日志时省略脚本；仅需构建打包时省略 --game。需要保留游戏或复用现有世界时使用命令表，不使用这个自动关闭的脚本。
+停止 watch 只结束监控，不退出游戏。stop 在准备阶段请求取消，在游戏阶段按已有后端退出；只取消本次拥有的启动，等待别人的启动超时不获得停止权限。遇到退出未确认或 recovery_required，保留占用和现场，不手动删锁、改 PID 或批量杀进程。
 
-## UI 重载和后台操作
+重要存档先在游戏中正常保存。macOS 后端请求保存退出；Windows 进程退出本身不等于已验证世界保存。测试结束确认自己的会话已 exited，用户要求保留则报告 session。组成员的停止/重启规则见双客户端页，不对有活动客机的主机单独 stop。
 
-JSON UI 重载的是定义集合，`--file` 不表示只刷新一个控件。可能使原控件句柄、临时状态和回调绑定失效；通过 Mod 原有入口重新 RegisterUI/CreateUI、绑定回调，再比较新标签文字或行为。当前 macOS 开发包不触发 UiInitFinished，不能等待它自动恢复；不要全局伪造该事件，也不要把 `_mcpy_launcher` 写进业务 Mod。不要把返回 True 当成 JSON 有效性或重载完成证明。
+## 一次性自动验收
 
-实际效果可用正式 Label.GetText、业务计数等验证；禁止先 SetText 再把显示变化当成 JSON 热更成功。重复刷新前确保上一次定义加载及 UI 重建完成，重新获取控件。新增文件或复杂继承不生效时报告范围，保留日志，按需保存并重载世界。
+需要“新建独立测试世界、双端探针、收集日志并清理”时使用已有辅助脚本；只想保留/复用游戏不要使用它：
 
-操控UI/玩家时使用 runtime install → runtime input capabilities/observe → runtime input run --file → runtime input status/cancel，见 [统一输入协议](runtime-input.md)。UI节点计划每次一个动作，绑定本次snapshot；页面变化后重新observe。默认游戏后端不需要桌面输入；Mac旧Python2运行包缺可靠单调时钟时，新计划明确不支持，不自动改用旧入口。截图或原始设备测试另查实际平台能力；macOS不提供Windows桌面截图/录制。runtime watch是持续的纯终端Python自动热更命令，不加--json；结束监控后还要停止自己启动的游戏。
+```text
+python <skill>/scripts/smoke.py --command <本机mcpy命令> --project <项目> --local --game --client-file <客户端验收.py> --server-file <服务端验收.py> --expect-log <加载标记> --timeout 90
+```
 
-不同测试实例可使用独立的世界设置；创建参数、模板导入及保存语义见[实例世界设置](instance-world-settings.md)。
-
-run 返回 config_path/config_hint；前台运行会主动打印实例 cppconfig 路径。需要改创建配置时编辑该文件，再用 run --new --cppconfig <文件> 创建世界。既有世界的设置以存档为准，不把创建配方误当作当前状态。
-
-## 跨平台依赖恢复
-
-Windows/macOS 共用项目的 mcpy-git.lock.json。新机器或克隆项目后先执行 sync --json；旧 Windows 锁会自动验证、备份并升级，不再要求 --migrate-windows-lock。检查 ok、git_projects 和 git_lock_migrations；迁移详情仅用于诊断，不向用户逐项转述摘要/节点 ID。提交 v2 锁后两端都要使用支持该格式的新版 CLI。run/build 缺少依赖时按照提示执行 sync，不删除锁文件或改动固定提交来跳过校验。
+smoke 会 package、创建新世界、等待就绪、各执行一次探针并清理本次创建的会话。只打包省略 --game；无业务标记/探针的结果不能当作业务验收。含预处理的项目 package 与 run 各执行自己的 hook，这是两个操作，不保证生成器只执行一次。

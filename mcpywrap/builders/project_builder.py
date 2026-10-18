@@ -10,6 +10,7 @@ from .AddonsPack import AddonsPack
 from .MapPack import MapPack
 from .assembly import assemble_addon, validate_target, is_within, pack_files, rebuild_file
 from ..code_libraries import prepare_libraries
+from ..utils.paths import is_link
 
 
 def _replace_with_retry(source, target):
@@ -29,7 +30,7 @@ def _clear_directory(directory):
     for item in Path(directory).iterdir():
         if item.is_symlink():
             item.unlink()
-        elif hasattr(item, 'is_junction') and item.is_junction():
+        elif is_link(item):
             os.rmdir(item)
         elif item.is_dir():
             shutil.rmtree(item)
@@ -38,14 +39,19 @@ def _clear_directory(directory):
 
 
 class AddonProjectBuilder:
-    def __init__(self, source_dir, target_dir, include_dependencies=True):
+    def __init__(self, source_dir, target_dir, include_dependencies=True, *, resolved=None, stable_layout=False):
         self.source_dir = str(Path(source_dir).resolve())
+        self.requested_target = Path(target_dir).absolute() if target_dir else None
         self.target_dir = str(Path(target_dir).resolve()) if target_dir else None
         self.config = read_project(self.source_dir)
         self.project_name = self.config.get('project', {}).get('name', 'current_project')
         self.include_dependencies = include_dependencies
+        self.resolved = resolved
+        self.stable_layout = stable_layout
 
     def initialize(self):
+        if self.requested_target is not None and is_link(self.requested_target):
+            raise DependencyError('构建目标不能是目录链接')
         addon_directories(self.source_dir)
         config = None
         if not self.include_dependencies:
@@ -54,24 +60,27 @@ class AddonProjectBuilder:
             config.setdefault('project', {})['dependencies'] = []
             config.setdefault('tool', {}).setdefault('mcpywrap', {})['local_dependencies'] = []
             config['tool']['mcpywrap']['git_dependencies'] = []
-        self.dependency_manager = DependencyService(self.source_dir).resolve(config)
+        self.dependency_manager = self.resolved or DependencyService(self.source_dir).resolve(config)
         report_dependency_warnings(self.dependency_manager)
         self.dependency_tree = self.dependency_manager.root_node
         self.origin_addon = self.dependency_tree.addon_pack
         self.packs = list(self.dependency_manager.get_all_dependencies().values()) + [self.origin_addon]
         prepare_libraries(self.packs)
         validate_target(self.target_dir, self.source_dir, self.packs)
-        if Path(self.target_dir).is_symlink() or (hasattr(Path(self.target_dir), 'is_junction') and Path(self.target_dir).is_junction()):
+        if is_link(self.target_dir):
             raise DependencyError('构建目标不能是目录链接')
         self.target_addon = AddonsPack(self.project_name, self.source_dir)
         self.target_addon.path = self.target_dir
         for kind in ('behavior', 'resource'):
             source = getattr(self.origin_addon, kind + '_pack_dir')
-            setattr(self.target_addon, kind + '_pack_dir', str(Path(self.target_dir) / Path(source).name))
+            name = kind + '_pack' if self.stable_layout else Path(source).name
+            setattr(self.target_addon, kind + '_pack_dir', str(Path(self.target_dir) / name))
         return True
 
     def build(self):
         try:
+            from ..runtime.deployment import check_build_target
+            check_build_target(self.source_dir, self.target_dir)
             self.initialize()
             target = Path(self.target_dir)
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -116,11 +125,16 @@ class AddonProjectBuilder:
 class MapProjectBuilder:
     def __init__(self, source_dir, target_dir, merge=False):
         self.source_dir = str(Path(source_dir).resolve())
+        self.requested_target = Path(target_dir).absolute() if target_dir else None
         self.target_dir = str(Path(target_dir).resolve()) if target_dir else None
         self.merge = merge
 
     def build(self):
         try:
+            if self.requested_target is not None and is_link(self.requested_target):
+                raise DependencyError('构建目标不能是目录链接')
+            from ..runtime.deployment import check_build_target
+            check_build_target(self.source_dir, self.target_dir)
             manager = DependencyService(self.source_dir).resolve()
             report_dependency_warnings(manager)
             packs = list(manager.get_all_dependencies().values())

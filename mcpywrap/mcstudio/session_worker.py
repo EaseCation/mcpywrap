@@ -25,6 +25,10 @@ def run(project, session):
     engine_capture = None
     debug_channel = None
     control_server = None
+    deployment = None
+    guard = None
+    group_monitor = None
+    ready_recorded = False
     auth_path = directory/'auth.cppconfig'
     try:
         auth_context = None
@@ -41,12 +45,17 @@ def run(project, session):
         else:
             receiver = FileLogServer(data['log_path'])
         receiver.start()
-        if (directory / 'stop').exists():
-            raise ValueError('启动已取消')
+        sessions.require_launch_requested(project, session)
         from ..engines.backend import get_backend
         backend = get_backend(data.get('backend', 'windows'))
+        data['phase'] = 'preparing'
+        sessions.save(path, data)
         launched = backend.launch(data, receiver, auth_context)
         process = launched.process
+        deployment, guard = launched.deployment, launched.guard
+        if process:
+            data['game'] = identity(process.pid)
+            sessions.save(path, data)
         if not process or process.poll() is not None:
             raise ValueError('游戏进程未成功启动，详见 worker.log 和 engine.log')
         if launched.capture_output:
@@ -59,18 +68,46 @@ def run(project, session):
         token = uuid.uuid4().hex
         control_server = RuntimeControlServer(debug_channel, token, project, session, mode=data.get('mode', 'local'))
         control_server.start()
+        from ..runtime.groups import is_local_guest
+        guest = is_local_guest(project, data)
         sessions.save(directory/'control.json', {'port': control_server.server_address[1],
                                                  'token': token,
                                                  'unified_input_worker': True,
-                                                 'python_reload_sides': [] if data.get('mode') == 'network' else ['client', 'server'],
+                                                 'python_reload_sides': ['client'] if guest else [] if data.get('mode') == 'network' else ['client', 'server'],
                                                  'client_python_queue': callable(getattr(debug_channel, 'submit', None))})
         data.update(state='running', game=identity(process.pid))
         sessions.save(path, data)
+        if data.get('group') and data.get('role') in ('guest', 'client2'):
+            from ..runtime.groups import GroupMonitor
+            group_monitor = GroupMonitor(data).start()
         while process.poll() is None:
             if (directory / 'stop').exists():
                 process.terminate()
                 break
-            if backend.refresh(data, debug_channel):
+            changed = backend.refresh(data, debug_channel)
+            connected = getattr(debug_channel, 'connected', None)
+            if connected is not None and callable(getattr(connected, 'is_set', None)):
+                state = 'connected' if connected.is_set() else 'connecting'
+                error = getattr(debug_channel, 'last_error', None)
+                if (data.get('control_state'), data.get('control_error')) != (state, error):
+                    data.update(control_state=state, control_error=error)
+                    changed = True
+            if data.get('world_ready') and not ready_recorded:
+                from ..utils.locks import LockBusy
+                try:
+                    if deployment:
+                        with deployment.lock():
+                            deployment.commit()
+                except LockBusy:
+                    # A status/start operation may briefly own the deployment.
+                    # Retry even if the backend emits its ready transition once.
+                    pass
+                else:
+                    from ..runtime.instances import mark
+                    mark(data, ready=True)
+                    ready_recorded = True
+                    changed = True
+            if changed:
                 sessions.save(path, data)
             time.sleep(0.2)
         code = process.wait(timeout=10)
@@ -78,14 +115,34 @@ def run(project, session):
         data.update(state='exited', exit_code=code)
     except Exception as exc:
         data.update(state='failed', error=str(exc))
+        data['code'] = getattr(exc, 'code', 'launch_failed')
+        from ..project_scripts import ScriptError
+        if isinstance(exc, ScriptError):
+            data['script_error'] = exc.details
         if process and process.poll() is None:
             process.terminate()
             try:
                 process.wait(timeout=10)
                 game_exited = True
             except subprocess.TimeoutExpired:
-                data['error'] += '；保存退出尚未完成，进程保留，请查询状态并重试 stop'
+                data['error'] += '；游戏尚未确认退出，进程保留，请查询状态并重试 stop'
     finally:
+        if group_monitor:
+            group_monitor.close()
+        if deployment and (not process or process.poll() is not None):
+            try:
+                with deployment.lock():
+                    deployment.rollback(confirmed_exit=game_exited)
+            except Exception as exc:
+                data.update(state='failed', error=str(exc), code='recovery_required')
+        if data.get('mode') == 'local' and not data.get('world_ready'):
+            from ..runtime.instances import mark
+            try:
+                mark(data)
+            except (OSError, ValueError):
+                pass
+        if guard:
+            guard.close()
         if backend and game_exited:
             try:
                 backend.finish(data)

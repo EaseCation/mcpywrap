@@ -87,6 +87,14 @@ def rebuild_file(packs, kind, relative, destination):
 def assemble_addon(packs, target_pack):
     for kind in ('behavior', 'resource'):
         target = getattr(target_pack, kind + '_pack_dir')
+        # Empty directories are part of the pack layout too (e.g. entities/).
+        for pack in packs:
+            folder = getattr(pack, kind + '_pack_dir')
+            if not folder or not os.path.isdir(folder):
+                continue
+            for current, dirs, _ in os.walk(folder):
+                dirs[:] = sorted(d for d in dirs if not pack.should_exclude(os.path.join(current, d)))
+                (Path(target) / Path(current).relative_to(folder)).mkdir(parents=True, exist_ok=True)
         paths = {relative for pack in packs for relative in pack_files(pack, kind)}
         for relative in sorted(paths):
             rebuild_file(packs, kind, relative, Path(target) / relative)

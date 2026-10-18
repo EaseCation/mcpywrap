@@ -53,6 +53,7 @@ def capabilities():
     from ..engines.host import describe
     backend = get_backend()
     result['host'] = describe()
+    result['local_capabilities'] = ['project-scripts']
     result['capabilities'] = list(dict.fromkeys(result['capabilities'] + list(backend.capabilities)))
     if backend.managed_install:
         result['runtime'] = backend.diagnose()
@@ -62,26 +63,12 @@ def capabilities():
 
 @contextmanager
 def directory_lock(root):
-    root = Path(root)
-    root.mkdir(parents=True, exist_ok=True)
-    stream = (root/'service.lock').open('a+b')
+    from ..utils.locks import directory_lock as acquire, LockBusy
     try:
-        stream.seek(0, 2)
-        if stream.tell() == 0:
-            stream.write(b'0'); stream.flush()
-        stream.seek(0)
-        try:
-            if os.name == 'nt':
-                import msvcrt
-                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            raise RemoteError('此数据目录已有服务运行', 'busy', 409) from None
-        yield
-    finally:
-        stream.close()  # Kernel releases the lock, including when the service crashes.
+        with acquire(root):
+            yield
+    except LockBusy as exc:
+        raise RemoteError(str(exc), 'busy', 409) from exc
 
 
 class GameService:

@@ -62,6 +62,8 @@ def configured_target(config):
 def prepare_project(project_dir, config=None):
     """允许无根 Addon 的连接目录；出现包结构时仍严格校验。"""
     root = Path(project_dir)
+    from ..project_scripts import skipped_network
+    skipped_network(root)
     config = read_project(root) if config is None else config
     if config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
         raise ValueError('网络运行暂时只支持 Addon 或纯连接目录，不支持 Map 项目')
@@ -81,19 +83,26 @@ def prepare_project(project_dir, config=None):
     return packs
 
 
-def unauthenticated_config(engine, target):
+def unauthenticated_config(engine, target, player=None):
     """从本地模式的无身份默认值构造实验配置，不复制账号或伪造认证字段。"""
     config = gen_runtime_config(engine.version, '', '', engine.download_dir, '', [], [])
     config.update(world_info=None, client_type=1, render_engine=0,
                   misc={'multiplayer_game_type': 100})
     config['room_info'].update(ip=target.host, port=target.port)
+    if player is not None:
+        if (not isinstance(player, dict) or type(player.get('user_id')) is not int or
+                not 0 < player['user_id'] < 2**31 or
+                not isinstance(player.get('user_name'), str) or
+                not re.fullmatch(r'[A-Za-z0-9_]{1,16}', player['user_name'])):
+            raise ValueError('无效的匿名开发玩家身份')
+        config['player_info'] = {'user_id': player['user_id'], 'urs': '', 'user_name': player['user_name']}
     return config
 
 
-def launch_network(engine, target, config_path, logging_port, auth_context=None):
+def launch_network(engine, target, config_path, logging_port, auth_context=None, player=None, environment=None):
     """由会话 worker 调用；监听、日志脱敏和进程回收由 worker 统一负责。"""
     require_resources(engine)
-    config = unauthenticated_config(engine, target)
+    config = unauthenticated_config(engine, target, player)
     if target.auth == 'mcs' and auth_context is None:
         raise ValueError('网络会话缺少本次请求的 MCS 身份，拒绝匿名回退')
     if auth_context:
@@ -105,7 +114,7 @@ def launch_network(engine, target, config_path, logging_port, auth_context=None)
     config_path.write_text(json.dumps(config, ensure_ascii=False), encoding='utf-8')
     return open_game(str(config_path), engine=engine, logging_ip='127.0.0.1',
                      logging_port=logging_port, wait=False, use_system_color=False,
-                     capture_output=True)
+                     capture_output=True, environment=environment)
 
 
 def prepare_network(target, project_dir=None, engine_overrides=None, interactive=None):
@@ -122,7 +131,8 @@ def prepare_network(target, project_dir=None, engine_overrides=None, interactive
     return engine, identity
 
 
-def run_network(target, *, project_dir=None, packs=(), engine_overrides=None, detach=False):
+def run_network(target, *, project_dir=None, packs=(), engine_overrides=None, detach=False,
+                session_id=None, group=None, role=None, player=None):
     """预检后创建普通游戏会话；临时 connect 只用项目目录存会话，不读取其配置。"""
     from ..command_context import project_dir as current_project, json_output
     from . import sessions
@@ -133,7 +143,9 @@ def run_network(target, *, project_dir=None, packs=(), engine_overrides=None, de
     click.echo(f'本次仅连接服务器，工具未装配本地 Addon（已解析 {len(packs)} 个）。')
     root = Path(project_dir or current_project()).resolve()
     data = sessions.start(root, auth_context=identity,
-                          network={'target': asdict(target), 'engine': asdict(engine)})
+                          session_id=session_id, group=group, role=role,
+                          network={'target': asdict(target), 'engine': asdict(engine),
+                                   'player': player})
     result = sessions.handoff(data)
     if detach:
         return result

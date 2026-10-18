@@ -27,7 +27,7 @@ except ImportError:
 
 
 def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system_color=True, wait=True,
-              engine=None, project_dir=None, output_path=None, capture_output=False):
+              engine=None, project_dir=None, output_path=None, capture_output=False, environment=None):
     """
     打开MC Studio游戏引擎
 
@@ -48,13 +48,15 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
         if output_path and capture_output:
             raise ValueError('output_path 与 capture_output 不能同时使用')
         # 检查配置文件是否存在
-        if not os.path.isfile(config_path):
+        if config_path is not None and not os.path.isfile(config_path):
             _launch_message(f"❌ 配置文件不存在: {config_path}", fg="red", bold=True)
             return False
 
         # 读取配置文件
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config_data = json.load(f)
+        config_data = {}
+        if config_path is not None:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config_data = json.load(f)
 
         # 已解析的结果直接复用，禁止重新拼接另一个安装根目录。
         if engine is None:
@@ -82,9 +84,9 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
         import contextlib
         with open(output_path, 'ab') if output_path else contextlib.nullcontext() as output:
             proc = subprocess.Popen(
-                [minecraft_exe, 'config=' + os.path.abspath(config_path),
+                [minecraft_exe, *(['config=' + os.path.abspath(config_path)] if config_path is not None else []),
                  'loggingIP=' + logging_ip, 'loggingPort=' + str(logging_port)],
-                cwd=engine_path, stdin=subprocess.DEVNULL,
+                cwd=engine_path, stdin=subprocess.DEVNULL, env=environment,
                 stdout=subprocess.PIPE if capture_output else output,
                 stderr=subprocess.STDOUT if capture_output else output)
 

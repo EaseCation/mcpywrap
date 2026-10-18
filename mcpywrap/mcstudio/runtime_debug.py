@@ -75,6 +75,24 @@ def owned_udp_endpoints(pid):
     return endpoints
 
 
+def owns_tcp_connection(pid, client):
+    """Some ModPC builds report the first UDP port even after binding the next.
+
+    Verify the accepted TCP connection against the actual game's socket table;
+    never trust a claimed port or accept a different game's connection.
+    """
+    peer, local = client.getpeername(), client.getsockname()
+    process = psutil.Process(pid)
+    query = getattr(process, 'net_connections', None) or process.connections
+    for _ in range(3):
+        if any(item.laddr and item.raddr and item.laddr.port == peer[1]
+               and item.laddr.ip in (peer[0], '0.0.0.0', '::')
+               and tuple(item.raddr) == tuple(local) for item in query(kind='tcp')):
+            return True
+        time.sleep(.05)
+    return False
+
+
 def script_request(code, request_id, emit_result=True):
     encoded = base64.b64encode(code.encode('utf-8')).decode('ascii')
     # The game runs Python 2. The single result line is independent of user print output.
@@ -177,10 +195,11 @@ class SafaiaChannel:
                     port = config.get('connect_port')
                     if isinstance(port, str) and port.isdecimal():
                         port = int(port)
-                    if port is not None:
+                    if port is not None or owns_tcp_connection(self.pid, client):
                         break
-                if type(port) is not int or port not in owned_udp_ports(self.pid):
-                    self.last_error = 'Safaia 握手端口不属于此游戏进程'
+                owned = owned_udp_ports(self.pid)
+                if not (type(port) is int and port in owned) and not owns_tcp_connection(self.pid, client):
+                    self.last_error = 'Safaia 握手端口不属于此游戏进程 (reported=%r, owned=%r)' % (port, sorted(owned))
                     client.sendall(frame(49, '{"notify":"notify_block"}'))
                     continue
                 client.sendall(frame(48, '{"notify":"pass"}'))
@@ -314,8 +333,18 @@ class _ControlHandler(socketserver.BaseRequestHandler):
             request = json.loads(recv_exact(self.request, size).decode('utf-8'))
             if request.get('token') != self.server.token:
                 raise ValueError('会话控制凭据无效')
-            if self.server.mode == 'network' and (request.get('side', 'client') != 'client' or request.get('action') == 'reload'):
-                raise ValueError('网络会话仅支持客户端调试，不支持服务端 Python 或本地 Mod 热更')
+            if self.server.mode == 'network':
+                from ..runtime.groups import is_local_guest
+                from . import sessions
+                guest = (self.server.project is not None and self.server.session is not None
+                         and is_local_guest(self.server.project, sessions.read(self.server.project, self.server.session)))
+                if request.get('side', 'client') != 'client' or (request.get('action') == 'reload' and not guest):
+                    raise ValueError('网络会话仅支持客户端调试；本地联调客机通过联调组更新')
+                if request.get('action') == 'reload' and guest:
+                    from ..runtime.groups import membership
+                    group = membership(self.server.project, self.server.session)
+                    if not group or not group.get('connection_verified') or request.get('kind') != 'python':
+                        raise ValueError('客机尚未确认加入指定主机，或请求了未支持的资源热更')
             if request.get('action') == 'execute':
                 options = {'condition': request['condition']} if request.get('condition') is not None else {}
                 if options and not hasattr(self.server.channel, 'submit'):
@@ -361,6 +390,7 @@ class RuntimeControlServer(socketserver.ThreadingTCPServer):
 
     def __init__(self, channel, token, project=None, session=None, mode='local'):
         self.channel, self.token, self.mode = channel, token, mode
+        self.project, self.session = project, session
         self.input_manager = None
         if project is not None and session is not None:
             from .host_input import HostInputManager

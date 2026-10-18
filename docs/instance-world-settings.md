@@ -16,28 +16,9 @@ cppconfig 是网易开发端已有格式，不是 Bedrock 全平台统一标准�
 `world_type` 对应 GeneratorType（1=无限，2=平坦），其余字段经适配器转换到
 `basic_info`、`option_info`、`cheat_info`。没有新增二进制入口。
 
-## 使用
+## 用户入口
 
-`mcpy ui` 中的新建操作展示紧凑确认框；世界设置默认折叠，直接
-“创建并运行”使用默认值。展开后可调整 cppconfig 的全部已建模世界字段。
-`mcpy run` 则直接使用默认配置，启动后显示调试小窗，不弹出世界配置对话框。不支持的选项显示原因。菜单支持从 cppconfig 或选中实例的创建配置新建，复制
-配置不复制存档、不复用 ID，也不导入身份凭据或旧资源路径。
-
-纯命令创建，无需先创建或编辑配置文件：
-
-```sh
-mcpy --local --project /path/to/addon --non-interactive run --new --no-gui --detach \
-  --world-name survival-test --world-type infinite --seed 67890 \
-  --game-type survival --difficulty hard --no-keep-inventory --show-coordinates --json
-```
-
-完整参数见 `mcpy run --help` 和 [AI 使用说明](../skills/mcpywrap/references/instance-world-settings.md)。
-优先级为本次命令参数 > `--cppconfig` 导入的世界字段 > 工具默认值。
-创建参数只允许与 `--new` 同用；重开指定实例不接受这些参数。
-
-`run --list --json` 返回实例配置路径。磁盘 cppconfig 是创建配方，不是当前运行
-状态；游戏内更改后不据此展示“当前难度”。当前设置通过游戏接口读取，保存后
-以存档为准。不要在运行时手改 cppconfig 或 level.dat。
+世界参数、模板优先级与实例操作统一维护在 [Skill 世界设置](../skills/mcpywrap/references/instance-world-settings.md)。本页保留 cppconfig 适配与偏好持久化契约，不复制 CLI 操作教程。
 
 ## 兼容与验证
 
@@ -48,7 +29,7 @@ Windows Map 项目首次复制原存档，重开不再重复覆盖已有 level.d
 
 macOS 当前不支持启用 cppconfig 中的 `experimental_holiday`、`experimental_biomes`
 和 `fancy_bubbles`；显式启用会报错。未验证字段不静默忽略。CLI 与 GUI 共享限制。
-编辑已有世界的设置使用游戏本身的界面/API；本轮创建参数不会变成启动时覆盖存档的开关。
+编辑已有世界的设置使用游戏本身的界面/API；创建参数不会变成启动时覆盖存档的开关。
 
 自动测试覆盖配置持久性、只刷新派生路径、导入隔离、CLI 覆盖优先级、GUI 确认与
 取消，以及两端后端调用。macOS 实机还需核对生成器/种子/模式/难度/规则、保存后

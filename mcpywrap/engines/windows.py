@@ -7,14 +7,15 @@ class WindowsBackend(GameBackend):
     label = 'Windows · MC Studio'
     capabilities = ('local-worlds', 'network-sessions', 'status', 'logs', 'stop', 'py',
                     'runtime', 'runtime-ui', 'runtime-player', 'reload', 'watch',
-                    'screenshot', 'key', 'mouse', 'input-sequence', 'mcs-auth', 'serve', 'project-ui', 'editor')
+                    'screenshot', 'key', 'mouse', 'input-sequence', 'mcs-auth', 'serve', 'project-ui', 'editor',
+                    'local-dual-client-manual')
     setup_description = '请在 MC Studio 下载游戏引擎；使用 mcpy doctor 检查资源，可用 --engine-version 选择版本。'
 
     def debug_channel(self, data, write_log):
         from ..mcstudio.runtime_debug import SafaiaChannel
-        self._world_ready = data.get('mode') != 'local'
+        self._world_ready = False
         self._ready_log_cursors = {}
-        if data.get('mode') == 'local': data['world_ready'] = False
+        data['world_ready'] = False
         return SafaiaChannel(write_log, ready=lambda: self._world_ready)
 
     def refresh(self, data, channel):
@@ -52,36 +53,49 @@ class WindowsBackend(GameBackend):
         return None
 
     def run(self, project, **options):
-        from ..commands.run_cmd import _run_windows
-        return _run_windows(project, **options)
+        from ..runtime.windows import run
+        return run(project, **options)
 
     def instances(self, project):
-        from ..commands.run_cmd import _get_all_instances
-        return _get_all_instances(project)
+        from ..runtime.instances import list_instances
+        return list_instances(project)
 
     def delete_instances(self, project, identity=None):
-        from ..commands.run_cmd import _delete_instance, _clean_all_instances
-        from ..command_context import project_scope
-        from ..mcstudio import sessions
-        from ..mcstudio.processes import checked_process
-        from pathlib import Path
-        for path in (Path(project)/'.runtime/sessions').glob('*/session.json'):
-            data = sessions.read(project, path.parent.name)
-            if (identity is None or data.get('level_id') == identity) and (data['state'] in ('starting', 'running') or (data.get('game') and checked_process(data['game']))):
-                from .host import EngineError
-                raise EngineError('实例正在运行，请先保存退出。', 'busy')
-        with project_scope(project):
-            return _delete_instance(identity, True, project) if identity else _clean_all_instances(True, project)
+        return self.run(project, delete=identity, clean_all=identity is None, force=True)
 
     def deploy(self, project, data):
-        from ..commands.run_cmd import _setup_dependencies
-        from ..dependencies import read_project
-        name = read_project(project).get('project', {}).get('name', 'project')
-        _setup_dependencies(name, str(project), raise_errors=True)
+        from ..runtime.deployment import refresh
+        refresh(project, data)
 
     def connect(self, target, **options):
         from ..mcstudio.network import run_network
         return run_network(target, **options)
+
+    def prepare_guest(self, host):
+        return None
+
+    def start_guest(self, host, *, project_dir, session_id, group, role, player):
+        from ..mcstudio import sessions
+        from ..mcstudio.discovery import require_resources, Engine
+        from ..runtime.deployment import Deployment
+        from ..runtime import storage
+        from .host import EngineError
+        engine = host['launch']['engine']
+        require_resources(Engine(**engine))
+        target = (host.get('deployment') or {}).get('path')
+        if not target:
+            raise EngineError('无法确认主机加载的版本，请重启联调组。', 'deployment_unavailable')
+        deployment = Deployment(project_dir, target)
+        with deployment.lock():
+            record = storage.read(deployment.record_path, {})
+            version = record.get('fingerprint') if isinstance(record, dict) else None
+            if not version:
+                raise EngineError('无法确认主机加载的版本，请重启联调组。', 'deployment_unavailable')
+        data = sessions.start(project_dir, session_id=session_id, group=group, role=role,
+                              network={'target': None, 'engine': engine, 'player': player,
+                                       'local_host': host['session'], 'join': 'manual',
+                                       'deployment_fingerprint': version})
+        return sessions.handoff(data)
 
     def diagnose(self, project=None, overrides=None, mcs_auth=False, check_files=False):
         from ..mcstudio.diagnostics import diagnose
@@ -91,22 +105,40 @@ class WindowsBackend(GameBackend):
         return data
 
     def launch(self, data, receiver, auth_context=None):
+        from contextlib import ExitStack
         from ..mcstudio import sessions
         directory = sessions.session_path(data['project'], data['session'])
-        if data.get('mode') == 'network':
-            from ..mcstudio.network import launch_network, ServerTarget
+        if data.get('mode') != 'network':
+            from ..runtime.windows import launch
+            return launch(data, receiver, auth_context)
+        guard = ExitStack()
+        try:
             from ..mcstudio.discovery import Engine
-            process = launch_network(Engine(**data['network']['engine']),
-                                     ServerTarget(**data['network']['target']),
-                                     directory/'runtime.cppconfig', receiver.port, auth_context)
-        else:
-            from ..commands.run_cmd import _run_game_with_instance
-            from ..command_context import project_scope
-            with project_scope(data['project']):
-                success, process = _run_game_with_instance(
-                    data['config_path'], data['level_id'], [], wait=False,
-                    engine_overrides=data['engine_overrides'], no_gui=True, logging_port=receiver.port,
-                    output_path=str(directory/'engine.log'), capture_output=True,
-                    **({'auth_context': auth_context, 'auth_config_path': str(directory/'auth.cppconfig')} if auth_context else {}))
-            if not success: process = None
-        return LaunchedGame(process)
+            engine = Engine(**data['network']['engine'])
+            environment = None
+            if data.get('group'):
+                from ..runtime.profiles import PlayerProfile
+                profile = PlayerProfile(data)
+                guard.enter_context(profile.lease())
+                profile.prepare()
+                environment = profile.windows_environment()
+            sessions.require_launch_requested(data['project'], data['session'])
+            data['phase'] = 'prepared'
+            sessions.save(directory/'session.json', data)
+            if data['network'].get('join') == 'manual':
+                from ..runtime.groups import is_local_guest
+                from ..mcstudio.game import open_game
+                if not is_local_guest(data['project'], data):
+                    raise ValueError('本地主机已退出或联调成员已变更，取消客机启动')
+                process = open_game(None, engine=engine, logging_ip='127.0.0.1',
+                                    logging_port=receiver.port, wait=False, use_system_color=False,
+                                    capture_output=True, environment=environment)
+            else:
+                from ..mcstudio.network import launch_network, ServerTarget
+                process = launch_network(engine, ServerTarget(**data['network']['target']),
+                                         directory/'runtime.cppconfig', receiver.port, auth_context,
+                                         player=data['network'].get('player'), environment=environment)
+            return LaunchedGame(process, guard=guard)
+        except BaseException:
+            guard.close()
+            raise

@@ -60,7 +60,7 @@ with tarfile.open(sdist) as archive:
                      'tests/test_input_sequence.py', 'tests/test_native_input_sequence.py',
                      'tests/manual_input_window.py', 'tests/manual_runtime_input.py',
                      'docs/game-backends.md', 'docs/launcher-client-python.md', 'docs/macos-resource-reload.md',
-                     'docs/qt6-development.md', 'docs/shared-log-ui.md', 'docs/release-0.4.0.md',
+                     'docs/qt6-development.md', 'docs/shared-log-ui.md',
                      'tests/test_session_capabilities.py', 'tests/test_engine_install.py', 'tests/test_shared_logs.py'}
     manual_files = {p.relative_to(root).as_posix() for p in (root / 'tests/manual/runtime_controls').rglob('*')
                     if p.is_file() and '__pycache__' not in p.parts}
@@ -82,7 +82,7 @@ with tarfile.open(sdist) as archive:
 
 for name in wheel_names | sdist_names:
     parts = Path(name).parts
-    assert not any(part in ('test', '.runtime', '__pycache__', '.git') for part in parts), name
+    assert not any(part in ('test', '.runtime', '__pycache__', '.git', '.local-notes') for part in parts), name
     assert not name.endswith(('.cppconfig', '.log', '.pyc', '.pyo', '.pfx', '.p12', '.key')), name
     assert not name.endswith('.png') or name in icon_files, name
 print(f'{version}: wheel and sdist contain all {len(expected)} Python modules; no local test artifacts')

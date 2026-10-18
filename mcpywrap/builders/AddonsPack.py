@@ -68,9 +68,25 @@ class AddonsPack(object):
 
     def should_exclude(self, path):
         """判断文件或目录是否应该被排除"""
-        for pattern in EXCLUDED_PATTERNS:
-            if pattern in path:
-                return True
+        # Only inspect components inside this pack. A checkout named demo.git-copy
+        # or a perfectly valid terrain.soil.json is not an excluded artifact.
+        from pathlib import Path
+        if os.name == 'nt':
+            # Python 3.9 treats C: and \\?\C: as different relpath mounts.
+            # Cache paths use the extended spelling; resolved files may not.
+            from ..source_files import long_path
+            relative = os.path.relpath(long_path(path), long_path(self.path))
+        else:
+            relative = os.path.relpath(path, self.path)
+        parts = Path(relative).parts
+        directories = {'.git', '.hg', '.svn', '.eggs', '.pytest_cache', '.tox',
+                       '.bzr', '__pycache__', 'htmlcov'}
+        if any(part in directories or part.endswith('.egg-info') for part in parts):
+            return True
+        name = parts[-1] if parts else ''
+        if (name in ('.DS_Store', 'Thumbs.db', '.coverage') or name.startswith('.coverage.')
+                or Path(name).suffix.lower() in ('.pyc', '.pyo', '.pyd', '.so', '.dll')):
+            return True
         # 得到文件名
         filename = os.path.basename(path)
         if not self.is_origin and filename in MANIFEST_FILES:
@@ -219,22 +235,23 @@ class AddonsPack(object):
     def _copy_with_encoding_check(self, src_file, dest_file):
         """复制Python文件，并检查添加编码声明"""
         try:
-            with open(src_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-
-            # 检查是否有编码声明
-            has_coding = False
-            first_line = content.splitlines()[0] if content.splitlines() else ""
-            if "# -*- coding: utf-8 -*-" in first_line or "# coding: utf-8" in first_line:
-                has_coding = True
-
-            # 如果没有编码声明，则添加
-            if not has_coding:
-                content = "# -*- coding: utf-8 -*-\n" + content
-
-            # 写入目标文件
-            with open(dest_file, 'w', encoding='utf-8') as f:
-                f.write(content)
+            import re
+            from pathlib import Path
+            content = Path(src_file).read_bytes()
+            # Preserve ASCII, BOM and valid PEP 263 declarations byte-for-byte.
+            # Only undeclared non-ASCII UTF-8 needs Python 2's encoding header.
+            declared = any(re.search(br'^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+', line)
+                           for line in content.splitlines()[:2])
+            if not declared and not content.startswith(b'\xef\xbb\xbf') and any(b >= 128 for b in content):
+                content.decode('utf-8')
+                newline = b'\r\n' if b'\r\n' in content else b'\n'
+                header = b'# -*- coding: utf-8 -*-' + newline
+                if content.startswith(b'#!') and b'\n' in content:
+                    first, rest = content.split(b'\n', 1)
+                    content = first + b'\n' + header + rest
+                else:
+                    content = header + content
+            Path(dest_file).write_bytes(content)
 
             # 复制文件元数据
             shutil.copystat(src_file, dest_file)

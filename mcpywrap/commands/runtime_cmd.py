@@ -11,13 +11,19 @@ def runtime_cmd():
 
 
 @click.command(cls=OperationCommand, name='capabilities')
-@click.option('--session', required=True, help='已有的本地游戏会话 ID')
-def capabilities_cmd(session):
+@click.option('--session', help='已有的本地游戏会话 ID')
+@click.option('--group', help='本机联调组 ID')
+def capabilities_cmd(session, group=None):
     """只读查询当前会话可用的 Python、资源热更和纯命令控制入口。"""
     from ..command_context import remote_url
     if remote_url():
         raise click.UsageError('会话能力查询目前仅支持 --local；远端使用 doctor --capabilities，不回退本机。')
     from ..mcstudio.session_capabilities import inspect_session
+    from .session_cmd import target
+    target(session, group)
+    if group:
+        from ..runtime.groups import capabilities
+        return capabilities(project_dir(), group)
     return inspect_session(project_dir(), session)
 
 
@@ -69,42 +75,53 @@ def py_result_cmd(request_id, session, cancel):
 
 @click.command(cls=OperationCommand, name='reload')
 @click.argument('kind', type=click.Choice(['python', 'ui', 'shader', 'material', 'particle']))
-@click.option('--session', required=True, help='本地世界会话 ID')
+@click.option('--session', help='本地世界会话 ID')
+@click.option('--group', help='本机联调组 ID')
 @click.option('--file', 'filename', type=click.Path(dir_okay=False), help='当前项目内的目标文件')
 @click.option('--module', help='Python 模块名，例如 MyMod.client.logic')
-@click.option('--side', type=click.Choice(['client', 'server']), default='client', show_default=True,
+@click.option('--side', type=click.Choice(['client', 'server', 'both']), default='client', show_default=True,
               help='Python 执行端侧；资源热更仅支持 client')
-def reload_cmd(kind, session, filename, module, side):
+def reload_cmd(kind, session, filename, module, side, group=None):
     """重载本地测试世界中的一个模块或资源。"""
     from ..command_context import remote_url
     from ..mcstudio.hot_reload import reload_session, target_from_file
+    from .session_cmd import target as select_target
+    select_target(session, group)
     if remote_url():
         raise click.UsageError('远程联机会话暂不支持热更；本地世界请显式使用 --local')
     if module and (kind != 'python' or filename):
         raise click.UsageError('--module 仅可单独用于 Python 热更')
-    if side == 'server' and kind != 'python':
+    if side != 'client' and kind != 'python':
         raise click.UsageError('--side server 仅适用于 Python 模块')
+    if side == 'both' and not group:
+        raise click.UsageError('reload --side both 仅用于 --group；单会话请明确指定端侧')
     if not filename and not module and kind != 'ui':
         raise click.UsageError('此热更类型需要 --file 或 --module')
     target = target_from_file(project_dir(), kind, filename) if filename else module
     source = Path(filename).read_bytes() if filename and kind == 'python' else None
+    if group:
+        from ..runtime import groups
+        return groups.reload(project_dir(), group, kind, target, source, side)
     result = reload_session(project_dir(), session, kind, target, source=source, side=side)
     return {'ok': result.get('state') in ('completed', 'triggered'), 'session': session, **result}
 
 
 @click.command(cls=OperationCommand, name='watch')
-@click.option('--session', required=True, help='运行中的本地世界会话 ID')
+@click.option('--session', help='运行中的本地世界会话 ID')
+@click.option('--group', help='运行中的本机联调组 ID')
 @click.option('--side', type=click.Choice(['client', 'server', 'both']), default='client', show_default=True,
               help='自动热更端侧；both 仅适合可安全重复执行的公共模块')
-def watch_cmd(session, side='client'):
+def watch_cmd(session, side='client', group=None):
     """监控项目文件，成功组装后更新该游戏会话。"""
     from ..command_context import remote_url, json_output
     from ..mcstudio.hot_reload import SessionWatcher
+    from .session_cmd import target
+    target(session, group)
     import time
     if remote_url() or json_output():
         raise click.UsageError('watch 是本地持续日志命令，请使用 --local，不加 --json')
     watcher = SessionWatcher(project_dir(), session, lambda message, level: click.echo(message),
-                             sides=('client', 'server') if side == 'both' else (side,))
+                             sides=('client', 'server') if side == 'both' else (side,), group=group)
     try:
         watcher.start()
         while watcher.thread.is_alive(): time.sleep(.2)
