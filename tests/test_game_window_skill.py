@@ -245,7 +245,6 @@ class SkillWindowTests(unittest.TestCase):
                 with self.assertRaisesRegex(window.BackgroundCaptureUnavailable, '完整性'):
                     target._background_helper()
 
-    @unittest.skipUnless(os.name == 'nt', 'Windows')
     def test_screenshot_failure_leaves_no_output(self):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / 'blocked.png'
@@ -253,8 +252,10 @@ class SkillWindowTests(unittest.TestCase):
             fake.screenshot_with_fallback.side_effect = ValueError('游戏客户区被其他窗口覆盖')
             from click.testing import CliRunner
             from mcpywrap.cli import cli
-            with patch.object(window, 'session_game', return_value={}), patch.object(window, 'GameWindow', return_value=fake):
-                result = CliRunner().invoke(cli, ['--local', '--project', folder, 'screenshot', '--session', 'id', '--output', str(output), '--json'])
+            with patch.object(sessions, 'read', return_value={'backend': 'windows'}), \
+                    patch.object(window, 'session_game', return_value={}), \
+                    patch.object(window, 'GameWindow', return_value=fake):
+                result = CliRunner().invoke(cli, ['--local', '--project', folder, 'screenshot', '--session', 'a'*32, '--output', str(output), '--json'])
             self.assertEqual(result.exit_code, 1)
             self.assertIn('覆盖', json.loads(result.stdout)['error'])
             self.assertFalse(output.exists())

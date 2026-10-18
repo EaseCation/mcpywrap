@@ -153,6 +153,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_application_icons.py -v
       - run: python -m unittest discover -s tests -p test_launcher_python.py -v
       - run: python -m unittest discover -s tests -p test_screenshot.py -v
+      - run: python -m unittest discover -s tests -p test_game_window_skill.py -v
       - name: Build a project using the public CLI
         run: |
           mkdir -p "$RUNNER_TEMP/中文 project"
