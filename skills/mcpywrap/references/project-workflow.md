@@ -18,7 +18,7 @@
 
 构建遵守主项目优先的既有合并规则。工具 Python 环境与游戏内 Python 相互独立；add/sync --install/modsdk 不会让游戏读取 site-packages。原生扩展或未适配的 Python 代码不能仅凭 pip 安装成功当作游戏依赖。
 
-项目声明了 hooks 时，build/package/dev 初次构建会执行相应宿主脚本；首次操作不熟悉的项目可先 `script list --json` 查看。配置与时机唯一维护在[项目脚本](project-scripts.md)，不要从 Python 的 project.scripts 推断生命周期。
+项目声明了 hooks 时，build/package/dev 初次构建会执行相应宿主脚本；支持[消费者准备](consumer-prepare.md)的依赖还会在根任务后处理素材。支持该能力的 CLI 可用 `script list --effective --json` 查看完整计划，并检查 complete/ready；仅查根任务用 `script list --json`。根任务配置见[项目脚本](project-scripts.md)，不要从 Python 的 project.scripts 推断生命周期。
 
 ## 游戏 ZIP
 

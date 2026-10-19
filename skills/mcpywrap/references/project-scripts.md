@@ -33,7 +33,7 @@ before_run = ["assets"]
 
 不解释通配符、变量替换、`&&`、管道或重定向。复杂逻辑请写在 Python/Node 等程序里。Windows 的 `.cmd/.bat` 包装器不能直接作为 cmd 的程序；需要时显式调用 `cmd.exe /c` 或 PowerShell，并按所选 shell 的规则编写参数。GUI 启动时 PATH 可能与终端不同，缺少工具会明确报错，不会自动安装或切换 shell。
 
-这是项目工具配置，与 `[project.scripts]` 的 Python 安装入口无关。只有当前根项目的任务会被自动执行，不递归执行本地/Git/Python 依赖中的 hooks。
+这是项目工具配置，与 `[project.scripts]` 的 Python 安装入口无关。这里的 scripts/hooks 只自动执行当前根项目任务，不递归执行依赖 hooks。依赖可另行声明[消费者准备入口](consumer-prepare.md)，在根任务之后处理当前项目素材；它使用消费项目环境，不能与根任务的解释器约定混用。
 
 ## 手动执行
 

@@ -31,6 +31,8 @@ def capabilities(command, remote=None, local=False):
         script_help = invoke([command, 'script', '--help'])
         if script_help.returncode == 0 and all(re.search(r'^\s+'+name+r'\s', script_help.stdout, re.M) for name in ('list', 'run')):
             features.append('project-scripts')
+            if '--effective' in invoke([command, 'script', 'list', '--help']).stdout:
+                features.append('consumer-prepare')
     add_help = invoke([command, 'add', '--help']).stdout
     if '--git' in add_help and '--ref' in add_help:
         features.append('git-dependencies')

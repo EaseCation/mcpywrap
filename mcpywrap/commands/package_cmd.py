@@ -8,7 +8,7 @@ import click
 from ..command_context import OperationCommand, project_dir as current_project, non_interactive, require_project
 
 from ..config import config_exists
-from ..dependencies import read_project
+from ..dependencies import DependencyError, read_project
 from ..builders.project_builder import AddonProjectBuilder, MapProjectBuilder
 
 
@@ -36,16 +36,18 @@ def package_cmd(merge):
             raise ValueError('当前仅支持 Addon 和 Map 项目的打包')
 
         from ..project_scripts import before, configured, validate_build
+        from ..consumer_prepare import PreparationPlan
+        plan = PreparationPlan(source)
         if configured(source):
-            validate_build(source, source/'dist'/'_script_preflight')
-        with before(source, 'before_package') as scripts:
+            validate_build(source, source/'dist'/'_script_preflight', resolved=plan.manager)
+        with before(source, 'before_package', plan=plan) as scripts:
             dist = source / 'dist'
             dist.mkdir(exist_ok=True)
             destination = dist / f'{name}-{version}.zip'
             # 临时构建与 ZIP 独立于现有产物，全部成功后才替换同版本分发包。
             with tempfile.TemporaryDirectory(prefix='_temp_package_', dir=dist) as temporary:
                 output = Path(temporary) / 'build'
-                builder = (AddonProjectBuilder(source, output) if project_type == 'addon'
+                builder = (AddonProjectBuilder(source, output, resolved=plan.manager) if project_type == 'addon'
                            else MapProjectBuilder(source, output, merge))
                 success, error = builder.build()
                 if not success:
@@ -68,7 +70,8 @@ def package_cmd(merge):
         from ..project_scripts import ScriptError
         if isinstance(exc, ScriptError):
             raise
-        raise click.ClickException(f'打包失败: {exc}') from exc
+        label = '构建失败' if isinstance(exc, DependencyError) else '打包失败'
+        raise click.ClickException(f'{label}: {exc}') from exc
 
     click.secho(f'✅ 打包成功！分发文件路径: {destination}', fg='green')
     return {'artifact': str(destination), **({'scripts': scripts} if scripts else {})}

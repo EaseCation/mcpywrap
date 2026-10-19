@@ -20,7 +20,7 @@ cppconfig 是网易开发端已有格式，不是 Bedrock 全平台统一标准�
 
 世界参数、模板优先级与实例操作统一维护在 [Skill 世界设置](../skills/mcpywrap/references/instance-world-settings.md)。本页保留 cppconfig 适配与偏好持久化契约，不复制 CLI 操作教程。
 
-## 兼容与验证
+## 兼容性
 
 新 macOS 运行包声明 `cppconfig_protocol=1`。已有实例保持固定的运行包，旧包仍
 可按原协议启动原实例；显式世界选项要求新运行包并新建实例，不会假装旧包已
@@ -31,9 +31,7 @@ macOS 当前不支持启用 cppconfig 中的 `experimental_holiday`、`experimen
 和 `fancy_bubbles`；显式启用会报错。未验证字段不静默忽略。CLI 与 GUI 共享限制。
 编辑已有世界的设置使用游戏本身的界面/API；创建参数不会变成启动时覆盖存档的开关。
 
-自动测试覆盖配置持久性、只刷新派生路径、导入隔离、CLI 覆盖优先级、GUI 确认与
-取消，以及两端后端调用。macOS 实机还需核对生成器/种子/模式/难度/规则、保存后
-重开和双实例隔离；Windows 实机回归需在 Windows 上执行。
+测试入口见[测试说明](../tests/README.md)。
 
 ## 用户偏好与世界配置的区别
 

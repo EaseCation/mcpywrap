@@ -1,0 +1,5 @@
+{
+  "format_version": 1,
+  "header": {"name": "catalog-game-resources", "description": "Consumer preparation example", "uuid": "6c7ae5f6-89b9-4719-9af3-43b1d3998e90", "version": [1, 0, 0]},
+  "modules": [{"type": "resources", "uuid": "c35e7cdf-73ef-4f21-abcb-8bd7840c35c2", "version": [1, 0, 0]}]
+}

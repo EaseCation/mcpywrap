@@ -53,7 +53,7 @@ def capabilities():
     from ..engines.host import describe
     backend = get_backend()
     result['host'] = describe()
-    result['local_capabilities'] = ['project-scripts']
+    result['local_capabilities'] = ['project-scripts', 'consumer-prepare']
     result['capabilities'] = list(dict.fromkeys(result['capabilities'] + list(backend.capabilities)))
     if backend.managed_install:
         result['runtime'] = backend.diagnose()

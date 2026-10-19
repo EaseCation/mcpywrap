@@ -33,4 +33,12 @@ Windows CI 先用 MSVC 从 `native/mcs_auth` 编译 x86 登录桥接，再签名
 
 不要覆盖已有 PyPI 版本。发布动作开启 PyPI provenance attestations；各第三方 Action 固定到已核实的提交。GitHub `pypi` environment 与 PyPI publisher 的 environment 必须一致。
 
-用户当前操作统一见 [内置 Skill](../skills/mcpywrap/SKILL.md)。发布验证记录、候选核查和跨仓库推进计划放在被忽略的 `.local-notes/`，不随源码包分发；长期发行规则维护在本页。候选 CI 的未签名桥接不用于验证正式签名登录流程。
+用户当前操作统一见 [内置 Skill](skills/mcpywrap/SKILL.md)。发布验证记录、候选核查和跨仓库推进计划放在被忽略的 `.local-notes/`，不随源码包分发；长期发行规则维护在本页。候选 CI 的未签名桥接不用于验证正式签名登录流程。
+
+## 本机登录桥接开发
+
+源代码位于 `native/mcs_auth`。CI 使用 x86 MSVC 和系统自带的 .NET Framework C# 编译器；本机开发也可使用 x86 TinyCC：
+
+```powershell
+python scripts/build_mcs_auth_bridge.py --cc <x86-tcc.exe> --output <输出目录>
+```

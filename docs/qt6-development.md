@@ -33,7 +33,7 @@ GUI 和 CLI 共用 SessionWatcher：成功组装后防抖，向指定端侧发�
 
 Python 模块热更更新模块命名空间；不会自动重建已有对象、替换已注册的回调或撤销之前的副作用。修改事件注册、类结构、新增入口、删除模块或不支持动态加载的资源时，使用“重新部署并重载世界”。该按钮保存退出、重新组装、重开同一世界，不新建或丢弃存档。
 
-资源热更按实际后端能力处理：当前 macOS 开发包支持已知粒子文件更新；local6 起的运行包通过原生入口重载 JSON UI 定义，须重新注册/创建界面及绑定回调，Qt 与 CLI 共用结果和提示。旧运行包的 JSON UI、当前材质和 Shader 返回 unsupported。资源回执为 triggered，仍须检查实际效果。详见 [macOS 资源热更验收](macos-resource-reload.md)。
+资源热更按实际后端能力处理：当前 macOS 开发包支持已知粒子文件更新；支持原生 JSON UI 重载协议的运行包可重载定义，之后须重新注册/创建界面及绑定回调，Qt 与 CLI 共用结果和提示。缺少该协议的运行包、当前材质和 Shader 返回 unsupported。资源回执为 triggered，仍须检查实际效果。详见 [macOS 资源热更](macos-resource-reload.md)。
 
 新原生运行包声明 addon_link_protocol=1，使用 `--link-source-addons`：游戏行为包/资源包目录软链接到实例 assembled 目录，packs 中的标准名称也只是链接。主项目和依赖继续由同一组装器合并，监控直接更新组装目录，无需再复制运行副本。原始项目和依赖不移动、不删除。旧实例仍固定旧运行包，保留复制兼容路径；升级运行包后新建实例才启用新协议。
 
@@ -59,11 +59,11 @@ GUI 入口共用 `ui.application.create_application`：Qt 应用名与菜单显�
 
 图标源为 `mcpywrap/ui/assets/mcpy.icon`，是可由 Icon Composer 27 编辑的分层文档：深蓝背景、薄荷绿方块、白色命令提示符。背景满幅不透明，前景 SVG 未预裁切；命令提示符保留不透明，以确保小尺寸对比度。不把 Minecraft 游戏图标用作 mcpy 品牌图标。
 
-设计依据 Apple [App icons HIG](https://developer.apple.com/design/human-interface-guidelines/app-icons)（2026-06-08 更新）和 [Icon Composer 文档](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)：
+图标遵循 Apple [App icons HIG](https://developer.apple.com/design/human-interface-guidelines/app-icons) 和 [Icon Composer 文档](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)：
 
 - 1024×1024 画布、sRGB；圆角遮罩、高光、边缘反射和层间阴影由 Apple 渲染器生成，不自行用固定半径模拟系统连续圆角。
 - 方块范围 x=248–776、y=224–816，主要内容距离未裁切画布边缘至少 208 px。此数值是本设计的留白选择，HIG 并未规定统一的 macOS 安全区百分比。
 - 分层源背景不预留透明外框。导出给传统 Qt/ICNS 的静态图标时，参考 actool 的 macOS 兼容输出，在 1024 画布内将系统渲染图形放入 824×824 区域，四周留 100 px 透明区，防止 Dock 中图标显得过大。分层源与静态兼容文件的留白不能混用。
 - 图标已用 Icon Composer 27 渲染，并通过 Xcode 27 actool 编译。保留 `.icon` 原始分层素材，PNG 和 ICNS 则用于当前 Qt 应用；静态资源不具备随光照变化的动态 Liquid Glass，也不会自动切换 dark/clear/tinted 外观。将来独立打包 mcpy.app 时可接入编译后的 Assets.car，不能仅给 PNG 加反光就宣称支持全部动态外观。
 
-维护者运行 `python scripts/build_app_icon.py` 重建 PNG 和 ICNS，需要本机 Xcode 27 / Icon Composer 27 与 PySide6；运行时无需 Xcode。ICNS 提供 16、32、128、256、512 点的 1×/2× 图像。wheel 包含静态图标和可编辑分层源。
+ICNS 提供 16、32、128、256、512 点的 1×/2× 图像。wheel 包含静态图标和可编辑分层源，运行时无需 Xcode；图标维护见 [贡献指南](../CONTRIBUTING.md#图标资源)。

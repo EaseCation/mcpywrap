@@ -1,0 +1,18 @@
+[project]
+name = "catalog-framework"
+version = "1.0.0"
+dependencies = []
+
+[tool.mcpywrap]
+project_type = "addon"
+
+[tool.mcpywrap.export]
+kind = "addon"
+
+[tool.mcpywrap.consumer_prepare]
+format = 1
+python = "build_tools/prepare.py"
+requires_python = ">=3.9"
+config_key = "tool.catalog"
+config_schema = "build_tools/schema.json"
+config_example = "build_tools/example.toml"

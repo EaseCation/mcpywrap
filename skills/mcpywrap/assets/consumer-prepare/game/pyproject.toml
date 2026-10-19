@@ -1,0 +1,12 @@
+[project]
+name = "catalog-game"
+version = "1.0.0"
+dependencies = []
+
+[tool.mcpywrap]
+project_type = "addon"
+target_dir = "build"
+local_dependencies = ["../framework"]
+
+[tool.catalog]
+source = "data/items.json"

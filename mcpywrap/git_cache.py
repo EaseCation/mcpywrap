@@ -135,3 +135,17 @@ def fetch_snapshot(url, ref):
             (package / 'source.json').write_text(json.dumps({'git': url, 'rev': commit, 'sha256': digest(content)}, indent=2), encoding='utf-8')
             os.replace(package, final)
             return final / 'content', commit
+
+
+def read_snapshot(url, commit, expected=None):
+    """只读定位锁定源码；缺失时由调用者提示显式 sync，不创建目录或联网。"""
+    if not isinstance(commit, str) or not re.fullmatch('[0-9a-f]{40}', commit):
+        raise DependencyError('Git源码需要完整锁定提交；请运行 mcpy sync。')
+    origin = hashlib.sha256(url.encode('utf-8')).hexdigest()
+    container = cache_root() / 'git-archive-v2' / origin / commit
+    if not container.is_dir():
+        raise DependencyError('准备工具的Git源码尚未恢复：%s @ %s；请运行 mcpy sync。' % (url, commit))
+    content = _verified(container, url, commit)
+    if expected and expected != digest(content) and expected != windows_checkout_digest(content, crlf=False):
+        raise DependencyError('准备工具源码与项目锁不一致；请运行 mcpy sync。')
+    return content

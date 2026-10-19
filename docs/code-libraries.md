@@ -3,7 +3,7 @@
 本文描述兼容的叶子代码库声明；新项目推荐 [通用Git项目依赖](git-dependencies.md)，支持读取项目导出和递归子依赖。
 
 QuMod 用户可直接运行 `mcpy add --qumod`，无需手写下方配置；图形界面Git依赖中提供“一键添加 QuMod”快捷按钮。
-克隆项目后执行 `mcpy sync` 恢复。详见 [QuMod 指引与来源调研](qumod.md)。
+克隆项目后执行 `mcpy sync` 恢复。详见 [QuMod 接入](qumod.md)。
 
 代码库由构建工具装入游戏包，独立于 `[project].dependencies`（工具 Python 环境）和 `local_dependencies`（完整 Addon）。不要求上游包含 manifest，不运行上游安装脚本，不自动初始化入口。
 

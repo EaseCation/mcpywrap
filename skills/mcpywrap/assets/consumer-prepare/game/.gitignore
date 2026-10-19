@@ -1,0 +1,6 @@
+.venv/
+.mcpy/
+.runtime/
+build/
+dist/
+behavior_pack/generated/

@@ -1,0 +1,5 @@
+{
+  "format_version": 1,
+  "header": {"name": "catalog-framework", "description": "Consumer preparation example runtime", "uuid": "caec4298-cd86-4b0f-aebb-841c904106ef", "version": [1, 0, 0]},
+  "modules": [{"type": "data", "uuid": "4a86e7bb-fcc0-4355-9515-777357bcd6b4", "version": [1, 0, 0]}]
+}

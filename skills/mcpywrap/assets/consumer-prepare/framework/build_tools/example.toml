@@ -1,0 +1,2 @@
+[tool.catalog]
+source = "data/items.json"

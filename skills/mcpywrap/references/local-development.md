@@ -43,7 +43,7 @@ restart 会产生新 session，世界 ID 保留；需要 MCS 身份的会话按�
 
 本机世界不会自动保留多版本 A/B 部署。独立目录也不自动意味着 Windows 引擎按相同 UUID 加载不同版本；不要通过手工链接或改 UUID 构造未经支持的隔离。
 
-项目可声明 before_run，只有真正准备本地进程时执行。`source_matches=true` 只比较当前可组装文件，不证明包外素材已经生成；完整触发矩阵与副作用边界见[项目脚本](project-scripts.md)。
+根 before_run 和[依赖消费者准备](consumer-prepare.md)都只在真正准备本地进程时执行。`source_matches=true` 只比较当前可组装文件，不证明包外素材已经生成；根任务与依赖准备的配置分别见[项目脚本](project-scripts.md)和消费者准备页。
 
 ## 就绪与结束
 

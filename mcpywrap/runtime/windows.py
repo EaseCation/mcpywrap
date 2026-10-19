@@ -73,8 +73,7 @@ def run(project, *, new=False, listing=False, delete=None, force=False, clean_al
                 raise EngineError('已有会话的引擎或登录方式与请求不同。', 'session_conflict')
             result = dict(sessions.handoff(current), already_running=True)
             result['source_matches'] = matches_source(project, current)
-            result['hint'] = ('已复用运行中的世界；未重新部署、未执行预处理。' if result['source_matches'] else
-                              '已复用运行中的世界；未执行预处理，当前源码或依赖变化尚未应用，请热更或停止后重新运行。')
+            result['hint'] = '已复用运行中的世界；本次未重新准备或部署素材。应用素材修改请重启会话，或 stop 后重新 run。'
             return result
         recipe = storage.read(item['config_path'], {})
         engine = discover_engines(project, overrides, recipe.get('version')).require_engine()

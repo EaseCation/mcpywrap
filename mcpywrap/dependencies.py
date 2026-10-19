@@ -202,12 +202,13 @@ class DependencyService:
         from .project_dependencies import GitDependencyService
         return GitDependencyService(self.project_dir).add(url, **options)
 
-    def resolve(self, config=None, allow_missing=False, git_lock=None):
+    def resolve(self, config=None, allow_missing=False, git_lock=None, collect_errors=False):
         from .builders.dependency_manager import DependencyManager
         config = read_project(self.project_dir) if config is None else config
         manager = DependencyManager()
         manager.build_dependency_tree(config.get('project', {}).get('name', self.project_dir.name),
-                                      str(self.project_dir), config=config, allow_missing=allow_missing, git_lock=git_lock)
+                                      str(self.project_dir), config=config, allow_missing=allow_missing, git_lock=git_lock,
+                                      collect_errors=collect_errors)
         self.last_resolution = manager
         return manager
 

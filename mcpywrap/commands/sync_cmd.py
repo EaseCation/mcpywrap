@@ -23,9 +23,18 @@ def sync_cmd(install, migrate_windows_lock=False):
     click.secho('完成 · %d 个源码依赖已就绪 · %.1fs' % (count, time.monotonic()-started), fg='green')
     if install:
         click.echo('项目已安装到当前 Python 环境。')
+    if result['environment']['state'] == 'ready':
+        click.echo('消费者工具环境：%s（Python %s）' %
+                   (result['environment']['python'], result['environment']['version']))
 
 
 def sync_project(path, install=False, migrate_windows_lock=False):
+    from ..project_scripts import project_lock
+    with project_lock(path, force=True):
+        return _sync_project(path, install, migrate_windows_lock)
+
+
+def _sync_project(path, install=False, migrate_windows_lock=False):
     from ..config import ensure_map_setuptools_sync
     from ..utils.project_setup import find_and_configure_behavior_pack
     with project_scope(path):
@@ -73,5 +82,22 @@ def sync_project(path, install=False, migrate_windows_lock=False):
                                   capture_output=True, text=True)
             if proc.returncode:
                 raise click.ClickException(proc.stderr or proc.stdout or '项目安装失败')
-    return {'project': str(path), 'installed': install, 'code_libraries': library_count,
-            'git_projects': git_count, 'git_lock_migrations': []}
+    result = {'project': str(path), 'installed': install, 'code_libraries': library_count,
+              'git_projects': git_count, 'git_lock_migrations': [], 'sources_synced': True}
+    from ..consumer_prepare import PreparationPlan, guidance
+    from ..prepare_environment import ensure_environment
+    from ..project_scripts import ScriptError
+    try:
+        plan = PreparationPlan(path, resolved=manager)
+        result['environment'] = ensure_environment(path, plan.requirements, plan.override)
+        plan.check()
+    except (ValueError, OSError) as exc:
+        if isinstance(exc, ScriptError):
+            exc.details.update(result, environment_ready=False)
+            exc.args = ('依赖已恢复，消费者准备未就绪：' + str(exc),)
+            raise
+        from ..prepare_environment import PrepareError
+        raise PrepareError('依赖已恢复，消费者工具环境未就绪：' + str(exc),
+                           sources_synced=True, environment_ready=False) from exc
+    result['preparation'] = guidance(path, resolved=manager)
+    return result

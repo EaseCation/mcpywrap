@@ -19,7 +19,7 @@ WindowsBackend 调用原有 MC Studio 发现、cppconfig 和 Safaia 流程，保
 
 macOS 首次 mcpy run 自动从内置发布源安装原生运行包和官方 APK，进度在 stderr；也可提前执行 mcpy engine install。--catalog / --apk 是高级覆盖选项。交互式 run 显示共用调试小窗，ui 打开完整管理页；--no-gui / --detach / --json / --non-interactive 抑制调试小窗；Windows 保持手动安装 MC Studio。默认资源目录 ~/Library/Application Support/mcpy，可设置 MCPY_ENGINE_HOME、MCPY_RUNTIME_CATALOG。
 
-macOS 支持离线 Addon 世界；无认证服务器连接需 CLI 0.4.3+ 与运行包 0.4.3+ 配套，运行包须声明 network_connect_protocol=1（旧 0.4.0 运行包需要显式升级）。connect 与配置了 server 的 run 共用 cppconfig、会话、日志及退出；网络会话仅支持客户端调试，不装配本地 Mod。游戏截图通过支持 screenshot_protocol=1 的 Launcher 按需读帧；macOS 不支持 Map、MCS 登录、原始桌面键鼠或录像，相关能力边界见[内置 Skill](../skills/mcpywrap/references/macos-local.md)。最低 macOS 13.0，实际游戏只在 26.6.2 验证。运行包尚为 ad-hoc 签名、公证待完成。
+macOS 支持离线 Addon 世界；无认证服务器连接需 CLI 0.4.3+ 与运行包 0.4.3+ 配套，运行包须声明 network_connect_protocol=1（旧 0.4.0 运行包需要显式升级）。connect 与配置了 server 的 run 共用 cppconfig、会话、日志及退出；网络会话仅支持客户端调试，不装配本地 Mod。游戏截图通过支持 screenshot_protocol=1 的 Launcher 按需读帧；macOS 不支持 Map、MCS 登录、原始桌面键鼠或录像，相关能力边界见[内置 Skill](../skills/mcpywrap/references/macos-local.md)。最低 macOS 13.0；具体能力由所选运行包和当前实例诊断确定。运行包采用 ad-hoc 签名，未提供公证。
 
 图形界面的会话操作集中在 ui/session_controller.py；主界面和小窗仅使用共用 SessionControls/PythonConsole 与 LogView。小窗不再另起 Studio TCP 接收器，详见 [共用日志界面](shared-log-ui.md)。
 
@@ -31,7 +31,7 @@ Windows/macOS 共同基线是 `--local --project <目录> --non-interactive run 
 
 基线使用同步 Python；可选队列仍以当前会话能力为准。远程调用遇到不支持的队列/等待条件会在发送代码前拒绝，py-result 和本地会话能力查询不会落到本机会话。没有新增服务端协议。
 
-smoke.py 的 --client-file/--server-file 通过同一 CLI 等待世界/HUD、分别执行一次脚本、收集 JSON/日志，并停止自己创建的游戏。可选 UI/玩家与服务端配套测试见 [手动测试入口](../tests/manual/runtime_controls/README.md)。
+可选 UI/玩家与服务端配套测试见 [手动测试入口](../tests/manual/runtime_controls/README.md)。
 
 两端单人实例共用 cppconfig 的 world_info；存储、启动转换、保存优先级和创建参数见[实例世界设置](instance-world-settings.md)。
 

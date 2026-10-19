@@ -17,6 +17,7 @@ Skill 文件夹、CLI、正在运行的 worker、macOS 原生运行包分别更�
 | 基础会话/项目命令 | bootstrap 返回基础能力；CLI `--help` |
 | Git / QuMod | bootstrap `--require-capability git-dependencies` / `framework-presets` |
 | 宿主项目脚本 | bootstrap `--require-capability project-scripts`；`script --help` |
+| 依赖消费者准备 | bootstrap `--require-capability consumer-prepare`；`script list --effective --json` |
 | 本地 macOS 世界 | bootstrap `--local --require-capability macos-local-worlds`，再 `engine doctor --json` |
 | Windows 服务 | Windows bootstrap `--local --require-capability serve` |
 | 远程游戏调试 | bootstrap `--remote <endpoint> --require-capability remote-client --require-capability network-sessions --require-capability py` |

@@ -10,6 +10,6 @@ Agent 的推荐入口是 `runtime input observe → run → status/cancel`；公
 
 Windows适配在会话worker中保留状态与幂等历史，单个调度线程推进操作；远程input端点只传参数。统一游戏控制层预留防止新旧游戏写请求插入设备计划；已持有的系统键或修饰键拒绝接管。未知释放保持busy，支持stop重试，不扩大为多请求共享输入。
 
-原生Mac时钟primitive和配套启动器/结构规则补丁在 `native/runtime_input`。CLI 0.4.6 默认指向运行包 0.4.4，提供 `launcher.steady_clock`；已在 Apple Silicon / macOS 26.6.2 / 开发包 3.9.100.297020 通过 8 项实机用例，3.10.100.299889 通过结构识别检查。旧运行包仍返回 `missing_monotonic_clock`，需显式升级资源并新建实例；原始pointer/text缺能力时保持不支持。
+原生 Mac 单调时钟及启动器结构规则位于 `native/runtime_input`。运行包通过 `launcher.steady_clock` 提供计时能力；缺少该接口时返回 `missing_monotonic_clock`，需升级配套资源并新建实例。原始 pointer/text 缺少能力时保持不支持。
 
-验证采用假时钟检查时序、调用顺序、部分失败、取消、幂等和快照；可选实机脚本覆盖真实客户端与服务端读回。旧入口不改变其修饰键排序、时间原点或输入后端；仅从默认发现入口隐藏，兼容参考保留。
+兼容入口保留原有修饰键排序、时间原点和输入后端，仅从默认发现入口隐藏。测试入口见[测试说明](../tests/README.md)。

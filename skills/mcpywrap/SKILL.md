@@ -1,6 +1,6 @@
 ---
 name: mcpywrap
-description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、依赖、预处理与打包，启动本地世界或联机会话，进行双客户端联调、Python 热更、UI/玩家操作、游戏截图和 Windows 录制。适用于该工具的实际项目开发与验收；业务 API 仍需查目标版本 ModSDK。
+description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、依赖、项目脚本与依赖自带的资源准备，完成构建打包、本地或网络会话、双客户端联调、Python 热更、UI/玩家操作及画面采集。适用于该工具的实际项目开发与验收；业务 API 仍需查目标版本 ModSDK。
 ---
 
 # mcpywrap
@@ -23,7 +23,9 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 | 安装 CLI、检查环境、分清本机/远端 | [安装与路由](references/setup.md) | macOS 资源问题转平台页；Windows HTTP 服务转远程页 |
 | 新建项目、Mod/SDK、构建、打包、编辑器、PyPI 分发 | [项目工作流](references/project-workflow.md) | 涉及依赖或预处理时再读对应页 |
 | 加 Python/本地/Git 依赖、QuMod、克隆恢复、升级回退 | [依赖与 QuMod](references/project-dependencies.md) | 无需先读启动或输入协议 |
-| 配置/运行宿主脚本、构建前生成资源、解释 dev 行为 | [项目脚本](references/project-scripts.md) | 真要编写生成器再读其样例；不引入自动预处理 watch |
+| 当前项目自己的脚本、手动任务和根 hooks | [项目脚本](references/project-scripts.md) | 要编写生成器时再读其样例 |
+| 使用框架处理本项目素材、准备环境或排错 | [消费者准备](references/consumer-prepare.md) | 添加或恢复依赖转依赖页；应用到游戏转本地生命周期页 |
+| 框架作者导出消费者入口、配置协议及示例 | [作者接入](references/consumer-prepare-author.md) | 消费者操作沿链接读取；可复制模板随 Skill 提供 |
 | 启动/重开/停止本地世界、代码未应用、部署占用 | [本地会话生命周期](references/local-development.md) | 世界参数转设置页；实际热更/执行 Python 转调试页 |
 | 自定义种子、地形、难度、游戏规则 | [世界设置](references/instance-world-settings.md) | 这些是实例创建参数，不是项目配置 |
 | 两名玩家、多世界、组查询/重试/停止/热更 | [双客户端联调](references/dual-clients.md) | 普通输入绑定选中的成员，再读输入页 |
@@ -40,7 +42,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 - 世界保存进度，部署决定代码：`--new` 只创建世界；再次 run 若接管已有会话，不应用新代码，也不执行预处理。具体更新选择见本地生命周期页。
 - 普通 build/dev 不写运行目录；运行资源由受控部署发布。同版多世界可以并行，有其他读者时不能单方面换版。
 - 两名玩家使用组；输入/Python/截图选具体 session，组热更与停止选 group。本地 `waiting_for_join` 需要用户点击局域网卡片，不是启动失败。
-- 宿主任务使用 `script`；`runtime py` 才是在游戏执行。钩子按构建/打包/实际本地启动触发，runtime watch 和客机重试不运行它们。
+- 项目自己的宿主任务用 scripts/hooks；依赖提供的资源处理用 consumer_prepare；`runtime py` 在游戏内执行。有效准备计划使用 `script list --effective --json`，还需检查 complete/ready，不能只看查询的 ok。
 - 查询与 GUI 依赖刷新只读；关闭管理/调试窗口保留游戏。取消准备与停止已经启动的游戏是不同操作。
 
 ## 仅在继续旧脚本时阅读

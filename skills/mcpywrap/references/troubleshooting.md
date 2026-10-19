@@ -8,6 +8,9 @@
 |---|---|
 | 缺少命令/选项/能力 | 核对实际 CLI 和目标 worker/运行包；见[安装](setup.md)，不靠更新 Skill 猜支持 |
 | init 拒绝已有配置 | 使用原项目，需要恢复依赖时 sync；不删配置 |
+| 有效计划 ok=true，但 ready=false / complete=false | 查询成功不代表可构建；按 diagnostics 修复。旧 script list --json 不含依赖任务，见[消费者准备](consumer-prepare.md) |
+| prepare_environment_unavailable / prepare_python_unavailable | 核对计划中的解释器及来源要求；sync 可创建缺失环境，但不重建已有环境或下载 Python，见[消费者准备](consumer-prepare.md) |
+| consumer_config_invalid / 依赖任务未执行 | 查看配置 issues 和 enabled/disabled/not_transitive 状态；按[消费者准备](consumer-prepare.md)处理，不自动补旧 hooks 或停用失败任务 |
 | source_matches=true，但修改表格没生效 | 只比较当前包文件；接管会话没执行预处理，见[项目脚本](project-scripts.md) |
 | already_running | 已接管，不是重启/重新部署；按[生命周期](local-development.md)选择更新方式 |
 | busy / deployment_in_use / world_in_use | 同项目 status --list 查真实读者/世界占用；只停止自己拥有或用户指定的目标，不清锁 |
@@ -32,7 +35,7 @@
 | partial / 某成员失败 | 逐成员/端侧核验；仅重试合适的失败成员，不宣称整组回滚或整组成功 |
 | script_failed / script_timeout / script_cancelled | 查 script、script_exit_code、script_log；本次后续流程未继续，但源码可能已改 |
 | script_config_invalid / script_not_found | 核对主项目任务表、命令路径与工具解释器，不向游戏环境 pip install |
-| script_config_changed | 前置任务改了配置/锁/包身份/世界配置；先修任务，再显式重发 |
+| script_config_changed | 配置、锁、包身份、世界配置或准备工具源码在操作期间变化；按具体错误稳定输入，再显式重发 |
 | script_recursion | 不在脚本里递归调用 mcpy 写操作；组合逻辑放进脚本语言 |
 | script_recovery_required | 按 script_state 核对本次脚本进程与后代；未确认退出不删 active/锁记录 |
 
@@ -41,6 +44,7 @@
 ## 依赖与环境
 
 - 仅开发环境 / 游戏 import 失败：检查实际组装内容、入口和游戏解释器；不是反复 pip 安装的理由。Git/QuMod、跨平台锁与源码缓存问题见[依赖页](project-dependencies.md)。
+- 已执行 mcpy add 但消费者准备仍缺库：它与项目 .venv 是不同环境，按[消费者准备](consumer-prepare.md)中的实际解释器修复，不重复安装到 mcpy 环境。
 - 游戏包原生二进制：把工具依赖移出包，使用适配游戏的实现，不绕过校验。
 - uv Python 链接失效：bootstrap.py 用 --python <本机解释器>，PowerShell 用 -Python <路径>。
 - 找不到引擎/皮肤：本机 doctor；远端在 Windows 服务端准备资源和路径。macOS 原生资源错误见[平台页](macos-local.md)。

@@ -33,7 +33,10 @@ def add_cmd(package, local_path, qumod, framework, git_url, git_ref, dep_name, s
     try:
         service = DependencyService(str(current_project()))
         if git_url:
-            return service.add_git(git_url, ref=git_ref, name=dep_name, subdir=subdir, kind=kind, target=target)
+            result = service.add_git(git_url, ref=git_ref, name=dep_name, subdir=subdir, kind=kind, target=target)
+            from ..consumer_prepare import guidance
+            result['preparation'] = guidance(current_project())
+            return result
         if preset:
             entry = PromptDependency('framework', preset, {'script_dir': script_dir, 'source': preset_source})
         elif package is None and local_path is None:
@@ -43,13 +46,18 @@ def add_cmd(package, local_path, qumod, framework, git_url, git_ref, dep_name, s
             entry = DependencyDeclaration('local' if local_path is not None else 'package', local_path if local_path is not None else package)
         service = DependencyService(str(current_project()))
         if entry.kind == 'git':
-            return service.add_git(entry.value, **entry.options)
+            result = service.add_git(entry.value, **entry.options)
+            from ..consumer_prepare import guidance
+            result['preparation'] = guidance(current_project())
+            return result
         if entry.kind == 'framework':
             click.echo('正在准备框架外部依赖（固定提交，不安装到工具 Python 环境）...')
             result = service.add_framework(entry.value, **entry.options)
             for warning in result['warnings']:
                 click.echo(warning, err=True)
             click.secho('框架已准备；其他开发者克隆后执行 mcpy sync 即可恢复。', fg='green')
+            from ..consumer_prepare import guidance
+            result['preparation'] = guidance(current_project())
             return result
         if entry.kind == 'local':
             changed, _ = service.add_local(entry.value)
@@ -59,7 +67,9 @@ def add_cmd(package, local_path, qumod, framework, git_url, git_ref, dep_name, s
         manager = service.last_resolution
         report_dependency_warnings(manager)
         click.secho('依赖已添加' if changed else '依赖已存在', fg='green')
-        return {'changed': changed, 'dependency': entry.value, 'source': entry.kind,
+        from ..consumer_prepare import guidance
+        preparation = guidance(current_project(), resolved=manager)
+        return {'changed': changed, 'dependency': entry.value, 'source': entry.kind, 'preparation': preparation,
                 'classification': 'addon' if entry.kind == 'local' else manager.status_for(current_project(), entry).state,
                 'warnings': manager.warnings}
     except (DependencyError, OSError) as exc:

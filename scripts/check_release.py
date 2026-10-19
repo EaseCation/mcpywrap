@@ -49,6 +49,8 @@ with tarfile.open(sdist) as archive:
         assert archive.extractfile(f'mcpywrap-{version}/{name}').read() == (root/name).read_bytes(), \
             f'Sdist has stale icon: {name}'
     assert 'tests/test_local_dependencies.py' in sdist_names
+    assert {'CONTRIBUTING.md', 'RELEASING.md', 'tests/README.md'} <= sdist_names
+    assert not {'docs/development.md', 'docs/releasing.md'} & sdist_names
     assert {'docs/code-libraries.md', 'docs/git-dependencies.md', 'docs/qumod.md', 'docs/runtime-debug.md'} <= sdist_names
     runtime_files = {'docs/runtime-ui.md', 'docs/runtime-player.md', 'docs/input-sequence.md', 'docs/runtime-input.md',
                      'tests/test_runtime_input.py', 'tests/test_host_input.py', 'tests/test_runtime_key_timeline.py',

@@ -71,11 +71,11 @@ def start(project, config_path=None, level_id=None, overrides=None, timeout=30, 
     session = session_id or uuid.uuid4().hex
     script_options = {}
     if network is None:
-        from ..project_scripts import reject_recursion, startup_budget, snapshot_digest
+        from ..project_scripts import reject_recursion, startup_options
         reject_recursion()
         # Also pin the absence of hooks: adding them after reservation must not
         # execute unbudgeted work under an already selected launch recipe.
-        script_options = {'script_budget': startup_budget(root), 'script_config_digest': snapshot_digest(root)}
+        script_options = startup_options(root)
     directory = session_path(root, session)
     directory.mkdir(parents=True, exist_ok=False)
     record = {'session': session, 'project': str(root), 'state': 'starting', 'game': None,

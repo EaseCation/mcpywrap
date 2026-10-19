@@ -3,6 +3,7 @@ import hashlib
 import json
 import re
 from importlib import metadata
+from functools import cached_property
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
@@ -29,9 +30,28 @@ def _local_url(url):
 
 
 class DependencyNode:
-    def __init__(self, name, addon_pack, parent=None):
+    def __init__(self, name, addon_pack, parent=None, *, source=None):
         self.name, self.addon_pack, self.parent = name, addon_pack, parent
         self.children = []
+        self.source = source or {'kind': 'local', 'path': str(Path(addon_pack.path).resolve())}
+
+    @cached_property
+    def source_root(self):
+        if self.source['kind'] == 'git':
+            from ..git_cache import read_snapshot
+            return read_snapshot(self.source['git'], self.source['rev'], self.source.get('source_sha256'))
+        return Path(self.addon_pack.path).resolve()
+
+    @property
+    def descriptor_root(self):
+        root = self.source_root
+        if self.source['kind'] == 'git':
+            path = (root / self.source['subdir']).resolve()
+            if not path.is_relative_to(root.resolve()):
+                raise DependencyError('Git描述根越界')
+            from ..source_files import long_path
+            return long_path(path)
+        return root
 
     def add_child(self, node):
         if node not in self.children:
@@ -47,6 +67,8 @@ class DependencyManager:
         self.statuses = {}
         self._nodes, self._active, self._ordered = {}, [], []
         self._git_locks = {}
+        self._git_sources = {}
+        self.collect_errors = False
         self.has_git_projects = False
 
     def find_dependency_path(self, package_name):
@@ -57,8 +79,9 @@ class DependencyManager:
         direct = dist.read_text('direct_url.json')
         return _local_url(json.loads(direct).get('url', '')) if direct else None
 
-    def build_dependency_tree(self, project_name, project_path, dependencies=None, *, config=None, allow_missing=False, git_lock=None):
+    def build_dependency_tree(self, project_name, project_path, dependencies=None, *, config=None, allow_missing=False, git_lock=None, collect_errors=False):
         self.__init__()
+        self.collect_errors = collect_errors
         project_path = str(Path(project_path).resolve())
         if git_lock is not None:
             self._git_locks[project_path] = git_lock
@@ -78,7 +101,7 @@ class DependencyManager:
         self._process(root, config)
         self._active.pop()
         self.dependency_map = {canonical_path(n.addon_pack.path): n.addon_pack for n in self._ordered}
-        if self.errors and not allow_missing:
+        if self.errors and not (allow_missing or collect_errors):
             raise DependencyError('\n'.join(self.errors))
         return root
 
@@ -120,17 +143,27 @@ class DependencyManager:
                     p.is_dir() and p.name.startswith(('behavior_pack', 'BehaviorPack', 'resource_pack', 'ResourcePack'))
                     for p in Path(path).iterdir())
                 if has_mcpy or looks_like_addon:
-                    self._visit(parent, path, canonicalize_name(requirement.name))
+                    self._visit(parent, path, canonicalize_name(requirement.name), source_kind='package')
                     self._status(source, entry, 'addon')
                 else:
                     self._development_only(source, entry)
             except (DependencyError, OSError, ValueError) as exc:
-                raise DependencyError(f'来源 {source}\n依赖 {entry.value!r}: {exc}') from exc
+                message = f'来源 {source}\n依赖 {entry.value!r}: {exc}'
+                if not self.collect_errors:
+                    raise DependencyError(message) from exc
+                self.errors.append(message)
         from ..git_projects import resolve_projects
-        for entry, path, info in resolve_projects(parent.addon_pack.path, config,
-                                                  self._git_locks.get(str(Path(parent.addon_pack.path).resolve()))):
-            self.has_git_projects = True
-            self._visit(parent, str(path), entry['name'])
+        try:
+            projects = resolve_projects(parent.addon_pack.path, config,
+                                        self._git_locks.get(str(Path(parent.addon_pack.path).resolve())),
+                                        source_records=self._git_sources)
+            for entry, path, info in projects:
+                self.has_git_projects = True
+                self._visit(parent, str(path), entry['name'])
+        except (DependencyError, OSError, ValueError) as exc:
+            if not self.collect_errors:
+                raise
+            self.errors.append(str(exc))
 
     def _missing(self, source, value, reason):
         from ..dependencies import DependencyDeclaration
@@ -151,11 +184,13 @@ class DependencyManager:
         self.warnings.append(message)
         self._status(source, entry, 'development_only', message)
 
-    def _visit(self, parent, path, name):
+    def _visit(self, parent, path, name, source_kind='local'):
         key = canonical_path(path)
         if key in self._active:
             raise DependencyError('循环依赖: ' + ' -> '.join(self._active + [key]))
         if key in self._nodes:
+            if source_kind == 'local' and self._nodes[key].source['kind'] == 'package':
+                self._nodes[key].source['kind'] = 'local'
             parent.add_child(self._nodes[key])
             return
         config = read_project(path)
@@ -168,14 +203,20 @@ class DependencyManager:
         addon = AddonsPack(f'{safe_name}_{suffix}', path)
         addon.behavior_pack_dir, addon.resource_pack_dir = folders.get('behavior'), folders.get('resource')
         addon.code_target = config.get('tool', {}).get('mcpywrap', {}).get('_registered_code_target')
-        node = DependencyNode(name, addon, parent)
+        record = self._git_sources.get(key)
+        source = ({'kind': 'git', 'git': record['source']['git'], 'rev': record['source']['rev'],
+                   'subdir': record['source'].get('subdir', '.'), 'source_sha256': record.get('source_sha256')}
+                  if record else {'kind': source_kind, 'path': str(Path(path).resolve())})
+        node = DependencyNode(name, addon, parent, source=source)
         self._nodes[key] = node
         parent.add_child(node)
         self._active.append(key)
         config = read_project(path)
-        if 'mcpywrap' in config.get('tool', {}):
-            self._process(node, config)
-        self._active.pop()
+        try:
+            if 'mcpywrap' in config.get('tool', {}):
+                self._process(node, config)
+        finally:
+            self._active.pop()
         self._ordered.append(node)
 
     def get_all_dependencies(self):

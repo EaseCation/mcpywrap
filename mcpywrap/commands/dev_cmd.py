@@ -68,10 +68,12 @@ def dev_cmd(reload_session):
         
         # 实际构建
         from ..project_scripts import before, configured, validate_build
+        from ..consumer_prepare import PreparationPlan
+        plan = PreparationPlan(source_dir)
         if configured(source_dir):
-            validate_build(source_dir, target_dir)
-        with before(source_dir, 'before_build'):
-            suc = build(source_dir, target_dir)
+            validate_build(source_dir, target_dir, resolved=plan.manager)
+        with before(source_dir, 'before_build', plan=plan):
+            suc = build(source_dir, target_dir, resolved=plan.manager)
         if not suc:
             click.secho("❌ 初始构建失败", fg="red")
             raise click.ClickException('无法启动开发监控')
@@ -79,6 +81,9 @@ def dev_cmd(reload_session):
         click.secho(f"🔍 开始监控代码变化，路径: ", fg="bright_blue", nl=False)
         click.secho(f"{source_dir}", fg="bright_cyan")
         
+        if plan.enabled:
+            click.echo('初次资源准备已完成；dev 后续只同步包内文件，原始素材修改需要重新构建并应用。')
+
         # 创建项目监视器
         project_watcher = ProjectWatcher(source_dir, target_dir, file_change_callback)
         

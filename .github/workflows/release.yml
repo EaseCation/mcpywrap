@@ -147,6 +147,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
       - run: python -m unittest discover -s tests -p test_project_scripts.py -v
+      - run: python -m unittest discover -s tests -p test_consumer_prepare.py -v
       - run: python -m unittest discover -s tests -p test_macos_network.py -v
       - run: python -m unittest discover -s tests -p test_engine_backends.py -v
       - run: python -m unittest discover -s tests -p test_engine_install.py -v
@@ -204,7 +205,7 @@ jobs:
           python -m venv "$RUNNER_TEMP/wheel-smoke"
           "$RUNNER_TEMP/wheel-smoke/bin/python" -m pip install dist/*.whl
           cd "$RUNNER_TEMP"
-          wheel-smoke/bin/python -c "from importlib.metadata import version; from mcpywrap import __version__; assert __version__ == version('mcpywrap'); from mcpywrap.dependencies import DependencyService; from mcpywrap.minecraft.template.generate_mod_files import generate_mod_framework"
+          wheel-smoke/bin/python -c "from importlib.metadata import version; from mcpywrap import __version__; assert __version__ == version('mcpywrap'); from mcpywrap.dependencies import DependencyService; from mcpywrap.consumer_prepare import PreparationPlan; from jsonschema import Draft202012Validator; from mcpywrap.minecraft.template.generate_mod_files import generate_mod_framework"
           wheel-smoke/bin/mcpy --help
           wheel-smoke/bin/mcpy add --help
           wheel-smoke/bin/mcpy connect --help

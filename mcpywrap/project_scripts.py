@@ -85,8 +85,12 @@ def reject_recursion():
 
 
 def configured(project):
-    settings = read_project(project).get('tool', {}).get('mcpywrap', {})
-    return bool(settings.get('scripts') or settings.get('hooks'))
+    config = read_project(project)
+    settings = config.get('tool', {}).get('mcpywrap', {})
+    return bool(settings.get('scripts') or settings.get('hooks') or
+                (settings.get('project_type', 'addon') == 'addon' and
+                 (settings.get('local_dependencies') or settings.get('git_dependencies') or
+                  config.get('project', {}).get('dependencies'))))
 
 
 def _active_process(record):
@@ -107,7 +111,8 @@ def _active_process(record):
 
 
 @contextmanager
-def operation(project, event=None, *, task=None, args=(), cancel=None, progress=None, lock_held=False):
+def operation(project, event=None, *, task=None, args=(), cancel=None, progress=None, lock_held=False,
+              after_task=None):
     """Hold the cooperative lock through the caller's consumption of generated files."""
     project = Path(project).resolve()
     reject_recursion()
@@ -127,17 +132,19 @@ def operation(project, event=None, *, task=None, args=(), cancel=None, progress=
                 raise ScriptError('脚本执行已取消', 'script_cancelled', script=name, event=event)
             results.append(_execute(project, name, scripts[name], event or 'manual', args,
                                     cancel=cancel, progress=progress))
+            if after_task:
+                after_task()
         if cancel and cancel():
             raise ScriptError('操作已取消', 'script_cancelled', event=event)
         yield results
 
 
 @contextmanager
-def project_lock(project):
+def project_lock(project, *, force=False):
     project = Path(project).resolve()
     reject_recursion()
     directory = project/'.mcpy/scripts'
-    if not configured(project) and not (directory/'active.json').exists():
+    if not force and not configured(project) and not (directory/'active.json').exists():
         yield
         return
     with directory_lock(directory/'lock'):
@@ -150,9 +157,20 @@ def project_lock(project):
         yield
 
 
-def startup_budget(project):
+def startup_budget(project, plan=None):
+    from .consumer_prepare import PreparationPlan
+    plan = plan or PreparationPlan(project)
     scripts, hooks = configuration(project)
-    return sum(scripts[name]['timeout'] for name in hooks.get('before_run', []))
+    return sum(scripts[name]['timeout'] + 8 for name in hooks.get('before_run', [])) + plan.budget
+
+
+def startup_options(project):
+    from .consumer_prepare import PreparationPlan
+    plan = PreparationPlan(project)
+    plan.preflight()
+    return {'script_budget': startup_budget(project, plan), 'script_config_digest': snapshot_digest(project),
+            'consumer_plan_digest': plan.token(),
+            'consumer_plan': {'providers': plan.rows(), 'environment': plan.environment_status()}}
 
 
 def snapshot_digest(project):
@@ -166,21 +184,25 @@ def startup_hooks(data, deployment):
     project = data['project']
     if data.get('script_config_digest') and snapshot_digest(project) != data['script_config_digest']:
         raise ScriptError('准备期间项目配置已变化，请重新运行。', 'script_config_changed')
-    if not configured(project):
-        return
+    from .consumer_prepare import PreparationPlan
+    plan = PreparationPlan(project)
+    if data.get('consumer_plan_digest') and data['consumer_plan_digest'] != plan.token():
+        raise ScriptError('启动预检之后消费者准备计划或环境已变化，请重新运行。', 'script_config_changed')
     deployment.preflight()
     from .runtime.deployment import runtime_builder
-    runtime_builder(project, deployment.target).initialize()
+    runtime_builder(project, deployment.target, resolved=plan.manager).initialize()
     def progress(task):
         data['script'] = task
         sessions.save(sessions.session_path(project, data['session'])/'session.json', data)
     stop = sessions.session_path(project, data['session'])/'stop'
     config_path = Path(data['config_path'])
     original_config = config_path.read_bytes() if config_path.exists() else None
-    with before(project, 'before_run', cancel=stop.exists, progress=progress, lock_held=True) as results:
+    with before(project, 'before_run', cancel=stop.exists, progress=progress, lock_held=True, plan=plan) as results:
         if (config_path.read_bytes() if config_path.exists() else None) != original_config:
             raise ScriptError('前置脚本修改了世界配置，本次启动已停止。', 'script_config_changed')
         data['scripts'] = results
+    # 仅保存于本次 worker 的部署对象，不序列化到会话文件。
+    deployment.preparation_plan = plan
 
 
 def _execute(project, name, spec, event, extra, *, cancel=None, progress=None):
@@ -207,7 +229,9 @@ def _execute(project, name, spec, event, extra, *, cancel=None, progress=None):
     directory.mkdir(parents=True)
     log, state_path, stop = directory/'output.log', directory/'result.json', directory/'cancel'
     from .mcstudio.processes import identity, background_options
-    details = {'script': name, 'event': event, 'script_log': str(log), 'script_state': str(state_path)}
+    details = {'script': name, 'event': event, 'script_log': str(log), 'script_state': str(state_path),
+               'kind': spec.get('kind', 'root')}
+    details.update({key: spec[key] for key in ('provider', 'source') if key in spec})
     metadata = dict(details, cwd=str(project), executable=executable, started_at=time.time(), state='starting')
     storage.write(state_path, metadata)
     storage.write(directory.parent/'active.json', {'state_path': str(state_path), 'log_path': str(log)})
@@ -281,15 +305,22 @@ def project_snapshot(project):
 
 
 @contextmanager
-def before(project, event, *, cancel=None, progress=None, lock_held=False):
-    snapshot = project_snapshot(project) if configured(project) else None
-    with operation(project, event, cancel=cancel, progress=progress, lock_held=lock_held) as results:
-        if snapshot is not None and snapshot != project_snapshot(project):
-            raise ScriptError('前置脚本修改了项目配置、依赖锁或包身份；本次操作已停止。', 'script_config_changed')
+def before(project, event, *, cancel=None, progress=None, lock_held=False, plan=None):
+    from .consumer_prepare import PreparationPlan
+    plan = plan or PreparationPlan(project)
+    with nullcontext() if lock_held else project_lock(project, force=bool(plan.enabled)):
+        plan.preflight()
+        with operation(project, event, cancel=cancel, progress=progress, lock_held=True,
+                       after_task=plan.check) as results:
+            plan.check()
+            results.extend(plan.execute(event, cancel=cancel, progress=progress))
+        if cancel and cancel():
+            raise ScriptError('准备已取消', 'script_cancelled', event=event)
+        plan.check()
         yield results
 
 
-def validate_build(project, target):
+def validate_build(project, target, *, resolved=None):
     """Preflight destinations/structure without running hooks or publishing files."""
     from .runtime.deployment import check_build_target
     from .builders.project_builder import AddonProjectBuilder
@@ -301,7 +332,7 @@ def validate_build(project, target):
     kind = read_project(project).get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
     check_build_target(project, target)
     if kind == 'addon':
-        AddonProjectBuilder(project, target).initialize()
+        AddonProjectBuilder(project, target, resolved=resolved).initialize()
     elif kind == 'map':
         manager = DependencyService(project).resolve()
         validate_target(target, project, list(manager.get_all_dependencies().values()) + [manager.root_node.addon_pack])
@@ -313,6 +344,7 @@ def validate_build(project, target):
 
 def skipped_network(project):
     hooks = read_project(project).get('tool', {}).get('mcpywrap', {}).get('hooks', {})
-    if isinstance(hooks, dict) and hooks.get('before_run'):
+    settings = read_project(project).get('tool', {}).get('mcpywrap', {})
+    if (isinstance(hooks, dict) and hooks.get('before_run')) or settings.get('local_dependencies') or settings.get('git_dependencies'):
         from .command_context import report_warning
-        report_warning('本次仅连接服务器，不执行本地 before_run 脚本。')
+        report_warning('本次仅连接服务器，不执行本地 before_run 或依赖消费者准备，不装配本地资源。')

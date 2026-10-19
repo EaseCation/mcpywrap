@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["source"],
+  "properties": {
+    "source": {"type": "string", "minLength": 1, "description": "消费项目内的原始 JSON 目录数据，例如 data/items.json"}
+  },
+  "additionalProperties": false
+}

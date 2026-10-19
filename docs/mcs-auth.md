@@ -32,14 +32,4 @@ mcpy --project D:\mods\demo --non-interactive run --mcs-auth --detach --json
 
 停止使用时，去掉 `--mcs-auth` 即可。若曾安装证书，可打开 `certmgr.msc`，在当前用户的“受信任的根证书颁发机构 → 证书”中找到 `mcpywrap Project Code Signing`，核对上述指纹后移除。不要移除其他证书。已加载的托管桥接程序集会随 MC Studio 退出而卸载。
 
-## 开发与发布
-
-源代码位于 `native/mcs_auth`。CI 使用 x86 MSVC 和系统自带的 .NET Framework C# 编译器；本机开发也可使用 x86 TinyCC：
-
-```powershell
-python scripts/build_mcs_auth_bridge.py --cc <x86-tcc.exe> --output <输出目录>
-```
-
-发布时由 CI 从 GitHub Actions secrets 取得加密 PFX 与密码，在临时 runner 中签署组件并清理私钥。仓库不保存私钥或编译后的组件，只保存源码与公钥校验信息。`scripts/check_mcs_auth_bridge.py` 检查源代码、产物、架构及发布者是否匹配；详见[发布流程](releasing.md)。
-
-`MCPY_MCS_BRIDGE_DIR` 可指定开发组件目录；程序不会为任意外部组件提供证书信任安装。发布包的组件会缓存到用户目录的 `.local/share/mcpywrap/mcs-auth-bridge/<版本摘要>`，避免应用目录重定向造成外部终端找不到文件。
+`MCPY_MCS_BRIDGE_DIR` 可覆盖组件目录；程序不会为任意外部组件提供证书信任安装。发布组件缓存到用户目录的 `.local/share/mcpywrap/mcs-auth-bridge/<版本摘要>`。构建与签名流程见[发布说明](../RELEASING.md)。

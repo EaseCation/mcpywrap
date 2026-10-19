@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 仓库文档维护可复用的使用说明、接口契约和兼容性限制；不提交按日期的开发进度、任务计划、单次验收报告或临时机器路径。
 - 开发过程、运行日志和测试结果保存在 Git 忽略的 `test/`、`.runtime/` 或仓库外目录。
+- `docs/` 不放开发过程文档；长期开发与发布流程分别维护在根目录 `CONTRIBUTING.md`、`RELEASING.md`，测试指南位于 `tests/README.md`。单次调研、计划和验收记录使用忽略的 `.local-notes/`。
 - 实机脚本必须明确标注为可选手动测试，不接入默认单元测试、CI 或正常游戏启动。默认测试只能模拟其调用端逻辑。
 
 ## 项目概述

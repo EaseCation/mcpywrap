@@ -103,7 +103,9 @@ target = "MyMod/SharedLib"
 
 export.path相对该项目描述。没有export时工具可识别符合既有目录规则的Addon；无法识别时需要明确布局，不能把任意仓库根目录或安装成功的Python包直接当作游戏依赖。
 
-远端可声明同样的Git子依赖。仓库内local_dependencies相对声明项目解析，必须留在该Git快照内；外部仓库用Git声明。工具解析传递关系、检测循环和目标冲突，但不推断未声明的import，不自动安装Git子模块、不执行上游构建脚本、不求解版本范围。Python project.dependencies仍表示工具环境依赖。
+远端可声明同样的Git子依赖。仓库内local_dependencies相对声明项目解析，必须留在该Git快照内；外部仓库用Git声明。工具解析传递关系、检测循环和目标冲突，但不推断未声明的import，不自动安装Git子模块、不执行依赖自身hooks、不求解版本范围。Python project.dependencies仍表示工具环境依赖。
+
+明确导出 consumer_prepare 的依赖可自动处理消费项目素材，见[消费者准备](consumer-prepare.md)。add 显示能力和配置指引；sync 为启用的入口准备项目 .venv，但不执行入口或安装第三方库。此环境与 `add <Python包>` / `sync --install` 使用的 mcpy 工具环境不同。
 
 ## 缓存、提交与异常处理
 

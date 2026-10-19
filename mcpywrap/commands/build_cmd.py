@@ -33,15 +33,17 @@ def build_cmd(merge):
     target_dir = os.path.normpath(os.path.join(str(current_project()), target_dir))
 
     from ..project_scripts import before, configured, validate_build
+    from ..consumer_prepare import PreparationPlan
+    plan = PreparationPlan(current_project())
     if configured(current_project()):
-        validate_build(current_project(), target_dir)
-    with before(current_project(), 'before_build') as scripts:
-        if not build(str(current_project()), target_dir, force_merge=merge, raise_errors=True):
+        validate_build(current_project(), target_dir, resolved=plan.manager)
+    with before(current_project(), 'before_build', plan=plan) as scripts:
+        if not build(str(current_project()), target_dir, force_merge=merge, raise_errors=True, resolved=plan.manager):
             raise click.ClickException('构建失败')
     return {'output': target_dir, **({'scripts': scripts} if scripts else {})}
 
     
-def build(source_dir, target_dir, force_merge: bool = False, raise_errors=False):
+def build(source_dir, target_dir, force_merge: bool = False, raise_errors=False, *, resolved=None):
     """
     执行项目构建
     
@@ -62,7 +64,7 @@ def build(source_dir, target_dir, force_merge: bool = False, raise_errors=False)
 
 
     if project_type == "addon":
-        builder = AddonProjectBuilder(source_dir, target_dir)
+        builder = AddonProjectBuilder(source_dir, target_dir, resolved=resolved)
         success, error = builder.build()
     elif project_type == "map":
         builder = MapProjectBuilder(source_dir, target_dir, force_merge)

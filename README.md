@@ -121,7 +121,7 @@ Skill 按当前任务选择参考，不要求 AI 通读产品文档。可直接�
 
 - 运行 `mcpy <命令> --help` 查看该命令的选项。
 - [更新记录](https://github.com/EaseCation/mcpywrap/blob/main/CHANGELOG.md)
-- [开发与验证](https://github.com/EaseCation/mcpywrap/blob/main/docs/development.md) · [发布流程](https://github.com/EaseCation/mcpywrap/blob/main/docs/releasing.md)
+- [开发与验证](https://github.com/EaseCation/mcpywrap/blob/main/CONTRIBUTING.md) · [发布流程](https://github.com/EaseCation/mcpywrap/blob/main/RELEASING.md)
 - 欢迎通过 [Issues](https://github.com/EaseCation/mcpywrap/issues) 反馈问题或提交 PR。
 
 [MIT License](LICENSE) © EaseCation

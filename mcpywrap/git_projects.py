@@ -229,7 +229,7 @@ def sync_projects(root, config=None, migrate_windows_lock=False, migration_repor
     return len(lock['nodes'])
 
 
-def resolve_projects(root, config=None, lock=None):
+def resolve_projects(root, config=None, lock=None, *, source_records=None):
     root = Path(root).resolve()
     entries = declarations(root, config)
     if not entries:
@@ -256,6 +256,9 @@ def resolve_projects(root, config=None, lock=None):
                     raise ValueError(f'依赖 {name} 的本地文件需要重新同步。')
             if any(child not in nodes for child in node['children']):
                 raise ValueError('Git锁文件缺少子依赖')
+            if source_records is not None:
+                from .dependencies import canonical_path
+                source_records[canonical_path(folder)] = node
         return [(entry, long_path(root / '.mcpy/git-projects' / key), nodes[key]) for entry, key in zip(entries, lock['roots'])]
     except DependencyError:
         raise

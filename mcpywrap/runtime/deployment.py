@@ -227,7 +227,10 @@ class Deployment:
 
     def prepare(self, session=None, allowed_sessions=()):
         self.preflight()
-        manager = DependencyService(self.project).resolve()
+        plan = getattr(self, 'preparation_plan', None)
+        if plan:
+            plan.check()
+        manager = (plan.manager if plan and plan.manager else DependencyService(self.project).resolve())
         self.warnings = list(manager.warnings)
         self.builder = runtime_builder(self.project, self.target, resolved=manager)
         self.builder.initialize()
