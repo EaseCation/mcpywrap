@@ -273,6 +273,27 @@ class ScriptTests(unittest.TestCase):
         with patch.object(job, 'process_ids', return_value=[child.pid, os.getpid()]):
             self.assertEqual(job.active_count(), 0)
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows job ownership')
+    def test_job_ownership_ignores_stale_process_tree_observations(self):
+        import io
+        from types import SimpleNamespace
+        from mcpywrap import _script_worker as worker
+        unrelated = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(60)'])
+        result = self.project/'worker-stale-tree.json'
+        spec = dict(command=[sys.executable, '-c', 'pass'], timeout=15,
+                    result=str(result), cancel=str(self.project/'cancel'),
+                    parent=worker.identity(os.getpid()), started_at=time.time())
+        try:
+            with patch.object(worker.sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(json.dumps(spec).encode()))), \
+                    patch.object(worker, 'members', return_value=[worker.identity(unrelated.pid)]):
+                worker.main()
+            data = json.loads(result.read_text(encoding='utf-8'))
+            self.assertEqual(data['state'], 'completed', data)
+            self.assertIsNone(unrelated.poll(), '无关进程不能因过期 PID 树观察被结束')
+        finally:
+            unrelated.terminate()
+            unrelated.wait(timeout=10)
+
     def test_low_level_builder_and_refresh_do_not_execute_hooks(self):
         from mcpywrap.runtime.deployment import Deployment
         d=Deployment(self.project)

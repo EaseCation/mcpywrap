@@ -60,21 +60,26 @@ def validate_game_files(project_dir, folders):
                         '请将开发依赖移出游戏包，或改用兼容游戏环境的纯 Python 实现。')
 
 
+def _ordinary_path(path):
+    value = os.fspath(path)
+    if os.name == 'nt' and value.startswith('\\\\?\\UNC\\'):
+        return '\\\\' + value[8:]
+    if os.name == 'nt' and value.startswith('\\\\?\\'):
+        return value[4:]
+    return value
+
+
 def canonical_path(path):
-    return os.path.normcase(os.path.realpath(os.fspath(path)))
+    # Windows 扩展路径与普通路径必须指向同一个解析节点和来源记录。
+    return os.path.normcase(_ordinary_path(os.path.realpath(_ordinary_path(path))))
 
 
 def resolve_path(project_dir, declaration):
     path = Path(declaration).expanduser()
     path = path if path.is_absolute() else Path(project_dir) / path
-    value = str(path)
     # Windows 扩展路径禁用 .. 解释，Python 3.9 的 resolve 也可能原样保留。
     # 先恢复普通路径，再解析链接和父目录，保持普通本地依赖的路径语义。
-    if os.name == 'nt' and value.startswith('\\\\?\\UNC\\'):
-        value = '\\\\' + value[8:]
-    elif os.name == 'nt' and value.startswith('\\\\?\\'):
-        value = value[4:]
-    return Path(value).resolve()
+    return Path(_ordinary_path(path)).resolve()
 
 
 def read_project(project_dir):

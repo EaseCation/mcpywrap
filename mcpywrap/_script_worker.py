@@ -235,7 +235,8 @@ def main():
         save(path, state)
         if job: job.assign(process)
         while process.poll() is None:
-            members(process, known)
+            if not job:
+                members(process, known)
             if cancel.exists() or not alive(parent):
                 state.update(state='cancelled', code='script_cancelled', error='操作已取消或调用进程已退出')
                 break
@@ -244,10 +245,17 @@ def main():
                 break
             time.sleep(.05)
         else:
-            descendants = [r for r in members(process, known) if r['pid'] != process.pid]
+            # Windows 的 Job 是所有权依据。父进程退出后再按 PID 查询树，
+            # 可能观察到复用该 PID 的无关进程；同时给短暂的退出收尾留出时间。
+            descendants = [] if job else [r for r in members(process, known) if r['pid'] != process.pid]
+            remaining = job.active_count() if job else 0
+            settle_deadline = time.monotonic() + .2
+            while remaining and time.monotonic() < settle_deadline:
+                time.sleep(.01)
+                remaining = job.active_count()
             state.update(state='completed' if process.returncode == 0 else 'failed',
                          code=None if process.returncode == 0 else 'script_failed', exit_code=process.returncode)
-            if descendants or (job and job.active_count()):
+            if descendants or remaining:
                 state.update(state='failed', code='script_background_process', error='有限任务不能遗留后台进程')
     except BaseException as exc:
         state.update(state='failed', code='script_start_failed', error=str(exc))

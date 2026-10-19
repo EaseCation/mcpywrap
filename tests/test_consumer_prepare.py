@@ -495,6 +495,14 @@ with (root/'calls').open('a', encoding='utf-8') as stream: stream.write('NAME\\n
         from mcpywrap.git_cache import read_snapshot
         self.assertEqual(Path(generated['dependency']), read_snapshot(repo.as_uri(), rev)/'child')
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows extended and ordinary paths')
+    def test_local_provider_aliases_with_windows_path_prefix_execute_once(self):
+        from mcpywrap.source_files import long_path
+        provider = self.provider()
+        self.configure(local_dependencies=[str(provider), str(long_path(provider))])
+        self.success('build')
+        self.assertEqual(self.calls(), ['framework'])
+
     def test_low_level_builder_does_not_execute_consumers(self):
         self.depend(self.provider())
         from mcpywrap.builders.project_builder import AddonProjectBuilder
