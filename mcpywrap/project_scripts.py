@@ -17,7 +17,7 @@ from .dependencies import read_project
 from .runtime import storage
 from .utils.locks import directory_lock
 
-EVENTS = ('before_build', 'before_package', 'before_run')
+EVENTS = ('before_build', 'before_package', 'before_run', 'before_archive')
 CHAIN_ENV = '_MCPY_SCRIPT_CHAIN'
 
 
@@ -112,12 +112,14 @@ def _active_process(record):
 
 @contextmanager
 def operation(project, event=None, *, task=None, args=(), cancel=None, progress=None, lock_held=False,
-              after_task=None):
+              after_task=None, package_root=None):
     """Hold the cooperative lock through the caller's consumption of generated files."""
     project = Path(project).resolve()
     reject_recursion()
     scripts, hooks = configuration(project)
     names = [task] if task is not None else hooks.get(event, [])
+    if event == 'before_archive' and names and package_root is None:
+        raise ScriptError('压缩前处理必须由 package 提供临时目录。', 'script_context_missing')
     if any(name not in scripts for name in names):
         raise ScriptError('未定义脚本: ' + str(task), 'script_not_found')
     directory = project/'.mcpy/scripts'
@@ -131,7 +133,7 @@ def operation(project, event=None, *, task=None, args=(), cancel=None, progress=
             if cancel and cancel():
                 raise ScriptError('脚本执行已取消', 'script_cancelled', script=name, event=event)
             results.append(_execute(project, name, scripts[name], event or 'manual', args,
-                                    cancel=cancel, progress=progress))
+                                    cancel=cancel, progress=progress, package_root=package_root))
             if after_task:
                 after_task()
         if cancel and cancel():
@@ -205,13 +207,17 @@ def startup_hooks(data, deployment):
     deployment.preparation_plan = plan
 
 
-def _execute(project, name, spec, event, extra, *, cancel=None, progress=None):
+def _execute(project, name, spec, event, extra, *, cancel=None, progress=None, package_root=None):
     env = dict(os.environ)
+    # 临时打包目录只能由本次 package 注入，不能沿用父进程上下文。
+    env.pop('MCPY_PACKAGE_ROOT', None)
     env.update({key.upper() if os.name == 'nt' else key: value for key, value in spec['env'].items()})
     env.update({CHAIN_ENV: '1', 'MCPY_PROJECT_ROOT': str(project), 'MCPY_EVENT': event,
                 'MCPY_OPERATION': {'before_build': 'build', 'before_package': 'package',
-                                   'before_run': 'run'}.get(event, 'script'),
+                                   'before_run': 'run', 'before_archive': 'package'}.get(event, 'script'),
                 'PYTHONIOENCODING': 'utf-8', 'PYTHONUNBUFFERED': '1'})
+    if package_root is not None:
+        env['MCPY_PACKAGE_ROOT'] = str(Path(package_root).resolve())
     command = list(spec['command']) + list(extra)
     if spec['python'] and not Path(command[2]).is_file():
         raise ScriptError('脚本文件不存在: ' + command[2], 'script_not_found', script=name, event=event)

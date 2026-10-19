@@ -27,6 +27,8 @@ def list_cmd(effective=False):
     result['execution_order'] = {event: [{'kind': 'root', 'name': name} for name in hooks.get(event, [])] +
                                [{'kind': 'consumer_prepare', 'provider': p['id'], 'name': p['name']}
                                 for p in plan.enabled] for event in EVENTS}
+    result['execution_order']['before_archive'] = [
+        {'kind': 'root', 'name': name} for name in hooks.get('before_archive', [])]
     if json_output():
         return result
     for script in result['scripts']:
