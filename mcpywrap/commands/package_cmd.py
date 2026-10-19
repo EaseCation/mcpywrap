@@ -10,6 +10,7 @@ from ..command_context import OperationCommand, project_dir as current_project, 
 from ..config import config_exists
 from ..dependencies import DependencyError, read_project
 from ..builders.project_builder import AddonProjectBuilder, MapProjectBuilder
+from ..utils.paths import is_link
 
 
 @click.command(cls=OperationCommand)
@@ -59,8 +60,7 @@ def package_cmd(merge):
                     scripts.extend(finalizers)
                 if identity != _package_manifests(output):
                     raise ValueError('压缩前处理不得修改包 manifest 或包身份')
-                if any(p.is_symlink() or getattr(p, 'is_junction', lambda: False)()
-                       for p in output.rglob('*')):
+                if any(is_link(p) for p in output.rglob('*')):
                     raise ValueError('压缩前处理不能在产物中引入目录或文件链接')
                 archive = Path(temporary) / 'package.zip'
                 with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as zipf:

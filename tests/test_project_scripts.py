@@ -77,6 +77,28 @@ class ScriptTests(unittest.TestCase):
             self.assertEqual(z.read('中文 project_bp/generated.json'),b'{"fresh":true}')
             self.assertFalse(any('tools/' in n for n in z.namelist()))
 
+    def test_archive_hook_changes_only_release_copy_and_keeps_previous_zip_on_failure(self):
+        import zipfile
+        unused = self.project/'behavior_pack/unused.py'
+        unused.write_text('unused = True')
+        self.configure("import os\nfrom pathlib import Path\np=Path(os.environ['MCPY_PACKAGE_ROOT'])\nnext(p.rglob('unused.py')).unlink()\n")
+        config = read_project(self.project)
+        config['tool']['mcpywrap']['hooks'] = {'before_archive': ['assets']}
+        write_project(self.project, config)
+        result = self.invoke('package', '--json')
+        self.assertEqual(result.exit_code, 0, result.output)
+        artifact = Path(json.loads(result.stdout)['artifact'])
+        original = artifact.read_bytes()
+        self.assertTrue(unused.exists())
+        with zipfile.ZipFile(artifact) as archive:
+            self.assertFalse(any(n.endswith('/unused.py') for n in archive.namelist()))
+        (self.project/'tools/generate.py').write_text(
+            "import os\nfrom pathlib import Path\np=next(Path(os.environ['MCPY_PACKAGE_ROOT']).rglob('manifest.json'))\np.write_bytes(p.read_bytes()+b' ')\n")
+        result = self.invoke('package', '--json')
+        self.assertNotEqual(result.exit_code, 0, result.output)
+        self.assertEqual(artifact.read_bytes(), original)
+        self.assertTrue(unused.exists())
+
     def test_skill_generator_example_builds_and_preserves_output_on_invalid_input(self):
         import re
         import zipfile
