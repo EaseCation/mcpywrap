@@ -380,7 +380,7 @@ else:
                                                  install.home()/'preferences/macos').prepare()
             sessions.require_launch_requested(data['project'], data['session'])
             data['phase'] = 'prepared'
-            sessions.save(directory/'session.json', data)
+            sessions.save(sessions.session_path(data['project'], data['session'])/'session.json', data)
             return LaunchedGame(launch_session(data), capture_output=False, guard=guard)
         except BaseException:
             guard.close()

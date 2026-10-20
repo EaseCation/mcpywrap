@@ -40,6 +40,22 @@ class MacOSNetworkTests(unittest.TestCase):
     def call(self, *args):
         return CliRunner().invoke(cli, ['--local', '--project', str(self.root), '--non-interactive', *args, '--json'])
 
+    def test_network_launch_persists_prepared_phase_before_starting_game(self):
+        data = {'session': 'a' * 32, 'project': str(self.root), 'mode': 'network',
+                'launch': {'data': str(self.root/'data')}}
+        path = sessions.session_path(self.root, data['session'])/'session.json'
+
+        def launched(record):
+            self.assertEqual(json.loads(path.read_text())['phase'], 'prepared')
+            self.assertEqual(record['session'], data['session'])
+            return Mock()
+
+        with patch('mcpywrap.engines.preferences.NativePreferences'), \
+                patch.object(sessions, 'require_launch_requested') as requested, \
+                patch('mcpywrap.engines.macos.launch_session', side_effect=launched):
+            self.backend.launch(data, None)
+        requested.assert_called_once_with(data['project'], data['session'])
+
     def test_connect_does_not_read_project_or_create_world(self):
         (self.root/'pyproject.toml').write_text('broken = [')
         result = self.call('connect', 'localhost', '--port', '29132', '--detach')
