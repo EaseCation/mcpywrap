@@ -179,6 +179,8 @@ class Deployment:
         self.journal = None
 
     def _validate_target(self):
+        if is_link(self.project/'.runtime'):
+            raise EngineError('项目运行登记目录被替换为链接。', 'deployment_modified')
         roots = (self.project/'.mcpy/runtime', self.project/'.runtime')
         if not any(self.target.is_relative_to(root) and self.target != root for root in roots):
             raise EngineError('部署目标不属于当前项目的运行目录。', 'invalid_deployment_target')
@@ -214,7 +216,7 @@ class Deployment:
         # exception cleanup must never roll back a transaction we just rejected.
         self.journal = journal
         if self.journal['phase'] == 'committed':
-            self._cleanup()
+            self.commit()
         else:
             self.rollback()
 
@@ -353,29 +355,42 @@ class Deployment:
             self.journal['links'] = {'root': str(root), 'journal': journal}
             self._save_journal()
 
-    def publish_links(self, root, packs, session=None):
+    def publish_links(self, root, packs, session=None, migration=None):
         from ..mcstudio.deployment_links import ManagedLinks
+        root = Path(root).resolve()
         links = ManagedLinks(root, self.project)
         self.journal['links'] = {'root': str(root), 'transaction': self.journal['id']}
         self._save_journal()
-        result, journal = links.publish(packs, self.record['id'], session, transaction=self.journal['id'])
+        result, journal = links.publish(packs, self.record['id'], session, transaction=self.journal['id'], migration=migration)
         self.journal['links']['journal'] = journal
         self._save_journal()
         links.finish(self.journal['id'])
+        if any(change.get('old') for change in journal['changes']):
+            self.warnings.append(('已迁移' if migration else '已自动修复') + '运行包链接，操作：' + journal['id'])
         return result
 
     def spawning(self):
         if self.journal:
             self.journal['phase'] = 'spawning'; self._save_journal()
+            self._update_links(state='spawning')
 
     def spawned(self, process):
         if self.journal:
             from ..mcstudio.processes import identity
             self.journal.update(phase='spawned', game=identity(process.pid)); self._save_journal()
+            self._update_links(state='spawned', game=self.journal['game'])
+
+    def _update_links(self, **values):
+        if self.journal and self.journal.get('links'):
+            from ..mcstudio.deployment_links import ManagedLinks
+            ManagedLinks(self.journal['links']['root'], self.project).update(self.journal['id'], **values)
 
     def commit(self):
         if self.journal:
             self.journal['phase'] = 'committed'; self._save_journal()
+            if self.journal.get('links'):
+                from ..mcstudio.deployment_links import ManagedLinks
+                ManagedLinks(self.journal['links']['root'], self.project).commit(self.journal['id'])
             self._cleanup()
 
     def _cleanup(self):
@@ -425,7 +440,8 @@ class Deployment:
             manager = ManagedLinks(links['root'], self.project)
             journal = links.get('journal')
             if journal is None:
-                pending = storage.read(manager.journal_path)
+                pending = storage.read(manager.transaction_path(links['transaction'])) if links.get('transaction') else None
+                pending = pending or storage.read(manager.journal_path)
                 if pending and pending.get('id') == links.get('transaction'):
                     journal = pending
             if journal:
@@ -476,7 +492,10 @@ def refresh(project, data, allowed_sessions=None):
     if target is None and data.get('backend') == 'macos-arm64':
         target = Path(data['config_path']).parent/'assembled'
     deployment = Deployment(project, target)
-    with deployment.lock():
+    from contextlib import nullcontext
+    from .deployment_service import global_root, operation_locks
+    guard = operation_locks(global_root(), [project]) if os.name == 'nt' and data.get('backend', 'windows') == 'windows' else nullcontext()
+    with guard, deployment.lock():
         pack = deployment.prepare(allowed_sessions=allowed_sessions or (data['session'],))
         deployment.commit()
     return pack

@@ -176,7 +176,7 @@ class ScriptTests(unittest.TestCase):
         self.assertFalse((self.project/'behavior_pack/result.json').exists())
 
     def test_configuration_change_blocks_consumption(self):
-        self.configure("from pathlib import Path\np=Path('pyproject.toml');p.write_text(p.read_text()+'\\n# changed\\n')\n")
+        self.configure("from pathlib import Path\np=Path('pyproject.toml');p.write_text(p.read_text(encoding='utf-8')+'\\n# changed\\n', encoding='utf-8')\n")
         result=self.invoke('build','--json')
         self.assertEqual(json.loads(result.stdout)['code'],'script_config_changed')
         self.assertFalse((self.project/'build').exists())
@@ -468,11 +468,11 @@ class ScriptTests(unittest.TestCase):
             time.sleep(.05)
         self.assertTrue((self.project/'child.pid').exists())
         p.kill();p.wait(timeout=5)
-        active=json.loads((self.project/'.mcpy/scripts/active.json').read_text())
+        active=json.loads((self.project/'.mcpy/scripts/active.json').read_text(encoding='utf-8'))
         deadline=time.monotonic()+8
         state={}
         while time.monotonic()<deadline:
-            state=json.loads(Path(active['state_path']).read_text())
+            state=json.loads(Path(active['state_path']).read_text(encoding='utf-8'))
             if state.get('finished_at'): break
             time.sleep(.05)
         self.assertEqual(state['state'],'cancelled',state)

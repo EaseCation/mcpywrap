@@ -32,6 +32,9 @@ class SessionController(QObject):
         self.logs = SessionLogs(self)
         self.status = backend.label + ' · 未启动'
         self._last_error = None
+        self.failure_diagnostic = {}
+        self.failure_session = None
+        self.failure_group = None
         self.watch_message.connect(self.log)
         self.timer = QTimer(self); self.timer.timeout.connect(self.poll); self.timer.start(500)
 
@@ -67,6 +70,7 @@ class SessionController(QObject):
         self.task = TaskThread(function, self)
         self.task.starting.connect(self._preparing)
         self.task.result.connect(self._received)
+        self.task.diagnostic.connect(self._diagnosed)
         self.task.failed.connect(self._failed)
         self.task.finished.connect(self._finished)
         self.changed.emit(); self.task.start()
@@ -97,7 +101,53 @@ class SessionController(QObject):
         return True
 
     @Slot(object)
-    def _received(self, result): self._result = result
+    def _received(self, result):
+        self._result = result
+        if isinstance(result, dict) and result.get('ok') is False:
+            self.failure_diagnostic = result
+            self.failure_session = result.get('session')
+            self.failure_group = result.get('group')
+
+    @Slot(object)
+    def _diagnosed(self, value):
+        self.failure_diagnostic = value
+        self.failure_session = self.preparing_session or (value.get('details') or {}).get('session')
+        self.failure_group = (value.get('details') or {}).get('group') or value.get('group')
+
+    def restore_startup_problem(self, items):
+        if self.backend.id != 'windows' or not self.available or self.session:
+            return False
+        if not any(item.get('last_session') for item in items):
+            return False
+        from ..runtime.deployment_service import startup_problem
+        def found(value):
+            if value:
+                from ..runtime.diagnostics import format_diagnostic
+                self._diagnosed(value)
+                self.status = '需要处理旧部署冲突'
+                self.log(format_diagnostic(value), 'warning')
+            else:
+                self.failure_diagnostic = {}
+                self.failure_session = self.failure_group = None
+                self.status = self.backend.label + ' · 未启动'
+        def failed():
+            self.status = '旧部署检查失败，请查看操作日志'
+        self.status = '正在检查上次启动的部署问题…'
+        return self.run_task(lambda: startup_problem(self.project, items=items), found, failed, report=False)
+
+    def deployment_preview(self, action='inspect', from_project=None):
+        from ..runtime.deployment_service import preview
+        group = self.group or self.failure_group
+        return preview(self.project, action, from_project,
+                       session=None if group else self.failure_session, group=group)
+
+    def deployment_apply(self, value, from_project=None):
+        from ..runtime.deployment_service import execute
+        group = self.group or self.failure_group
+        session = None if group else self.failure_session
+        return self.run_task(lambda: execute(self.project, value['action'], from_project,
+            session=session, group=group,
+            expect=value['plan_digest']), self.attach if value['action']=='migrate' else None)
 
     @Slot(str)
     def _failed(self, message): self._error = message
@@ -124,6 +174,10 @@ class SessionController(QObject):
         else:
             if report: self.report_result(result)
             if success: success(result)
+            if isinstance(result, dict) and result.get('session') and result.get('ok', True) and result.get('state')!='preview':
+                self.failure_diagnostic = {}
+                self.failure_session = None
+                self.failure_group = None
         self.changed.emit()
 
     def start(self, identity=None, auth_context=None, world_config=None, clients=1):
@@ -172,6 +226,7 @@ class SessionController(QObject):
                  + str(self.group or self.session), 'warning' if result.get('ok') is False else 'success')
         if result.get('error'): self.log(result['error'], 'error')
         if result.get('hint'): self.log(result['hint'], 'info')
+        for message in result.get('warnings', []): self.log(message, 'info')
         self.started.emit(result); self.changed.emit(); self.poll()
 
     def bind_logs(self):

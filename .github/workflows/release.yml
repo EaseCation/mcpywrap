@@ -114,6 +114,11 @@ jobs:
             if ($signature.SignerCertificate.Thumbprint -ne $manifest.thumbprint -or $signature.Status -in @('HashMismatch','NotSigned','NotSupportedFileFormat')) { throw "Invalid bridge signature: $name" }
           }
       - run: python -m unittest discover -s tests -v
+      - name: Verify deployment recovery with Windows default GBK
+        run: python -m unittest discover -s tests -p 'test_deployment_*.py' -v
+        env:
+          PYTHONUTF8: '0'
+          PYTHONIOENCODING: gbk
       - run: python -m compileall -q mcpywrap tests
 
   macos:
@@ -210,6 +215,8 @@ jobs:
           wheel-smoke/bin/mcpy --help
           wheel-smoke/bin/mcpy add --help
           wheel-smoke/bin/mcpy connect --help
+          wheel-smoke/bin/mcpy deployment --help
+          wheel-smoke/bin/mcpy deployment migrate --help
           wheel-smoke/bin/mcpy runtime ui --help
           wheel-smoke/bin/mcpy runtime player --help
           wheel-smoke/bin/mcpy runtime input --help

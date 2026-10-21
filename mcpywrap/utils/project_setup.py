@@ -6,6 +6,7 @@
 import os
 import sys
 import click
+from .console import echo
 import subprocess
 import getpass
 from ..utils.utils import ensure_dir
@@ -52,7 +53,7 @@ def update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir=
     """更新配置中的行为包信息"""
     if behavior_pack_dir:
         rel_path = os.path.relpath(behavior_pack_dir, base_dir)
-        if not quiet: click.echo(click.style(f'📦 更新包路径: {rel_path}', fg='blue'))
+        if not quiet: echo(click.style(f'📦 更新包路径: {rel_path}', fg='blue'))
         
         if not config.get('tool'):
             config['tool'] = {}
@@ -65,10 +66,10 @@ def update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir=
         # 设置或保留target_dir配置
         if target_dir:
             config['tool'].setdefault('mcpywrap', {})['target_dir'] = target_dir
-            if not quiet: click.echo(click.style(f'📂 目标目录设置为: {target_dir}', fg='green'))
+            if not quiet: echo(click.style(f'📂 目标目录设置为: {target_dir}', fg='green'))
         elif config.get('tool', {}).get('mcpywrap', {}).get('target_dir'):
             target_dir = config['tool']['mcpywrap']['target_dir']
-            if not quiet: click.echo(click.style(f'📂 保留目标目录: {target_dir}', fg='blue'))
+            if not quiet: echo(click.style(f'📂 保留目标目录: {target_dir}', fg='blue'))
         else:
             config.setdefault('tool', {}).setdefault('mcpywrap', {})['target_dir'] = ""
             
@@ -84,11 +85,11 @@ def find_and_configure_behavior_pack(base_dir, config, ask_for_target=False, *, 
     
     # 检查是否为Minecraft addon项目并查找行为包
     if is_minecraft_addon_project(base_dir):
-        if not quiet: click.echo(click.style('🔍 检测到Minecraft addon项目结构', fg='magenta'))
+        if not quiet: echo(click.style('🔍 检测到Minecraft addon项目结构', fg='magenta'))
         behavior_pack_dir = find_behavior_pack_dir(base_dir)
         
         if behavior_pack_dir:
-            if not quiet: click.echo(click.style(f'✅ 找到行为包目录: {behavior_pack_dir}', fg='green'))
+            if not quiet: echo(click.style(f'✅ 找到行为包目录: {behavior_pack_dir}', fg='green'))
             
             # 询问目标目录（如果需要）
             if ask_for_target and click.confirm(click.style('❓ 是否配置构建目标目录？（指定生成的脚本文件应安装到的位置）', fg='magenta'), default=False):
@@ -99,15 +100,15 @@ def find_and_configure_behavior_pack(base_dir, config, ask_for_target=False, *, 
             rel_path = update_behavior_pack_config(config, base_dir, behavior_pack_dir, target_dir, quiet=quiet)
             return behavior_pack_dir, rel_path
         else:
-            if not quiet: click.echo(click.style('⚠️ 无法找到行为包目录', fg='yellow'))
+            if not quiet: echo(click.style('⚠️ 无法找到行为包目录', fg='yellow'))
     else:
-        if not quiet: click.echo(click.style('⚠️ 未检测到标准的Minecraft addon项目结构', fg='yellow'))
+        if not quiet: echo(click.style('⚠️ 未检测到标准的Minecraft addon项目结构', fg='yellow'))
     
     return None, "."
 
 def install_project_dev_mode():
     """使用pip在开发模式下安装项目"""
-    click.echo(click.style('⚙️ 正在安装项目（pip install -e .）...', fg='blue'))
+    echo(click.style('⚙️ 正在安装项目（pip install -e .）...', fg='blue'))
     try:
         # 捕获pip输出以便进行错误分析
         result = subprocess.run(
@@ -117,7 +118,7 @@ def install_project_dev_mode():
             encoding='utf-8',
             check=True
         )
-        click.echo(click.style('✅ 项目已成功安装！', fg='green'))
+        echo(click.style('✅ 项目已成功安装！', fg='green'))
         return True
     except subprocess.CalledProcessError as e:
         # 显示友好的错误信息
@@ -126,22 +127,22 @@ def install_project_dev_mode():
         
         # 询问是否显示详细错误信息
         if not non_interactive() and click.confirm(click.style("❓ 是否查看详细错误信息以便调试？", fg="magenta"), default=False):
-            click.echo()
-            click.echo(click.style("📋 完整错误输出:", fg='cyan', bold=True))
-            click.echo(click.style("-" * 40, fg='cyan'))
+            echo()
+            echo(click.style("📋 完整错误输出:", fg='cyan', bold=True))
+            echo(click.style("-" * 40, fg='cyan'))
             if e.stderr:
-                click.echo("STDERR:")
-                click.echo(e.stderr)
+                echo("STDERR:")
+                echo(e.stderr)
             if e.stdout:
-                click.echo("STDOUT:")
-                click.echo(e.stdout)
-            click.echo(click.style("-" * 40, fg='cyan'))
+                echo("STDOUT:")
+                echo(e.stdout)
+            echo(click.style("-" * 40, fg='cyan'))
         
         # 显示通用解决建议
         suggest_common_fixes()
         
-        click.echo(click.style('💡 您可以尝试手动运行: pip install -e .', fg='yellow'))
+        echo(click.style('💡 您可以尝试手动运行: pip install -e .', fg='yellow'))
         return False
     except Exception as e:
-        click.echo(click.style(f'❌ 发生未预期的错误: {str(e)}', fg='red'))
+        echo(click.style(f'❌ 发生未预期的错误: {str(e)}', fg='red'))
         return False

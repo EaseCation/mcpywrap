@@ -5,6 +5,7 @@
 """
 
 import click
+from ..utils.console import echo
 from ..command_context import OperationCommand, project_dir as current_project, non_interactive, require_project
 import os
 
@@ -54,7 +55,7 @@ def open_edit(project_dir=None, engine_overrides=None, raise_errors=False):
     except DiscoveryError as exc:
         if raise_errors:
             raise
-        click.echo(str(exc))
+        echo(str(exc))
         return False
     studio_config_path = os.path.join(base_dir, 'studio.json')
     addon_packs_dirs = []
@@ -70,10 +71,10 @@ def open_edit(project_dir=None, engine_overrides=None, raise_errors=False):
     with open(studio_config_path, 'w', encoding='utf-8') as f:
         import json
         json.dump(config, f, indent=4, ensure_ascii=False)
-    click.echo(click.style(f'✅ 编辑器配置文件已创建: {studio_config_path}', fg='green'))
+    echo(click.style(f'✅ 编辑器配置文件已创建: {studio_config_path}', fg='green'))
 
     # 直接运行编辑器（使用外部终端运行）
-    click.echo(click.style('🔧 正在启动编辑器...', fg='yellow'))
+    echo(click.style('🔧 正在启动编辑器...', fg='yellow'))
 
     editor_process = open_editor(studio_config_path, engine=engine)
 
@@ -81,20 +82,20 @@ def open_edit(project_dir=None, engine_overrides=None, raise_errors=False):
         return False
 
     # 等待游戏进程结束
-    click.echo(click.style('✨ 编辑器已启动...', fg='bright_green', bold=True))
+    echo(click.style('✨ 编辑器已启动...', fg='bright_green', bold=True))
     from ..mcstudio.processes import identity
     return {'application': 'editor', 'project': base_dir, **identity(editor_process.pid)}
 
     # 先不阻塞，因为用户可能还需要直接run
-    # click.echo(click.style('⏱️ 按 Ctrl+C 可以中止等待', fg='yellow'))
+    # echo(click.style('⏱️ 按 Ctrl+C 可以中止等待', fg='yellow'))
 
     # try:
     #     # 等待游戏进程结束
     #     editor_process.wait()
-    #     click.echo(click.style('👋 编辑器已退出', fg='bright_cyan', bold=True))
+    #     echo(click.style('👋 编辑器已退出', fg='bright_cyan', bold=True))
     # except KeyboardInterrupt:
     #     # 捕获 Ctrl+C，但不终止游戏进程
-    #     click.echo(click.style('\n🛑 收到中止信号，脚本将退出但游戏继续运行', fg='yellow'))
+    #     echo(click.style('\n🛑 收到中止信号，脚本将退出但游戏继续运行', fg='yellow'))
     
 def _print_dependency_tree(node, level):
     """打印依赖树结构"""

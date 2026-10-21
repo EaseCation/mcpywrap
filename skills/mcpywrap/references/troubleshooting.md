@@ -18,6 +18,9 @@
 | restart_required | 依赖、身份、布局等变化不能当前热更；停止相关读者后重开原世界，不靠 --new 绕过 |
 | source_changed | 装配期间输入变了；停止持续写入，稳定后重新发起，不无限重试 |
 | deployment_modified | 运行产物被外部改写；保留现场，核对改动和所属会话，不清空全局包 |
+| pack_conflict / ownership_changed / link_modified | 支持 deployment 命令的 CLI 先运行 `deployment inspect --json`；跨项目用 `deployment migrate --from <旧目录> --session <失败会话> --json` 预览，组用 --group；确认具体变更后才执行返回的 apply_argv。未知内容不手工删除 |
+| plan_stale / deployment_relocated | 前者重新预览现场；后者使用提示的新项目入口，不改 UUID 抢回旧部署 |
+| occupancy_unknown | 无法核验进程与部署的关系；保留现场，不自动杀游戏或清锁 |
 | recovery_required | 进程身份/退出或事务恢复无法确认；保留恢复路径与日志，先查 status/worker/engine，不删记录或按进程名杀进程 |
 | instance_not_ready | 失败创建不是默认可用世界；按提示显式重试该实例，或用户确需新世界时 --new |
 | 游戏启动超时/响应丢失 | status --list 找回；观察者超时不获得取消别人启动的权限 |

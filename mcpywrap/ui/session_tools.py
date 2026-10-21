@@ -7,6 +7,7 @@ from PySide6.QtCore import QThread, Signal
 class TaskThread(QThread):
     result = Signal(object)
     failed = Signal(str)
+    diagnostic = Signal(object)
     starting = Signal(object)
     progress = Signal(int, int)
     phase = Signal(str)
@@ -21,10 +22,10 @@ class TaskThread(QThread):
             with observe_start(self.starting.emit):
                 self.result.emit(self.function())
         except Exception as error:
-            hint = getattr(error, 'hint', None)
-            details = getattr(error, 'details', {})
-            log = details.get('script_log')
-            self.failed.emit(str(error) + ('\n' + hint if hint else '') + ('\n脚本日志: ' + log if log else ''))
+            from ..runtime.diagnostics import diagnostic, format_diagnostic
+            value = diagnostic(error)
+            self.diagnostic.emit(value)
+            self.failed.emit(format_diagnostic(value))
         finally:
             self.function = None
 

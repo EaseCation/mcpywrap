@@ -2,7 +2,7 @@
 from pathlib import Path
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox,
-                              QComboBox, QPlainTextEdit, QLineEdit, QFileDialog, QInputDialog, QLabel)
+                              QComboBox, QPlainTextEdit, QLineEdit, QFileDialog, QInputDialog, QLabel, QMessageBox, QApplication)
 from .log_view import LogView
 
 ROLE_LABELS = {'host': '主机·玩家 1', 'guest': '客户端 2', 'client1': '客户端 1', 'client2': '客户端 2'}
@@ -41,6 +41,22 @@ class SessionControls(QWidget):
         for widget in (self.member, self.group_status, self.all_logs, self.group_restart, self.group_stop):
             group_row.addWidget(widget)
         layout.addWidget(self.group_panel)
+        self.recovery_panel = QWidget()
+        recovery_layout = QVBoxLayout(self.recovery_panel)
+        self.recovery_message = QLabel()
+        self.recovery_message.setWordWrap(True)
+        self.recovery_message.setStyleSheet('font-weight: 600;')
+        recovery_layout.addWidget(self.recovery_message)
+        recovery_row = QVBoxLayout() if compact else QHBoxLayout()
+        recovery_layout.addLayout(recovery_row)
+        self.conflict_btn = QPushButton('查看冲突详情')
+        self.migrate_btn = QPushButton('迁移并重试')
+        self.copy_repair_btn = QPushButton('复制修复命令')
+        for widget in (self.conflict_btn, self.migrate_btn, self.copy_repair_btn): recovery_row.addWidget(widget)
+        self.conflict_btn.clicked.connect(self.show_conflicts)
+        self.migrate_btn.clicked.connect(self.migrate_deployment)
+        self.copy_repair_btn.clicked.connect(self.copy_repair)
+        layout.addWidget(self.recovery_panel)
         row = QVBoxLayout() if compact else QHBoxLayout()
         layout.addLayout(row)
         row.setContentsMargins(6, 6, 6, 6) if compact else row.setContentsMargins(0, 0, 0, 0)
@@ -61,6 +77,55 @@ class SessionControls(QWidget):
         self.watch.toggled.connect(self.toggle_watch); self.side.currentTextChanged.connect(controller.set_watch_side)
         controller.changed.connect(self.refresh); self.refresh()
 
+    def show_conflicts(self):
+        from ..runtime.diagnostics import format_diagnostic
+        QMessageBox.information(self, '部署冲突', format_diagnostic(self.controller.failure_diagnostic))
+
+    def migration_source(self):
+        actions=self.controller.failure_diagnostic.get('actions', [])
+        choices=[a['from'] for a in actions if a.get('kind')=='migrate']
+        if not choices:
+            return None
+        if len(choices)==1:
+            return choices[0]
+        source,accepted=QInputDialog.getItem(self,'选择旧部署','旧项目目录',choices,0,False)
+        return source if accepted else None
+
+    def migrate_deployment(self):
+        source=self.migration_source()
+        if not source:
+            return
+        c=self.controller
+        def confirm(value):
+            import json
+            dialog=QMessageBox(self)
+            dialog.setWindowTitle('迁移并重试')
+            dialog.setText('旧项目：'+source+'\n新项目：'+c.project+'\n确认后迁移所列包，并重新启动原世界。')
+            dialog.setDetailedText(json.dumps({k:value[k] for k in ('changes','conflicts','issues','blockers')},ensure_ascii=False,indent=2))
+            dialog.setStandardButtons(QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No)
+            dialog.setDefaultButton(QMessageBox.StandardButton.No)
+            if not value['can_apply']:
+                QMessageBox.information(self,'迁移暂不可执行',json.dumps(value,ensure_ascii=False,indent=2))
+            elif dialog.exec()==QMessageBox.StandardButton.Yes:
+                c.deployment_apply(value,source)
+        c.run_task(lambda:c.deployment_preview('migrate',source),confirm,report=False)
+
+    def copy_repair(self):
+        from ..runtime.diagnostics import powershell_command
+        c=self.controller
+        source=self.migration_source()
+        action=next((a for a in c.failure_diagnostic.get('actions', [])
+                     if a.get('kind')=='migrate' and a.get('from')==source),None)
+        if action:
+            argv=action['argv']
+        else:
+            argv=['mcpy','--local','--project',c.project,'deployment','repair']
+            group=c.group or c.failure_group
+            if group: argv+=['--group',group]
+            elif c.failure_session: argv+=['--session',c.failure_session]
+        QApplication.clipboard().setText(powershell_command(argv))
+        c.log('已复制只读预览命令；查看方案后，再按提示确认执行。')
+
     @Slot(int)
     def select_member(self, index):
         value = self.member.itemData(index)
@@ -74,6 +139,15 @@ class SessionControls(QWidget):
     @Slot()
     def refresh(self):
         c = self.controller
+        failure=c.failure_diagnostic
+        recoverable=failure.get('code') in ('pack_conflict','link_modified','ownership_changed','recovery_required','deployment_relocated','occupancy_unknown')
+        self.recovery_panel.setVisible(recoverable and c.backend.id == 'windows')
+        migratable = any(a.get('kind')=='migrate' for a in failure.get('actions', []))
+        self.recovery_message.setText('检测到旧项目运行包冲突。点击“迁移并重试”，核对旧、新项目及包列表后确认；无需删除实例。' if migratable else
+                                      '检测到部署问题。查看冲突详情或复制预览命令，处理后重试。')
+        self.conflict_btn.setEnabled(c.available)
+        self.copy_repair_btn.setEnabled(c.available)
+        self.migrate_btn.setEnabled(c.available and bool(c.failure_session or c.group) and any(a.get('kind')=='migrate' for a in failure.get('actions',[])))
         self.cancel_prepare_btn.setVisible(bool(c.preparing_session))
         self.cancel_prepare_btn.setEnabled(bool(c.preparing_session) and c.busy)
         self.group_panel.setVisible(bool(c.group))

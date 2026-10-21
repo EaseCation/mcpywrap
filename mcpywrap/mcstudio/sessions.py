@@ -165,9 +165,8 @@ def wait_started(project, session, timeout=30, process=None):
         if data['state'] == 'running':
             return data
         if data['state'] in ('failed', 'exited') or (process is not None and process.poll() is not None):
-            from ..engines.host import EngineError
-            raise EngineError(f'游戏启动失败: {data.get("error") or data["state"]}；日志: {directory / "worker.log"}',
-                              data.get('code', 'launch_failed'), session=session, **data.get('script_error', {}))
+            from ..runtime.diagnostics import exception
+            raise exception(data, f'游戏启动失败: {data.get("error") or data["state"]}；日志: {directory / "worker.log"}', session=session)
         preparation_deadline = preparation_started + 300 + max(0, data.get('script_budget', 0))
         if data.get('phase') in ('preparing', 'prepared') and time.monotonic() < preparation_deadline:
             deadline = min(preparation_deadline, time.monotonic() + timeout)
@@ -185,6 +184,8 @@ def handoff(data):
               'engine_log_path': data.get('engine_log_path'),
               'mode': data.get('mode', 'local'),
               'window_title_hint': 'Minecraft', 'window_verified': False}
+    if data.get('operation_id'):
+        result['operation_id'] = data['operation_id']
     if data.get('scripts'):
         result['scripts'] = data['scripts']
     if data.get('warnings'):

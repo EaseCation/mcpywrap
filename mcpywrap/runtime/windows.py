@@ -19,7 +19,7 @@ from ..utils.locks import directory_lock
 
 def run(project, *, new=False, listing=False, delete=None, force=False, clean_all=False,
         instance_prefix=None, no_gui=False, detach=False, mcs_auth=False, overrides=None,
-        auth_context=None, world_config=None):
+        auth_context=None, world_config=None, migration=None):
     project = Path(project).resolve()
     config = read_project(project)
     if listing:
@@ -48,8 +48,18 @@ def run(project, *, new=False, listing=False, delete=None, force=False, clean_al
         # starting a worker. Dependency resolution still belongs to deployment.
         addon_directories(project)
     with directory_lock(project/'.runtime/lifecycle-lock'):
-        item = instances.select(project, new=new, prefix=instance_prefix,
-                                name=config.get('project', {}).get('name', '开发测试'))
+        try:
+            item = instances.select(project, new=new, prefix=instance_prefix,
+                                    name=config.get('project', {}).get('name', '开发测试'))
+        except EngineError as error:
+            if error.code == 'instance_not_ready':
+                from .deployment_service import startup_problem
+                from .diagnostics import exception
+                problem = startup_problem(project, items=error.details.get('instances'))
+                if problem:
+                    problem['details']['instances'] = error.details.get('instances', [])
+                    raise exception(problem) from error
+            raise
         current = next((r for r in occupancy.active(project) if r.get('mode') == 'local'
                         and r.get('level_id') == item['level_id']), None)
         if current:
@@ -86,7 +96,7 @@ def run(project, *, new=False, listing=False, delete=None, force=False, clean_al
         settings = storage.read(instances.record_path(project, item['level_id']), {}).get('creation_settings')
         data = sessions.start(project, item['config_path'], item['level_id'], overrides,
                               auth_context=auth_context, session_id=session,
-                              launch={'engine': asdict(engine), 'world_settings': settings})
+                              launch={'engine': asdict(engine), 'world_settings': settings, **({'migration': migration} if migration else {})})
     result = sessions.handoff(data)
     if detach:
         return result
@@ -111,6 +121,10 @@ def launch(data, receiver, auth_context=None):
     script_guard = ExitStack()
     try:
         from ..project_scripts import project_lock, startup_hooks
+        from .deployment_service import global_root, operation_locks, operation_projects
+        migration = (data.get('launch') or {}).get('migration')
+        root = global_root()
+        script_guard.enter_context(operation_locks(root, operation_projects(root, project, (migration or {}).get('from'))))
         script_guard.enter_context(project_lock(data['project']))
         guard.enter_context(instances.world_lock(world, data))
         plan = data.get('launch') or {}
@@ -127,7 +141,10 @@ def launch(data, receiver, auth_context=None):
             sessions.save(directory/'session.json', data)
             global_root = get_mcs_game_engine_netease_data_path() or str(world.parent.parent/'games/com.netease')
             packs = pack if isinstance(pack, list) else [pack]
-            links = deployment.publish_links(global_root, packs, data['session'])
+            data['global_root'] = str(global_root)
+            links = deployment.publish_links(global_root, packs, data['session'], migration=migration)
+            data['warnings'] = deployment.warnings
+            data['operation_id'] = deployment.journal['id']
             if isinstance(pack, list):
                 from ..builders.MapPack import MapPack
                 world.mkdir(parents=True, exist_ok=True)

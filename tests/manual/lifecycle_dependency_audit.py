@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import tempfile
 import time
@@ -22,6 +23,7 @@ def main():
     parser.add_argument('--profile', type=Path, help='Reuse an existing isolated test profile; never use a personal profile')
     parser.add_argument('--ready-timeout', type=float, default=180)
     parser.add_argument('--with-hook', action='store_true', help='Also verify generated code from before_run')
+    parser.add_argument('--migration', action='store_true', help='Seed historical dual-pack links, inject a launch failure, then migrate through the public CLI')
     parser.add_argument('--resume-instance', help='Retry the first stage in this script\'s existing fixture world')
     args = parser.parse_args()
     if os.name != 'nt':
@@ -78,10 +80,10 @@ def main():
     env['PYTHONPATH'] = str(repo)
     sequence = []
 
-    def call(label, *command, expect=True):
+    def call(label, *command, expect=True, extra_env=None):
         started = time.monotonic()
         completed = subprocess.run([sys.executable, '-m', 'mcpywrap', '--local', '--project', str(project),
-                                    '--non-interactive', *command, '--json'], cwd=repo, env=env,
+                                    '--non-interactive', *command, '--json'], cwd=repo, env=dict(env, **(extra_env or {})),
                                    capture_output=True, text=True, encoding='utf-8', timeout=360)
         (evidence/(label + '.stdout')).write_text(completed.stdout, encoding='utf-8')
         (evidence/(label + '.stderr')).write_text(completed.stderr, encoding='utf-8')
@@ -118,6 +120,9 @@ def main():
             if getattr(args, key):
                 command += ['--'+key.replace('_', '-'), getattr(args, key)]
         result = call(label, *command)
+        return wait_ready(label,result)
+
+    def wait_ready(label,result):
         deadline = time.monotonic()+args.ready_timeout
         attempt = 0
         while time.monotonic() < deadline:
@@ -155,6 +160,7 @@ def main():
     (module/'modMain.py').write_text('''from mod.common.mod import Mod
 STATES = {}
 GENERATED = {}
+DEPLOYMENT_MARKER = 'new'
 def record(side):
     try:
         from AuditDependency import VALUE
@@ -196,8 +202,56 @@ if (root/'.mcpy/fail-hook').exists():
         write_project(project, config)
     try:
         call('capabilities', 'doctor', '--capabilities')
-        first = (start('zero', args.resume_instance) if args.resume_instance else
-                 start('zero', '--new', '--world-type', 'flat', '--world-name', 'Dependency Lifecycle Audit'))
+        if args.migration:
+            from mcpywrap.mcstudio.symlinks import _create_directory_link
+            from mcpywrap.runtime import storage
+            from mcpywrap.runtime.deployment import inventory
+            legacy = root/'legacy-parent'
+            assembled = legacy/'.mcpy/runtime/assembled'
+            for kind in ('behavior','resource'):
+                shutil.copytree(project/(kind+'_pack'),assembled/(kind+'_pack'))
+            old_module=assembled/'behavior_pack/AuditMain/modMain.py'
+            old_module.write_text(old_module.read_text(encoding='utf-8').replace("DEPLOYMENT_MARKER = 'new'", "DEPLOYMENT_MARKER = 'old'"),encoding='utf-8')
+            global_packs=profile/'AppData/Roaming/MinecraftPE_Netease/games/com.netease'
+            refs={}
+            old_links=[]
+            for kind in ('behavior','resource'):
+                target=global_packs/(kind+'_packs')/('historical_'+kind)
+                target.parent.mkdir(parents=True,exist_ok=True)
+                _create_directory_link(str(assembled/(kind+'_pack')),str(target))
+                refs[kind+'_packs']=[target.name]
+                old_links.append(target)
+            storage.write(legacy/'.runtime/historical.cppconfig',{'world_info':refs})
+            marker=legacy/'world-progress-marker'
+            marker.write_bytes(b'preserve-existing-world')
+            old_inventory=inventory(assembled)
+            options=['run','--new','--no-gui','--detach','--world-type','flat']
+            for key in ('engine_version','mcs_download_path'):
+                if getattr(args,key):options += ['--'+key.replace('_','-'),getattr(args,key)]
+            conflict=call('historical-conflict',*options,expect=False)
+            assert conflict.get('code')=='pack_conflict' and len(conflict['details']['conflicts'])==2,conflict
+            sid=conflict['session']
+            migration=['deployment','migrate','--from',str(legacy),'--session',sid]
+            plan=call('migration-preview',*migration)
+            assert plan['can_apply'] and len([c for c in plan['changes'] if c['action']=='migrate'])==2,plan
+            injection=root/'failure-injection'
+            injection.mkdir()
+            (injection/'sitecustomize.py').write_text("import os\nif os.environ.get('MCPY_AUDIT_FAIL_LAUNCH') == '1':\n    import mcpywrap.mcstudio.game as game\n    def fail(*args, **kwargs):\n        raise OSError('injected failure after global publication')\n    game.open_game = fail\n",encoding='utf-8')
+            failed=call('migration-injected-failure',*migration,'--apply','--expect',plan['plan_digest'],expect=False,
+                extra_env={'MCPY_AUDIT_FAIL_LAUNCH':'1','PYTHONPATH':str(injection)+os.pathsep+str(repo)})
+            assert 'injected failure' in failed.get('error',''),failed
+            assert all(p.is_dir() for p in old_links)
+            assert inventory(assembled)==old_inventory and marker.read_bytes()==b'preserve-existing-world'
+            plan=call('migration-preview-after-rollback',*migration)
+            first=wait_ready('migration-ready',call('migration-apply',*migration,'--apply','--expect',plan['plan_digest']))
+            assert not any(os.path.lexists(p) for p in old_links)
+            assert inventory(assembled)==old_inventory and marker.read_bytes()==b'preserve-existing-world'
+            loaded=call('migration-loaded-version','runtime','py','--session',first['session'],'--side','client',
+                '--code',"import sys\n_result = [getattr(m, 'DEPLOYMENT_MARKER', None) for n,m in sys.modules.items() if n.endswith('AuditMain.modMain')]")
+            assert 'new' in loaded['value'] and 'old' not in loaded['value'],loaded
+        else:
+            first = (start('zero', args.resume_instance) if args.resume_instance else
+                     start('zero', '--new', '--world-type', 'flat', '--world-name', 'Dependency Lifecycle Audit'))
         world = first['instance']
         verify('zero-loaded', first['session'], 'absent')
         initial = deployment()
@@ -249,10 +303,17 @@ if (root/'.mcpy/fail-hook').exists():
         assert deployment() == final
         verify('unchanged-loaded', repeat['session'], 'absent')
         stop('stop-unchanged', repeat['session'])
+        if args.migration:
+            call('delete-audit-worlds','run','--clean-all','--force')
+            rebuilt=start('after-delete','--new','--world-type','flat')
+            verify('after-delete-loaded',rebuilt['session'],'absent')
+            assert deployment()==final
+            assert inventory(assembled)==old_inventory and marker.read_bytes()==b'preserve-existing-world'
+            stop('stop-after-delete',rebuilt['session'])
         (evidence/'result.json').write_text(json.dumps(dict(ok=True, world=world,
             generated_hook_verified=args.with_hook,
             deployment_path=final['path'], cases=['0-to-1-to-0', 'unchanged-restart', 'same-world-reuse',
-            'active-reader-rejection', 'two-independent-worlds', 'old-module-absent', 'stable-global-links']), indent=2), encoding='utf-8')
+            'active-reader-rejection', 'two-independent-worlds', 'old-module-absent', 'stable-global-links'] + (['historical-dual-pack-migration','launch-failure-rollback','new-code-loaded','delete-all-and-recreate'] if args.migration else [])), indent=2), encoding='utf-8')
     finally:
         # Failed starts may return their session only inside error details.
         # This brand-new project belongs exclusively to this acceptance run.

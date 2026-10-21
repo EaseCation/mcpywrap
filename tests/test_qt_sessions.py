@@ -387,6 +387,55 @@ class GuiTests(unittest.TestCase):
         self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.assertEqual(destroyed, [True])
 
+    def test_deployment_diagnostic_survives_preview_and_exposes_recovery_controls(self):
+        from mcpywrap.engines.host import EngineError
+        c = self.window.controller
+        self.backend.id = 'windows'
+        sid = 'e'*32
+        def fail():
+            raise EngineError('duplicate', 'pack_conflict', 'inspect first', session=sid,
+                conflicts=[{'kind':'behavior','uuid':'a','path':'old','source':'new'}],
+                actions=[{'kind':'migrate','from':'D:/old','argv':['mcpy','deployment','inspect']}])
+        c.run_task(fail)
+        self.wait(lambda: not c.busy)
+        self.assertEqual(c.failure_session, sid)
+        self.assertEqual(c.failure_diagnostic['details']['conflicts'][0]['path'], 'old')
+        controls = self.window.session_controls
+        controls.refresh()
+        self.assertFalse(controls.recovery_panel.isHidden())
+        self.assertTrue(controls.migrate_btn.isEnabled())
+        c.run_task(lambda: {'state':'preview'}, report=False)
+        self.wait(lambda: not c.busy)
+        self.assertEqual(c.failure_session, sid)
+        self.assertEqual(c.failure_diagnostic['code'], 'pack_conflict')
+
+    def test_refresh_restores_legacy_deployment_guidance_without_starting_game(self):
+        self.backend.id='windows'
+        sid='d'*32
+        self.backend.instances.return_value=[{'level_id':'world','name':'legacy','state':'failed',
+            'creation_time':1,'last_session':sid}]
+        value={'ok':False,'code':'pack_conflict','error':'旧部署仍冲突','hint':'预览迁移',
+            'session':sid,'details':{'session':sid},
+            'actions':[{'kind':'migrate','from':'D:/old','argv':['mcpy','--local','--project',str(self.root),'deployment','migrate','--from','D:/old','--session',sid]} ]}
+        with patch('mcpywrap.runtime.deployment_service.startup_problem',return_value=value) as inspect:
+            self.window.refresh_instances()
+            self.wait(lambda:not self.window.controller.busy)
+        inspect.assert_called_once()
+        self.assertEqual(self.window.controller.failure_session,sid)
+        self.assertEqual(self.window.controller.status,'需要处理旧部署冲突')
+        controls=self.window.session_controls
+        self.assertFalse(controls.recovery_panel.isHidden())
+        self.assertIn('迁移并重试',controls.recovery_message.text())
+        self.assertTrue(self.window.run_btn.isEnabled())
+        self.assertTrue(controls.migrate_btn.isEnabled())
+        controls.copy_repair()
+        copied=self.app.clipboard().text()
+        self.assertIn('migrate',copied)
+        self.assertIn(sid,copied)
+        self.assertNotIn('--apply',copied)
+        self.assertNotIn('--expect',copied)
+        self.backend.start_session.assert_not_called()
+
     def test_log_tail_preserves_utf8_and_partial_lines(self):
         path=self.root/'game.log';tail=LogTail()
         encoded='中文\n'.encode();path.write_bytes(encoded[:2])

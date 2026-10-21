@@ -121,18 +121,48 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
                 raise click.UsageError('双客户端进服暂不支持双账号认证')
             return groups.start_network(base_dir, backend, target, engine_overrides)
         return groups.start_local(base_dir, backend, options)
+    recovered = False
     try:
-        result = perform()
+        try:
+            result = perform()
+        except EngineError as error:
+            if error.code != 'setup_required' or not backend.managed_install: raise
+            from .engine_cmd import perform_install
+            click.echo('首次运行：自动下载并准备本地游戏环境…', err=True)
+            perform_install()
+            result = perform()
     except EngineError as error:
-        if error.code != 'setup_required' or not backend.managed_install: raise
-        from .engine_cmd import perform_install
-        click.echo('首次运行：自动下载并准备本地游戏环境…', err=True)
-        perform_install()
-        result = perform()
+        from ..runtime.diagnostics import diagnostic
+        from .deployment_output import recover_run
+        result = recover_run(base_dir, diagnostic(error)) if not show_debug else None
+        if result is None:
+            raise
+        recovered = True
+    if isinstance(result, dict) and result.get('ok') is False and not show_debug and not recovered:
+        from .deployment_output import recover_run
+        retry = recover_run(base_dir, result)
+        if retry is not None:
+            result, recovered = retry, True
     if show_debug and isinstance(result, dict) and result.get('session'):
         from ..mcstudio.sessions import show_configuration
         show_configuration(result)
         return show_session_window(base_dir, backend, result)
+    if recovered and result.get('ok') is not False:
+        if detach:
+            from .deployment_output import show_result
+            show_result(result, 'migrate')
+            return
+        if result.get('group'):
+            from ..engines.tui import watch_group
+            return watch_group(base_dir, result)
+        if result.get('session') and result.get('state') in ('starting', 'running'):
+            from ..engines.tui import watch_session
+            from ..mcstudio.sessions import show_configuration
+            show_configuration(result)
+            return watch_session(base_dir, result['session'])
+        from .deployment_output import show_result
+        show_result(result, 'migrate')
+        return
     if clients == 2 and not detach and result.get('ok') is not False:
         from ..engines.tui import watch_group
         return watch_group(base_dir, result)

@@ -35,6 +35,12 @@ Windows CI 先用 MSVC 从 `native/mcs_auth` 编译 x86 登录桥接，再签名
 
 用户当前操作统一见 [内置 Skill](skills/mcpywrap/SKILL.md)。发布验证记录、候选核查和跨仓库推进计划放在被忽略的 `.local-notes/`，不随源码包分发；长期发行规则维护在本页。候选 CI 的未签名桥接不用于验证正式签名登录流程。
 
+## Windows 全局部署恢复验收
+
+涉及全局包发布或归属恢复时，除完整测试外，运行 `tests/manual/lifecycle_dependency_audit.py --migration`，使用新建的隔离资料目录预置历史父项目双包链接，验证完整冲突、确认迁移、新代码加载、启动失败回滚、依赖变化及世界保留。不得提前清理真实用户的冲突链接，也不能以全新空白资料目录的正常启动替代升级场景。
+
+Windows CI 额外以 `PYTHONUTF8=0`、`PYTHONIOENCODING=gbk` 运行部署恢复测试，覆盖默认编码下的 JSON、中文路径和终端确认。发布前保留单独的实机结果及当前提交信息；源码包应包含部署恢复文档、自动化测试与可复用验收脚本，过程日志留在忽略目录。
+
 ## 本机登录桥接开发
 
 源代码位于 `native/mcs_auth`。CI 使用 x86 MSVC 和系统自带的 .NET Framework C# 编译器；本机开发也可使用 x86 TinyCC：

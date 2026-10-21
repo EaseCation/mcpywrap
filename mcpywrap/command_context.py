@@ -151,7 +151,10 @@ class OperationGroup(click.Group):
                     if getattr(exc, 'code', None):
                         result['code'] = exc.code
                     if getattr(exc, 'details', None):
-                        result.update(exc.details)
+                        result['details'] = exc.details
+                        for key, value in exc.details.items():
+                            if key not in result:
+                                result[key] = value
                 except Exception as exc:
                     code = 1
                     with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', prefix='mcpy-error-',
@@ -170,13 +173,11 @@ class OperationGroup(click.Group):
                 # ASCII JSON survives both GBK consoles and UTF-8 subprocess pipes losslessly.
                 click.echo(json.dumps(data, ensure_ascii=True), file=output)
             elif code:
-                click.echo('错误: ' + str((result or {}).get('error') or '操作失败'), err=True)
-                if (result or {}).get('script_log'):
-                    click.echo('脚本日志: ' + result['script_log'], err=True)
+                from .commands.deployment_output import format_error
+                from .utils.console import echo
+                echo('错误: ' + format_error(result or {}), err=True)
                 if (result or {}).get('group'):
                     show_group_result(result)
-                if (result or {}).get('hint'):
-                    click.echo(result['hint'], err=True)
             elif isinstance(result, dict):
                 # 保留命令原有进度输出，为交接和产物结果补充可读信息。
                 if result.get('group') and ('members' in result or 'results' in result):

@@ -67,6 +67,8 @@ mcpy add --path "../shared-addon"
 
 ## 构建与日常开发
 
+Windows 全局包冲突、项目拆分/搬迁和历史部署恢复，先使用 `mcpy --local deployment inspect`；同项目安全修复自动完成，跨项目迁移先预览并确认。纯终端 `run --no-gui` 会就地引导可处理的迁移，独立部署命令加 `--interactive` 可预览后确认执行；脚本继续使用 `--apply --expect`。命令与恢复边界见[全局部署恢复](docs/deployment-recovery.md)。
+
 Git 项目使用 `[[tool.mcpywrap.git_dependencies]]` 声明，支持 Addon 与纯代码导出、递归子依赖及固定提交。
 `mcpy sync` 获取并注册，运行与发布时组装；共享源码缓存不提交 Git。
 现有 `code_libraries` 声明保持兼容，说明见[代码库依赖](docs/code-libraries.md)。

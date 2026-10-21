@@ -445,6 +445,7 @@ class GameInstanceManager(QMainWindow):
         
         self.instance_table.selectRow(0)  # 默认选择第一行
         self.log(f"✅ 已加载 {len(self.instances)} 个游戏实例", "success")
+        self.controller.restore_startup_problem(self.instances)
     
     def refresh_dependencies(self):
         self.dependency_list.clear()

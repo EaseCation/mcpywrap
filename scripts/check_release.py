@@ -52,6 +52,13 @@ with tarfile.open(sdist) as archive:
     assert {'CONTRIBUTING.md', 'RELEASING.md', 'tests/README.md'} <= sdist_names
     assert not {'docs/development.md', 'docs/releasing.md'} & sdist_names
     assert {'docs/code-libraries.md', 'docs/git-dependencies.md', 'docs/qumod.md', 'docs/runtime-debug.md'} <= sdist_names
+    deployment_files = {'docs/deployment-recovery.md', 'tests/test_deployment_recovery.py',
+                        'tests/test_deployment_cli.py', 'tests/test_deployment_encoding.py',
+                        'tests/manual/lifecycle_dependency_audit.py'}
+    assert deployment_files <= sdist_names, f'Sdist missing deployment recovery files: {deployment_files - sdist_names}'
+    for name in deployment_files:
+        assert archive.extractfile(f'mcpywrap-{version}/{name}').read() == (root/name).read_bytes(), \
+            f'Sdist has stale deployment recovery file: {name}'
     runtime_files = {'docs/runtime-ui.md', 'docs/runtime-player.md', 'docs/input-sequence.md', 'docs/runtime-input.md',
                      'tests/test_runtime_input.py', 'tests/test_host_input.py', 'tests/test_runtime_key_timeline.py',
                      'tests/manual_runtime_input_unified.py', 'tests/manual_runtime_key_timeline.py',

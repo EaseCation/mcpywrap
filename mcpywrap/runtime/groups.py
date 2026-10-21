@@ -191,6 +191,7 @@ def status(project, group):
             'connection_verified_at': record.get('connection_verified_at'),
             'connection_checked_at': record.get('connection_checked_at'),
             'error': record.get('error'), 'code': record.get('code'), 'hint': record.get('hint') or instruction,
+            'details': record.get('details', {}), 'actions': record.get('actions', []), 'operation_id':record.get('operation_id'),
             'join_instruction': instruction, 'world_name': record.get('world_name'),
             'source_matches': record.get('source_matches')}
 
@@ -214,6 +215,15 @@ def _cancelled(record):
 
 
 def _set_failure(record, error):
+    from .diagnostics import diagnostic
+    record.update(diagnostic(error))
+    for action in record.get('actions', []):
+        if action.get('kind') in ('migrate', 'inspect'):
+            argv=list(action['argv'])
+            if '--session' in argv:
+                index=argv.index('--session')
+                del argv[index:index+2]
+            action['argv']=argv+['--group',record['group']]
     for member in record['members']:
         if (member.get('state') in ('pending', 'starting') and
                 not sessions.session_path(record['project'], member['session']).joinpath('session.json').exists()):
@@ -563,11 +573,17 @@ def logs(project, group, tail=100, source='game'):
     return {'group': group, 'logs': result}
 
 
-def restart(project, *, session=None, group=None):
+def restart(project, *, session=None, group=None, migration=None):
     if group:
         created = []
         with directory_lock(path(project, group).parent/'lock'):
             record = read(project, group)
+            if migration and (record['kind']!='local' or record['backend']!='windows'):
+                raise EngineError('仅支持 Windows 本地联调组迁移。', 'unsupported_feature')
+            if migration and migration.get('group_expect'):
+                from .deployment_inspection import digest
+                if digest(record) != migration['group_expect']:
+                    raise EngineError('联调组配置已变化，请重新预览迁移。', 'plan_stale')
             path(project, group).with_name('stop').touch()
             outcome = _stop_members(record)
             if not outcome['ok']:
@@ -583,6 +599,8 @@ def restart(project, *, session=None, group=None):
                 else:
                     host = sessions.read(project, record['members'][0]['session'])
                     options = dict(record['recipe']['options'], new=False, world_config=None, instance_prefix=host['level_id'])
+                    if migration:
+                        options['migration'] = migration
                     result = backend.run(project, **options)
                     if not result.get('already_running'):
                         created.append(result['session'])

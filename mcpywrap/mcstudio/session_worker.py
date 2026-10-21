@@ -29,6 +29,7 @@ def run(project, session):
     guard = None
     group_monitor = None
     ready_recorded = False
+    auth_context = None
     auth_path = directory/'auth.cppconfig'
     try:
         auth_context = None
@@ -114,11 +115,16 @@ def run(project, session):
         game_exited = True
         data.update(state='exited', exit_code=code)
     except Exception as exc:
-        data.update(state='failed', error=str(exc))
-        data['code'] = getattr(exc, 'code', 'launch_failed')
+        from ..runtime.diagnostics import diagnostic, format_diagnostic
+        failure = diagnostic(exc, auth_context.secrets() if auth_context else ())
+        if not failure['operation_id'] and data.get('operation_id'):
+            failure['operation_id'] = data['operation_id']
+        data.update(state='failed', **failure)
+        from ..utils.console import echo
+        echo(format_diagnostic(failure), err=True)
         from ..project_scripts import ScriptError
         if isinstance(exc, ScriptError):
-            data['script_error'] = exc.details
+            data['script_error'] = failure['details']
         if process and process.poll() is None:
             process.terminate()
             try:

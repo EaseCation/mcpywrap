@@ -14,13 +14,16 @@ def read(path, default=None):
 
 
 def write(path, data):
+    write_bytes(path, (json.dumps(data, ensure_ascii=False, indent=2) + '\n').encode('utf-8'))
+
+
+def write_bytes(path, data):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name('.' + path.name + '-' + uuid.uuid4().hex)
     try:
-        with temporary.open('w', encoding='utf-8', newline='\n') as stream:
-            json.dump(data, stream, ensure_ascii=False, indent=2)
-            stream.write('\n'); stream.flush(); os.fsync(stream.fileno())
+        with temporary.open('wb') as stream:
+            stream.write(data); stream.flush(); os.fsync(stream.fileno())
         for attempt in range(10):
             try:
                 os.replace(temporary, path)

@@ -7,6 +7,7 @@ include docs/runtime-ui.md docs/runtime-player.md
 include docs/input-sequence.md
 include docs/runtime-input.md
 include docs/local-dependencies.md docs/engine-discovery.md
+include docs/deployment-recovery.md
 include docs/mcs-auth.md
 include docs/code-libraries.md docs/git-dependencies.md docs/qumod.md
 recursive-include tests *.py

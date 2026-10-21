@@ -113,6 +113,18 @@ def mark(data, ready=False):
 
 
 def delete(project, items):
+    from .deployment_service import global_root, operation_locks, preserve_before_delete
+    root = global_root()
+    with operation_locks(root, [project]):
+        # Validate worlds first, before capturing any metadata.
+        for item in items:
+            if is_link(world_path(project, item['level_id'])):
+                raise EngineError('世界目录是链接，拒绝递归删除。', 'instance_invalid')
+        preserve_before_delete(project, root)
+        return _delete(project, items)
+
+
+def _delete(project, items):
     for item in items:
         occupancy.require_idle([data for data in occupancy.active(project) if data.get('level_id') == item['level_id']],
                                '世界正在运行，请先停止。')
