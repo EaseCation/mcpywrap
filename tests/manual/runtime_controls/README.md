@@ -20,7 +20,7 @@
 | `input_probe.py` | 新统一操作的有界位置/输入与键盘事件观测；不计数模拟tick |
 | `key_timeline_probe.py` | 临时客户端有界观测：实际位置、输入向量与键盘事件；不计数或断言模拟 tick |
 
-安装的临时客户端扩展来自产品的 `mcpywrap/mcstudio/runtime_ui_payload.py`、`runtime_ui_outline.py`、`runtime_player_payload.py`，由 `runtime install` 注入，不在此目录复制一份实现。**`mcpy.*` 只供调试，不能成为业务 Addon 的依赖。** 服务端夹具同样不属于业务包，不需要复制到行为包中。
+安装的临时客户端扩展来自产品的 `core/mcpywrap_core/mcstudio/runtime_ui_payload.py`、`runtime_ui_outline.py`、`runtime_player_payload.py`，由 `runtime install` 注入，不在此目录复制一份实现。**`mcpy.*` 只供调试，不能成为业务 Addon 的依赖。** 服务端夹具同样不属于业务包，不需要复制到行为包中。
 
 ## macOS：显式运行
 

@@ -12,7 +12,7 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-HELPER = ROOT / 'mcpywrap/mcstudio/window_capture/mcpy-window-capture.exe'
+HELPER = ROOT / 'desktop/mcpywrap_assets/window_capture/mcpy-window-capture.exe'
 
 
 @unittest.skipUnless(os.name == 'nt' and os.environ.get('MCPY_NATIVE_TESTS') == '1', 'opt-in interactive Windows desktop')

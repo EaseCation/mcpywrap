@@ -1,49 +1,15 @@
-include LICENSE README.md CHANGELOG.md
-recursive-include mcpywrap/ui/assets *.svg *.png *.icns *.json
-include scripts/build_app_icon.py
-include CONTRIBUTING.md RELEASING.md
-include docs/runtime-debug.md docs/project-scripts.md
-include docs/runtime-ui.md docs/runtime-player.md
-include docs/input-sequence.md
-include docs/runtime-input.md
-include docs/local-dependencies.md docs/engine-discovery.md
-include docs/deployment-recovery.md
-include docs/mcs-auth.md
-include docs/code-libraries.md docs/git-dependencies.md docs/qumod.md
-recursive-include tests *.py
-include tests/README.md
-recursive-include tests/manual *.md *.json
+include LICENSE THIRD_PARTY_NOTICES.md README.md CHANGELOG.md CONTRIBUTING.md RELEASING.md
+include setup.py
+include core/mcpywrap_core/_version.py
+recursive-include desktop *.py *.exe *.dll *.cer *.json
+recursive-include scripts *.py *.ps1
+recursive-include native *.cs *.c *.cpp *.h *.cer *.json *.md *.patch
+recursive-include docs *.md
+recursive-include tests *.py *.md *.json
+recursive-include skills *.md *.yaml *.ps1 *.py *.toml *.json .gitignore
 include examples/consumer_prepare/README.md
-recursive-include skills *.md *.yaml *.ps1 *.py
-prune skills/mcpywrap/assets/consumer-prepare
-include skills/mcpywrap/assets/consumer-prepare/framework/pyproject.toml
-include skills/mcpywrap/assets/consumer-prepare/framework/behavior_pack/manifest.json
-include skills/mcpywrap/assets/consumer-prepare/framework/behavior_pack/CatalogRuntime/__init__.py
-include skills/mcpywrap/assets/consumer-prepare/framework/build_tools/*.py
-include skills/mcpywrap/assets/consumer-prepare/framework/build_tools/*.json
-include skills/mcpywrap/assets/consumer-prepare/framework/build_tools/*.toml
-include skills/mcpywrap/assets/consumer-prepare/game/pyproject.toml
-include skills/mcpywrap/assets/consumer-prepare/game/behavior_pack/manifest.json
-include skills/mcpywrap/assets/consumer-prepare/game/resource_pack/manifest.json
-include skills/mcpywrap/assets/consumer-prepare/game/data/items.json
-include skills/mcpywrap/assets/consumer-prepare/game/.gitignore
-include scripts/build_mcs_auth_bridge.py
-include scripts/build_all_native.py
-include scripts/build_window_capture.py
-include scripts/check_window_capture.py
-include scripts/check_mcs_auth_bridge.py
-recursive-include native/mcs_auth *.cs *.c *.cer *.json
-recursive-include mcpywrap/mcstudio/bridge_payload *.exe *.dll *.cer *.json
-recursive-include mcpywrap/mcstudio/window_capture *.exe *.json
-recursive-include native/window_capture *.cpp *.h
-recursive-include native/runtime_input *.h *.md *.patch
 prune test
 prune .local-notes
 prune docs/investigations
 prune .git
-global-exclude __pycache__ *.py[cod] *.cppconfig *.log
-
-include THIRD_PARTY_NOTICES.md
-include docs/game-backends.md docs/launcher-client-python.md docs/macos-resource-reload.md
-include docs/qt6-development.md docs/shared-log-ui.md
-include scripts/check_release.py
+global-exclude __pycache__ *.py[cod] *.cppconfig *.log *.pfx *.p12 *.key

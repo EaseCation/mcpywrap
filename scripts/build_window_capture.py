@@ -12,7 +12,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cc', default='cl', help='x64 MSVC cl executable')
     parser.add_argument('--output', type=Path,
-                        default=Path('mcpywrap/mcstudio/window_capture'))
+                        default=Path('desktop/mcpywrap_assets/window_capture'))
     args = parser.parse_args()
     if os.name != 'nt':
         parser.error('This build requires Windows')

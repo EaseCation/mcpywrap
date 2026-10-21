@@ -19,7 +19,9 @@ uv tool install mcpywrap
 
 也可以使用 `pip install mcpywrap`。安装完成后，运行 `mcpy --help` 查看命令。
 
-从 Windows 源码检出安装时，先安装 Visual Studio 的 x86/x64 C++ 构建工具，再运行 `python scripts/build_all_native.py` 一次编译全部原生组件，最后执行 `pip install -e .`。正式发布包由 CI 编译并附带原生组件，普通安装无需本机编译。
+默认安装包含完整桌面依赖。仅需嵌入式核心时使用 `pip install mcpywrap-core`（或 `uv pip install mcpywrap-core`）；它提供 `mcpywrap_core.api.Core`，不安装桌面界面和 `mcpy` 启动脚本。两包来自同一仓库、共享版本和实现，详见 [共享核心与宿主接入](docs/shared-core.md)。
+
+从 Windows 源码检出安装时，先安装 Visual Studio 的 x86/x64 C++ 构建工具，再运行 `python scripts/build_all_native.py` 一次编译全部原生组件，最后执行 `pip install -e ./core -e .`。正式发布包由 CI 编译并附带原生组件，普通安装无需本机编译。
 
 ## 开始使用
 

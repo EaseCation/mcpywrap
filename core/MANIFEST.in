@@ -1,0 +1,6 @@
+include README.md LICENSE THIRD_PARTY_NOTICES.md
+include mcpywrap_core/core-contract.json
+recursive-include mcpywrap_core/ui/assets *.svg *.png *.icns *.json
+prune mcpywrap_core/mcstudio/bridge_payload
+prune mcpywrap_core/mcstudio/window_capture
+global-exclude __pycache__ *.py[cod] *.exe *.dll *.so *.dylib *.pyd

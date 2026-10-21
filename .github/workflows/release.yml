@@ -2,7 +2,7 @@ name: Test, build and publish
 
 on:
   push:
-    branches: [main, 'codex/0.4.0-*']
+    branches: [main, 'codex/0.4.0-*', 'codex/shared-python-core']
     tags: ['v*']
   pull_request:
     branches: [main]
@@ -26,6 +26,7 @@ jobs:
     outputs:
       signed: ${{ steps.mode.outputs.signed }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
@@ -57,17 +58,17 @@ jobs:
         with:
           name: mcs-auth-bridge
           path: |
-            mcpywrap/mcstudio/bridge_payload/*.exe
-            mcpywrap/mcstudio/bridge_payload/*.dll
-            mcpywrap/mcstudio/bridge_payload/*.cer
-            mcpywrap/mcstudio/bridge_payload/manifest.json
+            desktop/mcpywrap_assets/bridge_payload/*.exe
+            desktop/mcpywrap_assets/bridge_payload/*.dll
+            desktop/mcpywrap_assets/bridge_payload/*.cer
+            desktop/mcpywrap_assets/bridge_payload/manifest.json
           if-no-files-found: error
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: window-capture
           path: |
-            mcpywrap/mcstudio/window_capture/*.exe
-            mcpywrap/mcstudio/window_capture/manifest.json
+            desktop/mcpywrap_assets/window_capture/*.exe
+            desktop/mcpywrap_assets/window_capture/manifest.json
           if-no-files-found: error
 
   test:
@@ -89,18 +90,22 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: mcs-auth-bridge
-          path: mcpywrap/mcstudio/bridge_payload
+          path: desktop/mcpywrap_assets/bridge_payload
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: window-capture
-          path: mcpywrap/mcstudio/window_capture
-      - run: python -m pip install .
+          path: desktop/mcpywrap_assets/window_capture
+      - run: python -m pip install ./core .
+      - run: python -m unittest discover -s tests -p 'test_core*.py' -v
+      - run: python -m unittest discover -s tests -p test_host_services.py -v
+      - run: python -m unittest discover -s tests -p test_distribution_layout.py -v
+      - run: python -m unittest discover -s tests -p test_lock_storage.py -v
       - run: python -m pip check
       - name: Verify installed native components
         shell: pwsh
         run: |
           Push-Location $env:RUNNER_TEMP
-          python -c "from importlib.metadata import distribution; from pathlib import Path; import hashlib,json; root=Path(distribution('mcpywrap').locate_file('mcpywrap/mcstudio')); capture=root/'window_capture'; manifest=json.loads((capture/'manifest.json').read_text(encoding='utf-8')); assert hashlib.sha256((capture/'mcpy-window-capture.exe').read_bytes()).hexdigest()==manifest['executable_sha256']; bridge=root/'bridge_payload'; assert all((bridge/name).is_file() for name in ('Injector.exe','Loader.dll','McpyMcsAuth.dll','manifest.json'))"
+          python -c "from importlib.metadata import distribution; from pathlib import Path; import hashlib,json; root=Path(distribution('mcpywrap').locate_file('mcpywrap_assets')); capture=root/'window_capture'; manifest=json.loads((capture/'manifest.json').read_text(encoding='utf-8')); assert hashlib.sha256((capture/'mcpy-window-capture.exe').read_bytes()).hexdigest()==manifest['executable_sha256']; bridge=root/'bridge_payload'; assert all((bridge/name).is_file() for name in ('Injector.exe','Loader.dll','McpyMcsAuth.dll','manifest.json'))"
           Pop-Location
       - run: python scripts/check_mcs_auth_bridge.py
       - run: python scripts/check_window_capture.py
@@ -108,9 +113,9 @@ jobs:
         if: needs.native.outputs.signed == 'true'
         shell: pwsh
         run: |
-          $manifest = Get-Content mcpywrap/mcstudio/bridge_payload/manifest.json -Raw | ConvertFrom-Json
+          $manifest = Get-Content desktop/mcpywrap_assets/bridge_payload/manifest.json -Raw | ConvertFrom-Json
           foreach ($name in @('Injector.exe','Loader.dll','McpyMcsAuth.dll')) {
-            $signature = Get-AuthenticodeSignature -LiteralPath "mcpywrap/mcstudio/bridge_payload/$name"
+            $signature = Get-AuthenticodeSignature -LiteralPath "desktop/mcpywrap_assets/bridge_payload/$name"
             if ($signature.SignerCertificate.Thumbprint -ne $manifest.thumbprint -or $signature.Status -in @('HashMismatch','NotSigned','NotSupportedFileFormat')) { throw "Invalid bridge signature: $name" }
           }
       - run: python -m unittest discover -s tests -v
@@ -119,7 +124,7 @@ jobs:
         env:
           PYTHONUTF8: '0'
           PYTHONIOENCODING: gbk
-      - run: python -m compileall -q mcpywrap tests
+      - run: python -m compileall -q core desktop tests
 
   macos:
     runs-on: macos-latest
@@ -128,11 +133,14 @@ jobs:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: '1'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
-      - run: python -m pip install .
+      - run: python -m pip install ./core .
+      - run: python -m unittest discover -s tests -p 'test_core*.py' -v
+      - run: python -m unittest discover -s tests -p test_host_services.py -v
+      - run: python -m unittest discover -s tests -p test_distribution_layout.py -v
+      - run: python -m unittest discover -s tests -p test_lock_storage.py -v
       - run: python -m pip check
       - name: Verify Qt6 availability and lazy CLI imports
         run: python -c "import sys; import mcpywrap.cli; assert not any(k.startswith('PySide6') for k in sys.modules); import PySide6.QtCore"
@@ -181,36 +189,38 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: mcs-auth-bridge
-          path: mcpywrap/mcstudio/bridge_payload
+          path: desktop/mcpywrap_assets/bridge_payload
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: window-capture
-          path: mcpywrap/mcstudio/window_capture
+          path: desktop/mcpywrap_assets/window_capture
       - run: python -m pip install build twine
       - name: Check release version and main ancestry
         shell: bash
         run: |
-          python - <<'PY'
-          import os, pathlib, re, tomllib
-          version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
-          source = pathlib.Path('mcpywrap/__init__.py').read_text()
-          assert re.search(r"__version__ = ['\"]" + re.escape(version) + r"['\"]", source)
-          if os.environ['GITHUB_REF_TYPE'] == 'tag':
-              assert os.environ['GITHUB_REF_NAME'] == 'v' + version, 'Tag must match package version'
-          PY
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            python scripts/version.py --check-tag "$GITHUB_REF_NAME"
+          else
+            python scripts/version.py
+          fi
           if [[ "$GITHUB_REF_TYPE" == tag ]]; then
             git merge-base --is-ancestor HEAD origin/main
           fi
-      - run: python -m build
-      - run: python -m twine check --strict dist/*
-      - run: python scripts/check_release.py
+      - run: python scripts/build_distributions.py
+      - run: python -m twine check --strict dist/core/* dist/desktop/*
+      - run: python scripts/check_release.py --require-native
+      - name: Verify core-only installation and in-place upgrade from the published release
+        shell: bash
+        run: |
+          python -m pip download --no-deps --index-url https://pypi.org/simple mcpywrap==0.5.8 --dest "$RUNNER_TEMP/legacy"
+          python scripts/verify_distributions.py --legacy-wheel "$RUNNER_TEMP/legacy/mcpywrap-0.5.8-py3-none-any.whl"
       - run: python scripts/check_window_capture.py
       - run: python scripts/check_mcs_auth_bridge.py ${{ needs.native.outputs.signed == 'true' && '--require-signed' || '' }}
       - name: Smoke test the built wheel outside the checkout
         shell: bash
         run: |
           python -m venv "$RUNNER_TEMP/wheel-smoke"
-          "$RUNNER_TEMP/wheel-smoke/bin/python" -m pip install dist/*.whl
+          "$RUNNER_TEMP/wheel-smoke/bin/python" -m pip install dist/core/*.whl dist/desktop/*.whl
           cd "$RUNNER_TEMP"
           wheel-smoke/bin/python -c "from importlib.metadata import version; from mcpywrap import __version__; assert __version__ == version('mcpywrap'); from mcpywrap.dependencies import DependencyService; from mcpywrap.consumer_prepare import PreparationPlan; from jsonschema import Draft202012Validator; from mcpywrap.minecraft.template.generate_mod_files import generate_mod_framework"
           wheel-smoke/bin/mcpy --help
@@ -232,7 +242,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: distributions
-          path: dist/*
+          path: dist/
           if-no-files-found: error
 
   publish:
@@ -247,10 +257,30 @@ jobs:
       url: https://pypi.org/project/mcpywrap/
     permissions:
       id-token: write
+      contents: read
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: distributions
           path: dist/
-      - name: Publish to PyPI using Trusted Publishing
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Prepare missing core files (verify existing hashes)
+        id: core-upload
+        run: python scripts/pypi_release.py prepare --project mcpywrap-core --directory dist/core --outdir upload-core
+      - name: Publish core first
+        if: steps.core-upload.outputs.count != '0'
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        with:
+          packages-dir: upload-core/
+      - name: Confirm core artifacts are visible
+        run: python scripts/pypi_release.py wait --project mcpywrap-core --directory dist/core
+      - name: Prepare missing desktop files (verify existing hashes)
+        id: desktop-upload
+        run: python scripts/pypi_release.py prepare --project mcpywrap --directory dist/desktop --outdir upload-desktop
+      - name: Publish complete distribution
+        if: steps.desktop-upload.outputs.count != '0'
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        with:
+          packages-dir: upload-desktop/

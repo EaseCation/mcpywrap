@@ -10,7 +10,7 @@ parser.add_argument('--require-signed', action='store_true')
 options = parser.parse_args()
 
 root = Path(__file__).resolve().parent.parent
-payload = root/'mcpywrap/mcstudio/bridge_payload'
+payload = root/'desktop/mcpywrap_assets/bridge_payload'
 manifest = json.loads((payload/'manifest.json').read_text(encoding='utf-8'))
 publisher = json.loads((root/'native/mcs_auth/publisher.json').read_text(encoding='utf-8-sig'))
 assert manifest['thumbprint'] == publisher['thumbprint']

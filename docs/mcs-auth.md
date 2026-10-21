@@ -26,7 +26,7 @@ mcpy --project D:\mods\demo --non-interactive run --mcs-auth --detach --json
 
 组件使用项目自签名证书，不是公共 CA 认证的发布者。证书只在用户明确同意后加入 **当前用户**的“受信任的根证书颁发机构”，不会写入整机证书库。同一证书签署的其他代码也可能因此获得信任；这不是一次性的单文件例外，也不能覆盖 Smart App Control 或企业应用控制。
 
-发布包只包含公共证书和签名文件，不包含私钥。证书指纹与文件 SHA-256 在 `mcpywrap/mcstudio/bridge_payload/manifest.json` 中；加载和证书提示前都会检查组件完整性。
+发布包只包含公共证书和签名文件，不包含私钥。证书指纹与文件 SHA-256 在 `mcpywrap_assets/bridge_payload/manifest.json` 中；加载和证书提示前都会检查组件完整性。
 
 桥接通过当前用户专用的一次性命名管道返回登录信息，不把 token 放入命令行或会话记录。游戏需要的身份仅写入本次运行配置，退出后删除；日志在写入磁盘前脱敏。MCS 必须保持运行；重新登录后应重新启动测试。
 

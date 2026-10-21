@@ -57,7 +57,7 @@ mcpy 自身继续使用 MIT；GUI 改为 PySide6-Essentials 和 Shiboken6，选�
 
 GUI 入口共用 `ui.application.create_application`：Qt 应用名与菜单显示名为 mcpy，管理页、日志小窗、模板和登录提示使用同一图标。Qt 的应用级图标也交给 Cocoa 用于 Dock。直接运行 Python 时，LaunchServices 仍可能把进程名称缓存为 Python；设置 Qt 显示名不等同于已安装独立 mcpy.app。已打开的小窗需要重新启动后应用新图标。
 
-图标源为 `mcpywrap/ui/assets/mcpy.icon`，是可由 Icon Composer 27 编辑的分层文档：深蓝背景、薄荷绿方块、白色命令提示符。背景满幅不透明，前景 SVG 未预裁切；命令提示符保留不透明，以确保小尺寸对比度。不把 Minecraft 游戏图标用作 mcpy 品牌图标。
+图标源为 `core/mcpywrap_core/ui/assets/mcpy.icon`，是可由 Icon Composer 27 编辑的分层文档：深蓝背景、薄荷绿方块、白色命令提示符。背景满幅不透明，前景 SVG 未预裁切；命令提示符保留不透明，以确保小尺寸对比度。不把 Minecraft 游戏图标用作 mcpy 品牌图标。
 
 图标遵循 Apple [App icons HIG](https://developer.apple.com/design/human-interface-guidelines/app-icons) 和 [Icon Composer 文档](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)：
 
