@@ -33,7 +33,11 @@ def wheel(extra=None):
     out = io.BytesIO()
     with zipfile.ZipFile(out, 'w') as z:
         for name, body in files.items():
-            z.writestr(name, body)
+            entry = zipfile.ZipInfo(name)
+            # Preserve invalid archive bytes even on Windows, whose ZipInfo
+            # constructor normally normalizes backslashes on write/read.
+            entry.filename = name
+            z.writestr(entry, body)
     return out.getvalue()
 
 

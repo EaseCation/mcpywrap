@@ -113,10 +113,11 @@ def adapt_completion_wheel(content, version, directory):
     total = 0
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         for member in archive.infolist():
-            name = member.filename
+            # ZipInfo normalizes OS separators on Windows; inspect the raw name.
+            name = member.orig_filename
             path = PurePosixPath(name)
             if (path.is_absolute() or '..' in path.parts or '\\' in name or ':' in name
-                    or str(path) != name or not path.parts or name in files
+                    or (str(path) + ('/' if member.is_dir() else '')) != name or not path.parts or name in files
                     or any(part.endswith('.data') for part in path.parts)
                     or path.name in ('sitecustomize.py', 'usercustomize.py') or member.external_attr >> 28 == 0xA):
                 raise ValueError('ModSDK wheel 包含不安全路径')
