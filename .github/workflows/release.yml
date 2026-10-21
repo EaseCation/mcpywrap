@@ -143,6 +143,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_skill_workflows.py -v
       - run: python -m unittest discover -s tests -p test_input_sequence.py -v
       - run: python -m unittest discover -s tests -p test_shared_logs.py -v
+      - run: python -m unittest discover -s tests -p test_log_stream.py -v
       - run: python -m unittest discover -s tests -p test_qt_sessions.py -v
         env:
           QT_QPA_PLATFORM: offscreen

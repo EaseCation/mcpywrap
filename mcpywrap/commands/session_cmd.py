@@ -25,11 +25,31 @@ def status_cmd(session, list_sessions, group=None):
 @click.command(cls=OperationCommand, name='logs')
 @click.option('--session')
 @click.option('--group')
-@click.option('--tail', type=click.IntRange(1, 10000), default=100, show_default=True)
-@click.option('--source', type=click.Choice(['game', 'engine', 'worker']), default='game', show_default=True)
-def logs_cmd(session, tail, source, group=None):
-    """读取会话日志末尾，不等待新日志。"""
+@click.option('--tail', type=click.IntRange(0, 10000), default=100, show_default=True)
+@click.option('--source', type=click.Choice(['game', 'engine', 'worker', 'all']), default='game', show_default=True)
+@click.option('--follow', is_flag=True, help='增量跟随日志，结束订阅不停止游戏（仅本机）')
+@click.option('--format', 'output_format', type=click.Choice(['text', 'jsonl']), default='text', show_default=True)
+def logs_cmd(session, tail, source, group=None, follow=False, output_format='text'):
+    """读取日志快照，或使用 --follow 持续接收增量日志。"""
     target(session, group)
+    if follow:
+        if json_output():
+            raise click.UsageError('--follow 是持续流；使用 --format jsonl，不加 --json')
+        from ..mcstudio.log_stream import follow as events
+        import json
+        from contextlib import closing
+        try:
+            with closing(events(project_dir(), session=session, group=group, source=source, tail=tail)) as stream:
+                for item in stream:
+                    if output_format == 'jsonl':
+                        click.echo(json.dumps(item, ensure_ascii=True))
+                    elif item['event'] == 'log':
+                        click.echo('[' + item['session'][:8] + ' ' + item['source'] + '] ' + item['text'], nl=False)
+        except KeyboardInterrupt:
+            pass
+        return
+    if source == 'all' or output_format != 'text' or tail == 0:
+        raise click.UsageError('--source all、--format jsonl 和 --tail 0 仅用于 --follow')
     if group:
         from ..runtime import groups
         result = groups.logs(project_dir(), group, tail, source)

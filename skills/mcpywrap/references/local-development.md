@@ -28,6 +28,19 @@ mcpy --local --project <项目> --non-interactive runtime capabilities --session
 
 restart 会产生新 session，世界 ID 保留；需要 MCS 身份的会话按提示重新 run 并提供本次身份。旧 session 可查历史，不能继续向它发送输入。实例是世界，session 是一次进程运行，group 是联调成员关系。
 
+## 持续日志
+
+```text
+mcpy --local --project <项目> --non-interactive logs --session <sid> --follow --source all --format jsonl
+mcpy --local --project <项目> --non-interactive logs --group <gid> --follow --source all --format jsonl
+```
+
+`--follow` 是只读的本机持续订阅，不加 `--json`。`--source all` 同时接收 game（脚本系统）、engine、worker；也可单选来源。`--tail` 为每个来源的初始历史行数，0 表示从订阅时刻开始；历史回读最多 256 KiB，之后逐字节增量读取，不按文本去重。关闭订阅保留游戏；全部成员结束后排空日志并退出。
+
+`--format jsonl` 每行是独立 JSON：`schema_version=1`，`event` 为 `log/state/reset/end`。log 含 session、可选 role、source、text；text 可以是半行并保留 UTF-8 边界。state 含 session/state；reset 表示文件轮换或截断；end 表示已读到会话结束。不支持此选项的旧 CLI 需要升级，不能用快照轮询伪装连续流。
+
+每轮每个来源最多读取 64 KiB，约每秒刷新一次会话状态；读取后立即关闭文件，不长期占用 Windows 日志句柄。文件迟到时从出现后的开头读取，轮换或观察到截断后发出 reset 并从新文件开头继续；轮换前尚未读取的旧文件内容不保证补回，同一文件在两次读取之间被截断又增长到原偏移以上也无法可靠检测，不承诺归档级无损追踪。会话全部结束后排空剩余内容；末尾不完整的 UTF-8 字节按替换字符输出。读取失败在 stderr 报错并以非零退出，stdout 中已输出的 JSONL 保持有效。Ctrl+C 或消费者断开只释放订阅，不写 stop 请求。
+
 ## 代码部署与世界进度
 
 **世界保存进度，重新运行使用当前项目代码；--new 不保存旧代码快照。** Addon 无论依赖数量都先组装，再通过受控部署给游戏读取；修改源码不等于活动游戏立即看到新内容。

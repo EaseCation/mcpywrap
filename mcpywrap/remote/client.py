@@ -164,6 +164,8 @@ def routed_command(name, parameters):
     if not endpoint:
         return False, None
     p = dict(parameters)
+    if name == 'logs' and (p.get('follow') or p.get('source') == 'all' or p.get('output_format', 'text') != 'text' or p.get('tail') == 0):
+        raise click.UsageError('增量日志流仅支持 --local，不会回退本机；远端仍可查询日志快照。')
     if p.get('group') or p.get('clients', 1) != 1:
         raise click.UsageError('远程服务当前仅支持单会话；双客户端联调请使用 --local。')
     if name == 'py' and (p.get('no_wait') or p.get('wait_until') is not None):
