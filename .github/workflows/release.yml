@@ -136,6 +136,7 @@ jobs:
       - run: python -m pip check
       - name: Verify Qt6 availability and lazy CLI imports
         run: python -c "import sys; import mcpywrap.cli; assert not any(k.startswith('PySide6') for k in sys.modules); import PySide6.QtCore"
+      - run: python -m unittest discover -s tests -p test_modsdk_environment.py -v
       - run: python -m unittest discover -s tests -p test_remote.py -v
       - run: python -m unittest discover -s tests -p test_remote_scripts.py -v
       - run: python -m unittest discover -s tests -p test_git_projects.py -v
