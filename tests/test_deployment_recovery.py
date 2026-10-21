@@ -18,7 +18,7 @@ from mcpywrap.runtime import instances, storage
 from mcpywrap.runtime.deployment import Deployment, inventory
 from mcpywrap.runtime.deployment_inspection import inspect
 from mcpywrap.runtime.deployment_service import execute, preview
-from mcpywrap.utils.link_snapshot import capture, restore
+from mcpywrap.utils.link_snapshot import capture, restore, validate
 
 
 class RecoveryTests(unittest.TestCase):
@@ -40,6 +40,26 @@ class RecoveryTests(unittest.TestCase):
             if transaction is None:
                 deployment.commit()
         return deployment, pack
+
+    @unittest.skipUnless(os.name == "nt", "Windows namespace targets")
+    def test_symlink_snapshot_namespace_preserves_identity_and_raw_restore_target(self):
+        from mcpywrap.runtime.occupancy import path_key
+
+        path = self.engine / "behavior_packs/old-link"
+        for prefix in ("\\\\?\\", "\\??\\"):
+            with self.subTest(prefix=prefix):
+                original = prefix + str(self.project)
+                state = {"type": "symlink", "target": original}
+                self.assertEqual(
+                    path_key(validate(path, state)), path_key(self.project)
+                )
+                self.assertEqual(state["target"], original)
+                for unc_prefix in ("UNC\\", "unc\\"):
+                    unc = {
+                        "type": "symlink",
+                        "target": prefix + unc_prefix + "server\\share\\pack",
+                    }
+                    self.assertEqual(validate(path, unc), "\\\\server\\share\\pack")
 
     def legacy(self, project=None):
         project = project or self.project

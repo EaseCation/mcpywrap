@@ -82,6 +82,16 @@ def validate(path, state):
         target = state.get("target")
         if not isinstance(target, str) or not target:
             raise ValueError("符号链接恢复记录无效")
+        # readlink() may return a Windows namespace prefix even when the
+        # publication used a normal drive/UNC path. Compare the same spelling;
+        # retain state['target'] verbatim for restore().
+        if os.name == "nt":
+            for prefix in ("\\\\?\\", "\\??\\"):
+                if target.startswith(prefix):
+                    target = target[len(prefix) :]
+                    if target[:4].upper() == "UNC\\":
+                        target = "\\\\" + target[4:]
+                    break
         return str(Path(path).parent / target)
     if state.get("type") != "junction":
         raise ValueError("目录链接恢复类型无效")
