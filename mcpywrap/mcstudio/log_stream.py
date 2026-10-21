@@ -50,6 +50,12 @@ class LogCursor:
             self.stream.close()
             self.stream = None
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
 
 def follow(project, *, session=None, group=None, source='all', tail=100, interval=.25):
     """Yield JSON-serializable events until every selected session has ended.

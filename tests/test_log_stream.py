@@ -1,4 +1,5 @@
 import json
+from contextlib import ExitStack
 import subprocess
 import sys
 import tempfile
@@ -13,11 +14,10 @@ from mcpywrap.mcstudio.log_stream import LogCursor, follow, HISTORY_LIMIT
 
 class LogStreamTests(unittest.TestCase):
     def test_incremental_utf8_and_repeated_lines_are_not_lost_or_duplicated(self):
-        with tempfile.TemporaryDirectory() as root:
+        with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
             path = Path(root)/'game.log'
             path.write_bytes(b'old\n')
-            cursor = LogCursor(path, 1)
-            self.addCleanup(cursor.close)
+            cursor = stack.enter_context(LogCursor(path, 1))
             self.assertEqual(cursor.read()[0], 'old\n')
             data = '中文\n中文\n'.encode('utf-8')
             with path.open('ab') as stream:
@@ -29,22 +29,20 @@ class LogStreamTests(unittest.TestCase):
             self.assertEqual(cursor.read()[0], '')
 
     def test_late_file_and_truncation_read_from_start(self):
-        with tempfile.TemporaryDirectory() as root:
+        with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
             path = Path(root)/'engine.log'
-            cursor = LogCursor(path, 0)
-            self.addCleanup(cursor.close)
+            cursor = stack.enter_context(LogCursor(path, 0))
             self.assertEqual(cursor.read()[0], '')
-            path.write_text('first log\n', encoding='utf-8')
+            path.write_bytes(b'first log\n')
             self.assertEqual(cursor.read()[0], 'first log\n')
-            path.write_text('new\n', encoding='utf-8')
+            path.write_bytes(b'new\n')
             self.assertEqual(cursor.read(), ('new\n', True))
 
     def test_history_read_is_bounded(self):
-        with tempfile.TemporaryDirectory() as root:
+        with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
             path = Path(root)/'large.log'
             path.write_bytes(b'x\n' * HISTORY_LIMIT)
-            cursor = LogCursor(path, 2)
-            self.addCleanup(cursor.close)
+            cursor = stack.enter_context(LogCursor(path, 2))
             self.assertEqual(cursor.read()[0], 'x\nx\n')
             self.assertEqual(cursor.read()[0], '')
 
@@ -81,7 +79,7 @@ class LogStreamTests(unittest.TestCase):
             directory.mkdir(parents=True)
             (directory/'session.json').write_text(json.dumps({'state':'exited'}), encoding='utf-8')
             (directory/'engine.log').write_text('engine output\n', encoding='utf-8')
-            (directory/'game.log').write_text('中文\n中文\n', encoding='utf-8')
+            (directory/'game.log').write_bytes('中文\n中文\n'.encode('utf-8'))
             process = subprocess.run([sys.executable,'-m','mcpywrap','--local','--project',root,
                                       '--non-interactive','logs','--session',sid,'--follow',
                                       '--source','all','--format','jsonl'], capture_output=True, timeout=10)
