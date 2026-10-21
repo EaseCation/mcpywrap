@@ -250,7 +250,7 @@ class SessionController(QObject):
         self.all_logs = enabled
         self.bind_logs()
 
-    def connect(self, host, port=19132, clients=2):
+    def connect_server(self, host, port=19132, clients=2):
         from ..mcstudio.network import ServerTarget
         from ..runtime import groups
         target = ServerTarget(host, port)

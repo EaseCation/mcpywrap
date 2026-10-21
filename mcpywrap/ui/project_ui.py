@@ -618,7 +618,7 @@ class GameInstanceManager(QMainWindow):
         port, accepted = QInputDialog.getInt(self, '服务器端口', '端口', 19132, 1, 65535)
         if not accepted: return
         clients, accepted = QInputDialog.getItem(self, '玩家数量', '本机客户端', ['2', '1'], 0, False)
-        if accepted: self.controller.connect(host.strip(), port, int(clients))
+        if accepted: self.controller.connect_server(host.strip(), port, int(clients))
 
     def attach_existing(self):
         if self.is_busy(): return
