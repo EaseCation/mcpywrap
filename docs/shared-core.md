@@ -1,6 +1,6 @@
 # 共享核心、双发行包与宿主接入
 
-一个仓库、一套工程实现，发布两个同版本的 Python 包。拆分版本为 **0.6.0**；此分支尚未发布到 PyPI。
+一个仓库、一套工程实现，提供共享核心与完整桌面工具两个发行包。两包版本同步，完整包精确依赖同版本核心。
 
 ## 安装与文件归属
 
@@ -37,7 +37,7 @@ tests/                            跨平台、兼容、包归属与升级检查
 
 核心中的桌面相关 Python 文件不等于强制安装其依赖；按需导入避免核心环境加载 Qt、watchdog、rich、psutil。没有复制一份 Android 构建器。新命令和能力继续添加到同一实现。
 
-源码开发安装：`pip install -e ./core -e .`。尚未发布的分支不能仅 `pip install .`，否则索引上可能没有所需的同版本核心。Windows 分支验收见 [windows-branch-test.md](windows-branch-test.md)。
+源码开发安装：`pip install -e ./core -e .`。应同时安装同一 checkout 的两包，避免从索引解析到不匹配或尚不可用的核心版本。开发环境与构建流程见 [CONTRIBUTING.md](../CONTRIBUTING.md)，可复用测试入口见 [tests/README.md](../tests/README.md#共享核心与发行包)。
 
 ## 同一 API 与宿主能力
 
@@ -63,19 +63,11 @@ result = core.execute('build', '/sdcard/mcpy/projects/example', merge=False)
 
 源码、构建产物、存档与日志仍属于公共工作区；私有锁不能阻止外部编辑器直接改文件。正式宿主任务服务需要序列化修改任务，并管理取消、输入变化和一致性发布。
 
-## 同步版本与发布
+## 版本与发行契约
 
-版本唯一来源为 `core/mcpywrap_core/_version.py`：
+版本唯一来源为 `core/mcpywrap_core/_version.py`。两个发行包始终使用同一版本，完整包的核心依赖由该版本自动生成；Python 包版本、宿主协议版本与 Android App 版本分别管理。
 
-```sh
-python scripts/version.py --set 0.6.1
-python scripts/build_distributions.py
-python scripts/check_release.py --require-native
-```
-
-两个包统一为 0.6.1，完整包依赖自动变成 `mcpywrap-core==0.6.1`。补丁、功能和预发布（如 `0.7.0rc1`）都同步版本；仅文档变化通常不发包。单包代码未变化也随本次发布一起更新版本。
-
-构建输出为 `dist/core/` 与 `dist/desktop/`，分别包含可独立重建的 sdist 和 wheel。CI 检查版本、依赖精确绑定、源码完整性和文件归属互不重叠。核心 wheel 本身就是 App 的更新载荷，已移除上一阶段从完整 wheel 再裁剪生成更新包的脚本。
+构建输出为 `dist/core/` 与 `dist/desktop/`，分别包含可独立重建的 sdist 和 wheel。CI 检查版本、依赖精确绑定、源码完整性和文件归属互不重叠。核心 wheel 本身就是 App 的更新载荷，无需从完整 wheel 裁剪生成。
 
 发布先上传核心，等待两个核心文件在 PyPI 可见且摘要一致，再上传完整包。重试只补缺失文件：相同文件名若摘要不同必须换新版本，不允许盲目 `skip-existing`。PyPI 不提供双包原子发布；完整流程见 [RELEASING.md](../RELEASING.md)。
 
@@ -109,12 +101,4 @@ core = store.activate(release['sha256'], configure=configure,
 
 Python 包版本与宿主协议版本、Android App 版本独立。兼容的规则改进可直接更新核心；Python ABI、基础依赖或宿主协议不满足时拒绝升级并保留旧版。基础依赖的成组更新、正式 App 更新 UI、后台服务、可信更新目录及外部 mcpy 的 App 后端路由尚未接入。
 
-## 验证
-
-```sh
-python -m unittest discover -s tests -p 'test_core*.py'
-python scripts/verify_core_release.py dist/core/mcpywrap_core-0.6.0-py3-none-any.whl --output release-smoke.json
-python scripts/verify_distributions.py --legacy-wheel path/to/mcpywrap-0.5.8-py3-none-any.whl
-```
-
-升级验证使用临时 `+upgradeprobe` 版本，不发布该测试版本。嵌入验证程序为 `tests/embedded_upgrade_probe.py`；其公共调试请求文件只模拟已经认证的发布信息，不能用作生产信任来源。
+核心 API、独立安装、旧版升级及更新回滚的测试方式统一维护在 [测试入口](../tests/README.md#共享核心与发行包)。测试夹具中的发布信息不能用作生产信任来源。

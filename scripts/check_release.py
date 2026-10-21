@@ -8,6 +8,20 @@ import zipfile
 from version import ROOT, release_version
 
 
+def check_native_payload(archive, folder):
+    # 编译器的 .obj/.lib 等中间产物不属于发行资源；同时必须拒绝缺件。
+    required = {
+        'bridge_payload': {'manifest.json', 'Injector.exe', 'Loader.dll', 'McpyMcsAuth.dll', 'publisher.cer'},
+        'window_capture': {'manifest.json', 'mcpy-window-capture.exe'},
+    }[folder]
+    prefix = 'mcpywrap_assets/' + folder + '/'
+    packaged = {name[len(prefix):] for name in archive.namelist() if name.startswith(prefix)}
+    assert packaged == required, 'Unexpected/missing native payload: ' + folder
+    source = ROOT/'desktop/mcpywrap_assets'/folder
+    for name in required:
+        assert archive.read(prefix + name) == (source/name).read_bytes(), 'Stale native payload: ' + name
+
+
 def check(outdir, require_native=False):
     version = release_version()
     code = {p.relative_to(ROOT/'core').as_posix(): p.read_bytes()
@@ -41,11 +55,7 @@ def check(outdir, require_native=False):
                 assert not any(n.startswith('mcpywrap/commands/') for n in files)
                 if require_native:
                     for folder in ('bridge_payload','window_capture'):
-                        source = ROOT/'desktop/mcpywrap_assets'/folder
-                        assert (source/'manifest.json').is_file()
-                        for path in source.iterdir():
-                            if path.is_file():
-                                assert archive.read('mcpywrap_assets/'+folder+'/'+path.name) == path.read_bytes()
+                        check_native_payload(archive, folder)
             for path in files:
                 assert not any(p in ('.local-notes','__pycache__','.runtime','.git') for p in Path(path).parts), path
                 assert not path.endswith(('.pyc','.pfx','.p12','.key','.log')), path

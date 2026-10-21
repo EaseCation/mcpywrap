@@ -5,6 +5,7 @@ import unittest
 from mcpywrap_core.host import HostServices, host_scope
 from mcpywrap_core.prepare_environment import inspect_environment, ensure_environment, PrepareError
 from mcpywrap_core.git_cache import _source_lock, cache_root
+from mcpywrap_core.dependencies import canonical_path
 
 
 class HostServicesTests(unittest.TestCase):
@@ -13,7 +14,7 @@ class HostServicesTests(unittest.TestCase):
             root = Path(temp).resolve()
             public, private = root/'public-cache', root/'private-locks'
             with host_scope(HostServices(cache_directory=public, lock_directory=private)):
-                self.assertEqual(cache_root(), public)
+                self.assertEqual(canonical_path(cache_root()), canonical_path(public))
                 with _source_lock(public/'origin.lock'):
                     self.assertFalse((public/'origin.lock').exists())
                     self.assertEqual(len(list(private.rglob('service.lock'))), 1)

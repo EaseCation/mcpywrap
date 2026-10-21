@@ -75,5 +75,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     result = verify(args.dist,args.legacy_wheel)
     if args.output:
-        Path(args.output).write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
+        Path(args.output).write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n', encoding='utf-8')
     print(json.dumps(result,ensure_ascii=False,indent=2))

@@ -241,7 +241,7 @@ class SkillWindowTests(unittest.TestCase):
                 json.dumps({'executable_sha256': hashlib.sha256(b'original').hexdigest()}),
                 encoding='utf-8')
             target = window.GameWindow.__new__(window.GameWindow)
-            with patch.object(window, '__file__', str(Path(folder) / 'window.py')):
+            with patch('mcpywrap_core.host_assets.asset_directory', return_value=payload):
                 with self.assertRaisesRegex(window.BackgroundCaptureUnavailable, '完整性'):
                     target._background_helper()
 

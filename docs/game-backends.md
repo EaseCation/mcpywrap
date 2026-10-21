@@ -17,6 +17,8 @@ WindowsBackend 调用原有 MC Studio 发现、cppconfig 和 Safaia 流程，保
 
 调用端通常只需要 run/status/logs/stop/runtime py。启动器位置、游戏库路径和底层 socket 是后端细节；`backend` 字段供诊断，业务代码应按 capability 和公共状态判断。`running` 表示进程启动，macOS 的 `world_ready` 才表示已观察到 HUD；Mod 是否正常还要核对实际游戏日志和玩法效果。
 
+Windows 的 `stop/restart` 使用进程终止，不等同于游戏内“保存并退出”，刚写入的数据可能丢失。需要保留进度时，先在游戏中保存并退出到主菜单，再停止进程并 `run` 原实例。`SaveExtraData()` 返回成功或进程显示 `exited` 都不能代替重开读回的保存验证。
+
 macOS 首次 mcpy run 自动从内置发布源安装原生运行包和官方 APK，进度在 stderr；也可提前执行 mcpy engine install。--catalog / --apk 是高级覆盖选项。交互式 run 显示共用调试小窗，ui 打开完整管理页；--no-gui / --detach / --json / --non-interactive 抑制调试小窗；Windows 保持手动安装 MC Studio。默认资源目录 ~/Library/Application Support/mcpy，可设置 MCPY_ENGINE_HOME、MCPY_RUNTIME_CATALOG。
 
 macOS 支持离线 Addon 世界；无认证服务器连接需 CLI 0.4.3+ 与运行包 0.4.3+ 配套，运行包须声明 network_connect_protocol=1（旧 0.4.0 运行包需要显式升级）。connect 与配置了 server 的 run 共用 cppconfig、会话、日志及退出；网络会话仅支持客户端调试，不装配本地 Mod。游戏截图通过支持 screenshot_protocol=1 的 Launcher 按需读帧；macOS 不支持 Map、MCS 登录、原始桌面键鼠或录像，相关能力边界见[内置 Skill](../skills/mcpywrap/references/macos-local.md)。最低 macOS 13.0；具体能力由所选运行包和当前实例诊断确定。运行包采用 ad-hoc 签名，未提供公证。

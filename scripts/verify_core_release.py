@@ -27,7 +27,10 @@ def upgrade_fixture(wheel, output):
     version = old_version.split('+')[0] + '+upgradeprobe'
     new_info = 'mcpywrap_core-' + version + '.dist-info'
     files = {name.replace(old_info+'/', new_info+'/'): value for name, value in files.items() if not name.endswith('.dist-info/RECORD')}
-    files[new_info+'/METADATA'] = files[new_info+'/METADATA'].replace(('Version: '+old_version+'\n').encode(), ('Version: '+version+'\n').encode())
+    # Windows 构建的 METADATA 使用 CRLF，不能只替换 LF 行尾。
+    files[new_info+'/METADATA'], count = re.subn(
+        rb'(?m)^Version: [^\r\n]+\r?$', ('Version: '+version).encode(), files[new_info+'/METADATA'], count=1)
+    assert count == 1, 'Expected one wheel Version header'
     source = files['mcpywrap_core/_version.py'].decode()
     source, count = re.subn(r"__version__\s*=\s*['\"][^'\"]+['\"]", '__version__ = '+repr(version), source)
     assert count == 1
@@ -102,7 +105,7 @@ def main():
         report.append(json.loads(subprocess.run(command, check=True, capture_output=True, text=True).stdout))
         assert report[0]['version'] == report[2]['version'] != report[1]['version']
         assert all(item['files'] == report[0]['files'] and item['archive'] == report[0]['archive'] for item in report)
-        Path(args.output).write_text(json.dumps({'ok': True, 'runs': report}, ensure_ascii=False, indent=2))
+        Path(args.output).write_text(json.dumps({'ok': True, 'runs': report}, ensure_ascii=False, indent=2), encoding='utf-8')
         print('Real wheel activation → update → rollback: same project outputs in all three fresh workers')
 
 

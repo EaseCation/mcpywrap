@@ -199,11 +199,22 @@ int record_video(int argc, wchar_t** argv) {
         const auto now = std::chrono::steady_clock::now();
         if (std::filesystem::exists(stop)) { reason = "requested_stop"; break; }
         if (!capture.valid()) { reason = "window_unavailable"; break; }
-        RECT bounds = client_bounds(capture.hwnd);
-        if (bounds.right - bounds.left != client_width || bounds.bottom - bounds.top != client_height) {
-            reason = "window_resized"; break;
+        try {
+            RECT bounds = client_bounds(capture.hwnd);
+            if (bounds.right - bounds.left != client_width || bounds.bottom - bounds.top != client_height) {
+                reason = "window_resized"; break;
+            }
+            if (written && capture.next(pixels, timestamp, captured)) last_frame = now;
+        } catch (...) {
+            // 窗口可能在 valid() 之后最小化/关闭/缩放；保存已写入的帧。
+            // 窗口仍正常且尺寸未变时保留原异常，不掩盖捕获错误。
+            if (!capture.valid()) { reason = "window_unavailable"; break; }
+            RECT bounds = client_bounds(capture.hwnd);
+            if (bounds.right - bounds.left != client_width || bounds.bottom - bounds.top != client_height) {
+                reason = "window_resized"; break;
+            }
+            throw;
         }
-        if (written && capture.next(pixels, timestamp, captured)) last_frame = now;
         if (now - last_frame > std::chrono::seconds(3)) { reason = "capture_stalled"; break; }
         const auto target = started + std::chrono::nanoseconds(static_cast<int64_t>(written) * 1000000000 / fps);
         if (now < target) { Sleep(2); continue; }

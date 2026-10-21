@@ -115,10 +115,15 @@ class NativeRecording(unittest.TestCase):
         self.assertEqual(events[-1]['frames_written'], 30)
 
     def test_early_stop_and_minimize_finalize_short_clips(self):
-        _, events = self.record(duration=10, ready=lambda: self.user.ShowWindow(self.window['hwnd'], 6))
+        video, events = self.record(duration=10, ready=lambda: self.user.ShowWindow(self.window['hwnd'], 6))
         self.assertEqual(events[-1]['event'], 'completed')
         self.assertEqual(events[-1]['end_reason'], 'window_unavailable')
         self.assertLess(events[-1]['frames_written'], 120)
+        # 最小化竞态后仍应得到可解码的视频，不能只返回成功事件。
+        result = subprocess.run([str(HELPER), '--extract', '--input', str(video),
+                                 '--output', str(self.root), '--frames', '0'], capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root/'frame-0.png').is_file())
 
     def test_sixty_fps_and_explicit_stop(self):
         _, events = self.record(duration=1, fps=60)
