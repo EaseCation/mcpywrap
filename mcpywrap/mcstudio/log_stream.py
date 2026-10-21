@@ -28,12 +28,14 @@ class LogCursor:
                 info = os.fstat(stream.fileno())
                 identity = (info.st_dev, info.st_ino)
                 initial = self.identity is None
-                reset = not initial and (identity != self.identity or info.st_size < self.position)
+                was_missing = self.missing
+                reset = not initial and (was_missing or identity != self.identity or info.st_size < self.position)
                 if reset:
                     self.position = 0
                     self.decoder.reset()
                 self.identity = identity
-                if initial and self.tail and not self.missing:
+                self.missing = False
+                if initial and self.tail and not was_missing:
                     stream.seek(max(0, info.st_size - HISTORY_LIMIT))
                     truncated = stream.tell() > 0
                     data = stream.read(HISTORY_LIMIT)
@@ -43,7 +45,7 @@ class LogCursor:
                         lines = lines[1:]
                     return self.decoder.decode(b''.join(lines[-self.tail:])), reset
                 if initial:
-                    self.position = 0 if self.missing else info.st_size
+                    self.position = 0 if was_missing else info.st_size
                 stream.seek(self.position)
                 data = stream.read(CHUNK)
                 self.position = stream.tell()

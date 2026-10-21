@@ -89,6 +89,23 @@ class LogStreamTests(unittest.TestCase):
             path.write_bytes(b'first\nsecond\n')
             self.assertEqual(cursor.read(), ('first\nsecond\n', False))
 
+    def test_observed_disappearance_resets_even_if_file_identity_is_reused(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
+            path = Path(root)/'game.log'
+            path.write_bytes(b'old\n')
+            cursor = stack.enter_context(LogCursor(path, 10))
+            original_fstat = os.fstat
+            def reused_identity(fd):
+                return SimpleNamespace(st_dev=1, st_ino=1, st_size=original_fstat(fd).st_size)
+            with patch('mcpywrap.mcstudio.log_stream.os.fstat', side_effect=reused_identity):
+                self.assertEqual(cursor.read(), ('old\n', False))
+                path.unlink()
+                self.assertEqual(cursor.read(), ('', False))
+                path.write_bytes(b'new longer log\n')
+                self.assertEqual(cursor.read(), ('new longer log\n', True))
+                self.assertEqual(cursor.read(), ('', False))
+
     def test_terminal_burst_drains_all_chunks_roles_and_incomplete_utf8(self):
         with tempfile.TemporaryDirectory() as root:
             directory = Path(root)
@@ -176,8 +193,14 @@ class LogStreamTests(unittest.TestCase):
                 raise PermissionError('log access denied')
             finally:
                 closed.append(True)
+        # Click 8.1 (Python 3.9) mixes stderr by default; 8.2+ always isolates it
+        # and removed this constructor option. Verify the same pipe contract.
+        try:
+            runner = CliRunner(mix_stderr=False)
+        except TypeError:
+            runner = CliRunner()
         with patch('mcpywrap.mcstudio.log_stream.follow', broken_stream):
-            result = CliRunner().invoke(cli, ['--local', 'logs', '--session', 'a'*32, '--follow', '--format', 'jsonl'])
+            result = runner.invoke(cli, ['--local', 'logs', '--session', 'a'*32, '--follow', '--format', 'jsonl'])
         self.assertNotEqual(result.exit_code, 0)
         self.assertEqual(json.loads(result.stdout)['event'], 'state')
         self.assertIn('log access denied', result.stderr)
