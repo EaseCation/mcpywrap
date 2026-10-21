@@ -14,6 +14,7 @@ from mcpywrap.cli import cli
 from mcpywrap.engines.backend import GameBackend, LaunchedGame, get_backend
 from mcpywrap.engines.host import EngineError, describe
 from mcpywrap.engines.macos import MacOSBackend
+from mcpywrap.mcstudio.launcher_control import LauncherProcessMismatch
 from mcpywrap.engines.windows import WindowsBackend
 
 
@@ -257,6 +258,113 @@ class BackendTests(unittest.TestCase):
         channel._rpc.return_value = {'state': 'failed', 'error': 'recipe failed', 'request_id': 'startup-0'}
         with self.assertRaisesRegex(EngineError, 'recipe failed'):
             MacOSBackend().refresh({'engine_log_path': str(path)}, channel)
+
+    def macos_startup(self, commands, results, mode='local'):
+        log = self.root/'engine.log'
+        log.write_text('', encoding='utf-8')
+        log.with_name('commands.json').write_text(json.dumps(commands), encoding='utf-8')
+        channel = Mock()
+        channel._rpc.side_effect = lambda method, params: results[params['request_id']]
+        data = {'engine_log_path': str(log), 'mode': mode, 'created_at': 0}
+        return MacOSBackend(), data, channel, log
+
+    def test_macos_old_process_record_waits_only_until_startup_deadline(self):
+        backend, data, channel, unused = self.macos_startup([{}], {})
+        channel._rpc.side_effect = LauncherProcessMismatch('old process')
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=10):
+            self.assertFalse(backend.refresh(data, channel))
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=99):
+            self.assertFalse(backend.refresh(data, channel))
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=100):
+            with self.assertRaises(EngineError) as error:
+                backend.refresh(data, channel)
+        self.assertEqual(error.exception.code, 'launcher_control_timeout')
+        self.assertFalse(data.get('world_ready'))
+        self.assertEqual(channel._rpc.call_count, 3)
+
+    def test_macos_old_process_record_can_be_replaced_without_replaying_startup(self):
+        backend, data, channel, log = self.macos_startup([{}], {})
+        channel._rpc.side_effect = [LauncherProcessMismatch('old process'),
+                                   {'request_id': 'startup-0', 'state': 'completed'}]
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=10):
+            self.assertFalse(backend.refresh(data, channel))
+        log.write_text('{"top_screen":"hud_screen"}', encoding='utf-8')
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=11):
+            self.assertTrue(backend.refresh(data, channel))
+        self.assertTrue(data['world_ready'])
+        self.assertTrue(all(call.args[0] == 'result' for call in channel._rpc.call_args_list))
+
+    def test_macos_identity_change_after_connection_is_fatal(self):
+        backend, data, channel, unused = self.macos_startup([{}], {})
+        channel._rpc.side_effect = [{'request_id': 'startup-0', 'state': 'queued'},
+                                   LauncherProcessMismatch('changed process')]
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=10):
+            self.assertFalse(backend.refresh(data, channel))
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=11):
+            with self.assertRaises(LauncherProcessMismatch):
+                backend.refresh(data, channel)
+
+    def test_macos_invalid_control_record_is_not_a_startup_retry(self):
+        for failure in ('ownership', 'protocol', 'socket changed'):
+            with self.subTest(failure=failure):
+                backend, data, channel, unused = self.macos_startup([{}], {})
+                channel._rpc.side_effect = ValueError(failure)
+                with self.assertRaisesRegex(ValueError, failure):
+                    backend.refresh(data, channel)
+
+    def test_macos_expired_readiness_probe_still_requires_real_hud(self):
+        probe = {'module_name': 'clientlevel', 'func_name': 'get_level_id',
+                 'args': [], 'use_instance': False,
+                 'wait_for': "__import__('clientlevel').get_level_id() not in (None, -1, '-1')"}
+        results = {'startup-0': {'request_id': 'startup-0', 'state': 'completed'},
+                   'startup-1': {'request_id': 'startup-1', 'state': 'failed',
+                                 'error': 'Request expired before execution'}}
+        backend, data, channel, log = self.macos_startup([{}, probe], results)
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=10), \
+                patch('sys.stderr', new_callable=io.StringIO) as notices:
+            self.assertFalse(backend.refresh(data, channel))
+            self.assertFalse(data.get('world_ready'))
+            backend._next_probe = 0
+            self.assertFalse(backend.refresh(data, channel))
+            self.assertEqual(notices.getvalue().count('继续等待'), 1)
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=909):
+            self.assertFalse(backend.refresh(data, channel))
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=910):
+            with self.assertRaises(EngineError) as error:
+                backend.refresh(data, channel)
+        self.assertEqual(error.exception.code, 'world_start_timeout')
+        self.assertFalse(data.get('world_ready'))
+        backend._next_probe = 0
+        log.write_text('{"top_screen":"hud_screen"}', encoding='utf-8')
+        with patch('mcpywrap.engines.macos.time.monotonic', return_value=910):
+            self.assertTrue(backend.refresh(data, channel))
+        self.assertTrue(all(call.args[0] == 'result' for call in channel._rpc.call_args_list))
+
+    def test_macos_readiness_exception_cannot_hide_other_startup_failures(self):
+        probe = {'module_name': 'clientlevel', 'func_name': 'get_level_id',
+                 'args': [], 'use_instance': False,
+                 'wait_for': "__import__('clientlevel').get_level_id() not in (None, -1, '-1')"}
+        for case in ('network', 'prior_queued', 'prior_unknown', 'prior_failed',
+                     'extra_field', 'different_condition', 'not_last', 'cancelled', 'different_error'):
+            with self.subTest(case=case):
+                commands = [{}, dict(probe)]
+                results = {'startup-0': {'request_id': 'startup-0', 'state': 'completed'},
+                           'startup-1': {'request_id': 'startup-1', 'state': 'failed',
+                                         'error': 'Request expired before execution'}}
+                if case == 'prior_queued': results['startup-0']['state'] = 'queued'
+                if case == 'prior_unknown': results['startup-0'].pop('request_id')
+                if case == 'prior_failed': results['startup-0']['state'] = 'failed'
+                if case == 'extra_field': commands[1]['unknown'] = True
+                if case == 'different_condition': commands[1]['wait_for'] = 'True'
+                if case == 'not_last': commands.append({})
+                if case == 'cancelled': results['startup-1']['state'] = 'cancelled'
+                if case == 'different_error': results['startup-1']['error'] = 'Python failure'
+                backend, data, channel, log = self.macos_startup(
+                    commands, results, 'network' if case == 'network' else 'local')
+                log.write_text('{"top_screen":"hud_screen"}', encoding='utf-8')
+                with self.assertRaises(EngineError):
+                    backend.refresh(data, channel)
+                self.assertFalse(data.get('world_ready'))
 
     def test_tui_interrupt_stops_owned_session(self):
         from mcpywrap.engines.tui import watch_session

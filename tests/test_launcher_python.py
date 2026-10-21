@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from mcpywrap.mcstudio.launcher_python import LauncherPythonChannel
+from mcpywrap.mcstudio.launcher_control import LauncherProcessMismatch
 from mcpywrap.mcstudio.runtime_debug import RuntimeControlServer, control_request
 
 
@@ -58,9 +59,23 @@ class LauncherPythonTests(unittest.TestCase):
         self.channel.metadata.write_text(json.dumps({'protocol': 1, 'pid': 999, 'socket': '/tmp/unused'}))
         self.channel.metadata.chmod(0o600)
         with patch('mcpywrap.mcstudio.launcher_control.socket.socket') as connect:
-            with self.assertRaisesRegex(ValueError, '不属于当前游戏进程'):
+            with self.assertRaisesRegex(LauncherProcessMismatch, '不属于当前游戏进程'):
                 self.channel.status()
         connect.assert_not_called()
+
+    @unittest.skipUnless(os.name == 'posix', 'Unix ownership checks require POSIX')
+    def test_malformed_metadata_is_not_treated_as_stale_process(self):
+        for protocol, pid, mode in ((2, 999, 0o600), (1, True, 0o600),
+                                    (1, '999', 0o600), (1, 0, 0o600), (1, 999, 0o644)):
+            with self.subTest(protocol=protocol, pid=pid, mode=mode):
+                self.channel.metadata.write_text(json.dumps({'protocol': protocol, 'pid': pid,
+                                                            'socket': '/tmp/unused'}))
+                self.channel.metadata.chmod(mode)
+                with patch('mcpywrap.mcstudio.launcher_control.socket.socket') as connect:
+                    with self.assertRaises(ValueError) as error:
+                        self.channel.status()
+                self.assertNotIsInstance(error.exception, LauncherProcessMismatch)
+                connect.assert_not_called()
 
     def test_queue_actions_use_existing_authenticated_control_transport(self):
         fake = Mock()

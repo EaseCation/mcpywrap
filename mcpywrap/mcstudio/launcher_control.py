@@ -8,6 +8,10 @@ import stat
 from .runtime_debug import MAX_RESULT
 
 
+class LauncherProcessMismatch(ValueError):
+    """Well-formed control metadata belongs to another game process."""
+
+
 class LauncherControl:
     def __init__(self, metadata, pid):
         self.metadata, self.pid = Path(metadata), pid
@@ -20,8 +24,12 @@ class LauncherControl:
         if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid() or st.st_mode & 0o077 or st.st_size > 4096:
             raise ValueError('启动器控制记录的归属或权限无效')
         info = json.loads(self.metadata.read_text(encoding='utf-8'))
-        if info.get('protocol') != 1 or info.get('pid') != self.pid:
-            raise ValueError('控制记录不属于当前游戏进程')
+        if info.get('protocol') != 1:
+            raise ValueError('启动器控制协议不受支持')
+        if type(info.get('pid')) is not int or info['pid'] <= 0:
+            raise ValueError('启动器控制记录的进程标识无效')
+        if info['pid'] != self.pid:
+            raise LauncherProcessMismatch('控制记录不属于当前游戏进程')
         parent = Path(info['socket']).parent
         owner = parent.lstat()
         if not stat.S_ISDIR(owner.st_mode) or owner.st_uid != os.getuid() or owner.st_mode & 0o077:

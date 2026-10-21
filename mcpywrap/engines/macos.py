@@ -11,6 +11,7 @@ import click
 from .host import EngineError, require_macos
 from .backend import GameBackend, LaunchedGame
 from . import install
+from ..mcstudio.launcher_control import LauncherProcessMismatch
 
 
 def instances(project):
@@ -408,17 +409,49 @@ else:
         now = time.monotonic()
         if now < getattr(self, '_next_probe', 0): return False
         self._next_probe = now + 1
+        if not hasattr(self, '_control_wait_started'):
+            self._control_wait_started = now
         # Requests are queued by the runtime; a missing ID before registration is
         # not a startup failure. Server Python still uses the original Safaia channel.
         try:
             commands = install.read_json(Path(data['engine_log_path']).with_name('commands.json'))
+            completed = True
             for index in range(len(commands)):
                 request_id = 'startup-' + str(index)
                 result = channel._rpc('result', {'request_id': request_id})
-                if result.get('request_id') == request_id and result.get('state') in ('failed', 'cancelled'):
+                self._control_seen = True
+                matched = result.get('request_id') == request_id
+                state = result.get('state') if matched else None
+                if state in ('failed', 'cancelled'):
+                    # Runtime 0.4.5 starts every startup deadline at enqueue.
+                    # Its final read-only level probe may expire behind a slow
+                    # successful world load. HUD remains our readiness proof;
+                    # never replay or ignore failure of a preceding operation.
+                    readiness_probe = commands[index] == {
+                        'module_name': 'clientlevel', 'func_name': 'get_level_id',
+                        'args': [], 'use_instance': False,
+                        'wait_for': "__import__('clientlevel').get_level_id() not in (None, -1, '-1')"}
+                    if (data.get('mode') == 'local' and completed and index == len(commands) - 1
+                            and readiness_probe and state == 'failed'
+                            and result.get('error') == 'Request expired before execution'):
+                        if not hasattr(self, '_hud_wait_started'):
+                            self._hud_wait_started = now
+                            print('世界启动操作已完成，继续等待进入游戏（最长 15 分钟）。', file=sys.stderr, flush=True)
+                        continue
                     raise EngineError(('服务器连接未完成：' if data.get('mode') == 'network' else '世界启动步骤失败：')
-                                      + str(result.get('error', result['state'])),
+                                      + request_id + '：' + str(result.get('error', state)),
                                       'connection_failed' if data.get('mode') == 'network' else 'world_start_failed')
+                completed = completed and state == 'completed'
+        except LauncherProcessMismatch:
+            # A retained world's metadata may still name its previous process
+            # until the new launcher publishes its socket. Never send to it.
+            if getattr(self, '_control_seen', False):
+                raise
+            if now - self._control_wait_started >= 90:
+                raise EngineError('90 秒内启动器未发布当前游戏进程的控制记录。',
+                                  'launcher_control_timeout',
+                                  '保留 worker.log、engine.log 和控制记录，检查启动器初始化；不要手动删除控制文件。')
+            return False
         except (OSError, ConnectionError):
             pass
         try:
@@ -431,6 +464,9 @@ else:
                     return True
         except OSError:
             pass
+        if hasattr(self, '_hud_wait_started') and now - self._hud_wait_started >= 900:
+            raise EngineError('世界加载在额外等待 15 分钟后仍未进入游戏。', 'world_start_timeout',
+                              '请检查引擎日志和加载界面；本次未重放启动步骤，原世界与日志保留。')
         if data.get('mode') == 'network' and time.time() - data['created_at'] > 90:
             raise EngineError('90 秒内未进入服务器；请检查地址、端口、协议版本以及服务器是否允许无认证的中国版客户端。',
                               'connection_timeout')
