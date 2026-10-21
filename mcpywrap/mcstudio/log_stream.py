@@ -1,5 +1,6 @@
 """Bounded, incremental local session logs for any CLI consumer."""
 import codecs
+import os
 import time
 
 from . import sessions
@@ -13,42 +14,49 @@ ACTIVE = ('starting', 'running', 'pending')
 class LogCursor:
     def __init__(self, path, tail):
         self.path, self.tail = path, tail
-        self.stream = None
         self.decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
         self.identity = None
+        self.position = 0
         self.missing = False
 
     def read(self):
         """Read at most one bounded chunk; keep decoder state across writes."""
         try:
-            info = self.path.stat()
+            # Identify the opened file, not a previous path.stat() result. Close
+            # each read so Windows writers can rename/delete their log files.
+            with self.path.open('rb') as stream:
+                info = os.fstat(stream.fileno())
+                identity = (info.st_dev, info.st_ino)
+                initial = self.identity is None
+                reset = not initial and (identity != self.identity or info.st_size < self.position)
+                if reset:
+                    self.position = 0
+                    self.decoder.reset()
+                self.identity = identity
+                if initial and self.tail and not self.missing:
+                    stream.seek(max(0, info.st_size - HISTORY_LIMIT))
+                    truncated = stream.tell() > 0
+                    data = stream.read(HISTORY_LIMIT)
+                    self.position = stream.tell()
+                    lines = data.splitlines(keepends=True)
+                    if truncated and lines:
+                        lines = lines[1:]
+                    return self.decoder.decode(b''.join(lines[-self.tail:])), reset
+                if initial:
+                    self.position = 0 if self.missing else info.st_size
+                stream.seek(self.position)
+                data = stream.read(CHUNK)
+                self.position = stream.tell()
+                return self.decoder.decode(data), reset
         except FileNotFoundError:
             self.missing = True
             return '', False
-        identity = (info.st_dev, info.st_ino)
-        reset = self.stream is not None and (identity != self.identity or info.st_size < self.stream.tell())
-        if reset:
-            self.close()
-            self.decoder.reset()
-        if self.stream is None:
-            self.stream = self.path.open('rb')
-            self.identity = identity
-            if self.tail and not reset:
-                self.stream.seek(max(0, info.st_size - HISTORY_LIMIT))
-                truncated = self.stream.tell() > 0
-                data = self.stream.read(HISTORY_LIMIT)
-                lines = data.splitlines(keepends=True)
-                if truncated and lines:
-                    lines = lines[1:]
-                data = b''.join(lines[-self.tail:])
-                return self.decoder.decode(data), reset
-            self.stream.seek(0 if reset or self.missing else info.st_size)
-        return self.decoder.decode(self.stream.read(CHUNK)), reset
+
+    def finish(self):
+        return self.decoder.decode(b'', final=True)
 
     def close(self):
-        if self.stream is not None:
-            self.stream.close()
-            self.stream = None
+        self.decoder.reset()
 
     def __enter__(self):
         return self
@@ -68,10 +76,16 @@ def follow(project, *, session=None, group=None, source='all', tail=100, interva
     if type(tail) is not int or not 0 <= tail <= 10000:
         raise ValueError('tail 必须在 0..10000 之间')
     sources = SOURCES if source == 'all' else (source,)
-    cursors, states = {}, {}
+    cursors, states, roles = {}, {}, {}
     members, next_status = [], 0
     def event(kind, **data):
         return dict(schema_version=1, event=kind, **data)
+    def read_events(sid, name, cursor):
+        text, reset = cursor.read()
+        if reset:
+            yield event('reset', session=sid, source=name)
+        if text:
+            yield event('log', session=sid, role=roles.get(sid), source=name, text=text)
     try:
         while True:
             if time.monotonic() >= next_status:
@@ -88,6 +102,7 @@ def follow(project, *, session=None, group=None, source='all', tail=100, interva
                     active = active or member.get('state') in ACTIVE
                     continue
                 state = member.get('state', 'unknown')
+                roles[sid] = member.get('role')
                 active = active or state in ACTIVE
                 if states.get(sid) != state:
                     states[sid] = state
@@ -97,22 +112,20 @@ def follow(project, *, session=None, group=None, source='all', tail=100, interva
                     key = (sid, name)
                     if key not in cursors:
                         cursors[key] = LogCursor(directory/(name + '.log'), tail)
-                    cursor = cursors[key]
-                    text, reset = cursor.read()
-                    if reset:
-                        yield event('reset', session=sid, source=name)
-                    if text:
-                        yield event('log', session=sid, role=member.get('role'), source=name, text=text)
+                    yield from read_events(sid, name, cursors[key])
             if not active:
                 # Drain a final burst in bounded chunks after process exit.
                 pending = True
                 while pending:
                     pending = False
                     for (sid, name), cursor in cursors.items():
-                        text, _ = cursor.read()
-                        if text:
+                        for item in read_events(sid, name, cursor):
                             pending = True
-                            yield event('log', session=sid, source=name, text=text)
+                            yield item
+                for (sid, name), cursor in cursors.items():
+                    text = cursor.finish()
+                    if text:
+                        yield event('log', session=sid, role=roles.get(sid), source=name, text=text)
                 yield event('end')
                 return
             time.sleep(interval)

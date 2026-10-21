@@ -37,12 +37,14 @@ def logs_cmd(session, tail, source, group=None, follow=False, output_format='tex
             raise click.UsageError('--follow 是持续流；使用 --format jsonl，不加 --json')
         from ..mcstudio.log_stream import follow as events
         import json
+        from contextlib import closing
         try:
-            for item in events(project_dir(), session=session, group=group, source=source, tail=tail):
-                if output_format == 'jsonl':
-                    click.echo(json.dumps(item, ensure_ascii=True))
-                elif item['event'] == 'log':
-                    click.echo('[' + item['session'][:8] + ' ' + item['source'] + '] ' + item['text'], nl=False)
+            with closing(events(project_dir(), session=session, group=group, source=source, tail=tail)) as stream:
+                for item in stream:
+                    if output_format == 'jsonl':
+                        click.echo(json.dumps(item, ensure_ascii=True))
+                    elif item['event'] == 'log':
+                        click.echo('[' + item['session'][:8] + ' ' + item['source'] + '] ' + item['text'], nl=False)
         except KeyboardInterrupt:
             pass
         return
