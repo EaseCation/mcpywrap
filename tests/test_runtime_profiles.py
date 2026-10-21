@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 import os
+import shutil
 import unittest
 
 from mcpywrap.runtime import groups, storage
@@ -13,6 +14,15 @@ from mcpywrap.engines.host import EngineError
 
 
 class ProfileTests(unittest.TestCase):
+    def windows_profile(self, profile):
+        root = profile.windows_directory()
+        def cleanup():
+            if root.exists():
+                self.assertEqual(storage.read(root/'.mcpy-owner.json'), profile.owner)
+                shutil.rmtree(root)
+        self.addCleanup(cleanup)
+        return root
+
     def setUp(self):
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -119,6 +129,7 @@ class ProfileTests(unittest.TestCase):
     def test_child_known_folders_are_private_and_parent_environment_is_unchanged(self):
         profile = PlayerProfile(self.data(0))
         profile.prepare()
+        windows = self.windows_profile(profile)
         source = self.root/'source-appdata'
         options = source/'MinecraftPE_Netease/minecraftpe/options.txt'
         options.parent.mkdir(parents=True)
@@ -127,11 +138,56 @@ class ProfileTests(unittest.TestCase):
             before = dict(os.environ)
             environment = profile.windows_environment()
             self.assertEqual(dict(os.environ), before)
-        self.assertEqual(environment['USERPROFILE'], str(profile.root))
+        self.assertEqual(environment['USERPROFILE'], str(windows))
+        self.assertEqual(len(windows.parts), 3)
         target = Path(environment['APPDATA'])/'MinecraftPE_Netease/minecraftpe/options.txt'
         self.assertEqual(target.read_text(encoding='utf-8'), 'gfx_viewdistance:128\nkeyboard_type_0_key.forward:87\n')
         self.assertIn('private', options.read_text(encoding='utf-8'))
         self.assertFalse((target.parent/'clientId.txt').exists())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows profile layout')
+    def test_migration_preserves_identity_and_does_not_recopy_stale_data(self):
+        profile = PlayerProfile(self.data(0)); profile.prepare()
+        old = profile.root/'AppData/Roaming/MinecraftPE_Netease/minecraftpe/clientId.txt'
+        old.parent.mkdir(parents=True); old.write_bytes(b'original-player')
+        windows = self.windows_profile(profile)
+        new = windows/old.relative_to(profile.root)
+        self.assertEqual(new.read_bytes(), b'original-player')
+        self.assertEqual(old.read_bytes(), b'original-player')
+        new.write_bytes(b'updated-player')
+        self.assertEqual(profile.windows_directory(), windows)
+        self.assertEqual(new.read_bytes(), b'updated-player')
+        second = PlayerProfile(self.data(1)); second.prepare()
+        self.assertNotEqual(self.windows_profile(second), windows)
+        game = windows/'AppData/Roaming/MinecraftPE_Netease'
+        profile.prepare_pack_cache(game, 'a'*64)
+        cache = game/'packcache/old.py'; cache.parent.mkdir(); cache.write_text('old')
+        profile.prepare_pack_cache(game, 'b'*64)
+        self.assertFalse(cache.exists())
+        self.assertEqual(new.read_bytes(), b'updated-player')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows profile layout')
+    def test_migrated_profile_missing_or_replaced_never_resets_identity(self):
+        profile = PlayerProfile(self.data(0)); profile.prepare()
+        windows = self.windows_profile(profile)
+        backup = windows.with_name(windows.name+'.test-backup')
+        windows.rename(backup)
+        try:
+            with self.assertRaises(EngineError) as error:
+                profile.windows_directory()
+            self.assertEqual(error.exception.code, 'recovery_required')
+            self.assertFalse(windows.exists())
+        finally:
+            backup.rename(windows)
+        marker = windows/'.mcpy-owner.json'
+        storage.write(marker, {'owner': 'someone-else'})
+        try:
+            with self.assertRaises(EngineError) as error:
+                profile.windows_directory()
+            self.assertEqual(error.exception.code, 'profile_conflict')
+            self.assertEqual(storage.read(marker), {'owner': 'someone-else'})
+        finally:
+            storage.write(marker, profile.owner)
 
 
 if __name__ == '__main__':

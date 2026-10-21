@@ -2,6 +2,7 @@
 from pathlib import Path
 from ..utils.paths import is_link
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -64,12 +65,13 @@ class PlayerProfile:
         self.data['network']['profile'] = str(self.root)
 
     def windows_environment(self):
-        roaming, local = self.root/'AppData/Roaming', self.root/'AppData/Local'
+        profile = self.windows_directory()
+        roaming, local = profile/'AppData/Roaming', profile/'AppData/Local'
         for path in (roaming, local):
-            if not path.resolve().is_relative_to(self.root.resolve()):
+            if not path.resolve().is_relative_to(profile.resolve()):
                 raise EngineError('客户端系统目录指向了外部位置。', 'profile_modified')
             path.mkdir(parents=True, exist_ok=True)
-        environment = dict(os.environ, USERPROFILE=str(self.root), APPDATA=str(roaming), LOCALAPPDATA=str(local))
+        environment = dict(os.environ, USERPROFILE=str(profile), APPDATA=str(roaming), LOCALAPPDATA=str(local))
         from ..mcstudio.processes import background_options
         try:
             probe = subprocess.run([sys.executable, '-c', FOLDER_PROBE], env=environment,
@@ -87,7 +89,7 @@ class PlayerProfile:
         # Seed only presentation/input preferences, never account or device IDs.
         from ..engines.preferences import game_preference, read_properties, write_properties
         target = roaming/'MinecraftPE_Netease/minecraftpe/options.txt'
-        if not target.parent.resolve().is_relative_to(self.root.resolve()):
+        if not target.parent.resolve().is_relative_to(profile.resolve()):
             raise EngineError('客户端游戏目录指向了外部位置。', 'profile_modified')
         if not target.exists() and os.environ.get('APPDATA'):
             source = Path(os.environ['APPDATA'])/'MinecraftPE_Netease/minecraftpe/options.txt'
@@ -102,6 +104,54 @@ class PlayerProfile:
             write_properties(target, values, ':')
         return environment
 
+    def windows_directory(self):
+        """Keep real Windows profiles at the depth expected by ModPC 3.9.
+
+        The received-pack loader strips eight path components. Known folders
+        follow USERPROFILE, and the engine resolves junctions, so the profile
+        itself must be a real drive:/mcpy-profiles/<id> directory. Project-local
+        ownership/leases stay authoritative; previous data is copied once and
+        retained as a backup. No engine or Addon import hooks are changed.
+        """
+        import shutil
+        from ..source_files import long_path
+        parent = Path(self.project.anchor)/'mcpy-profiles'
+        if not self.project.drive or str(parent).startswith('\\\\') or is_link(parent):
+            raise EngineError('客机需要本地磁盘上的独立资料目录。', 'profile_unavailable')
+        key = occupancy.path_key(self.root) + '\n' + os.environ.get('USERPROFILE', '')
+        target = parent/hashlib.sha256(key.encode('utf-8')).hexdigest()[:32]
+        receipt = self.root/'windows-profile.json'
+        expected = {'path': str(target), 'owner': self.owner}
+        previous = storage.read(receipt)
+        if previous is not None and (not isinstance(previous, dict) or
+                any(previous.get(k) != v for k, v in expected.items())):
+            raise EngineError('客机资料路径记录已变化，已保留原内容。', 'profile_modified')
+        marker = target/'.mcpy-owner.json'
+        if os.path.lexists(target):
+            if (previous is None or is_link(target) or not target.is_dir() or
+                    is_link(marker) or storage.read(marker) != self.owner):
+                raise EngineError('客机资料目录归属不明：' + str(target), 'profile_conflict')
+        else:
+            if previous is not None and previous.get('ready'):
+                raise EngineError('已迁移的客机资料目录缺失，未回退到旧副本。', 'recovery_required')
+            staging = target.with_name(target.name + '.preparing')
+            if os.path.lexists(staging):
+                raise EngineError('上次客机资料迁移尚未完成：' + str(staging), 'recovery_required',
+                                  '保留原目录和迁移现场，请核对后恢复；不会覆盖或删除。')
+            legacy = self.root/'AppData'
+            if is_link(legacy) or any(is_link(p) for p in long_path(legacy).rglob('*')):
+                raise EngineError('原客机资料含目录链接，未复制。', 'profile_modified')
+            storage.write(receipt, expected)
+            staging.mkdir(parents=True)
+            if legacy.exists():
+                shutil.copytree(long_path(legacy), long_path(staging/'AppData'))
+            storage.write(staging/'.mcpy-owner.json', self.owner)
+            staging.rename(target)
+        storage.write(receipt, dict(expected, ready=True))
+        self._windows_root = target
+        self.data['network']['windows_profile'] = str(target)
+        return target
+
     def prepare_pack_cache(self, game_root, fingerprint):
         """Invalidate only this role's received packs when its host changes."""
         import re
@@ -111,7 +161,11 @@ class PlayerProfile:
         if not isinstance(fingerprint, str) or not re.fullmatch(r'[0-9a-f]{64}', fingerprint):
             raise EngineError('无法确认主机部署版本，未启动客机。', 'deployment_unavailable')
         cache = Path(game_root)/'packcache'
-        if not cache.resolve().is_relative_to(self.root.resolve()) or is_link(cache):
+        roots = [self.root.resolve()]
+        windows = getattr(self, '_windows_root', None)
+        if windows is not None and storage.read(windows/'.mcpy-owner.json') == self.owner:
+            roots.append(windows.resolve())
+        if not any(cache.resolve().is_relative_to(root) for root in roots) or is_link(cache):
             raise EngineError('客机包缓存指向了外部目录，已保留原内容。', 'profile_modified')
         receipt = self.root/'received-packs.json'
         try:

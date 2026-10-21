@@ -25,6 +25,15 @@ macOS 支持离线 Addon 世界；无认证服务器连接需 CLI 0.4.3+ 与运�
 
 ## AI 与纯命令控制
 
+### Windows 多客户端资料路径
+
+Windows 联调成员的生命周期记录、角色归属及占用锁仍位于项目 `.runtime/groups`；游戏实际使用的独立 profile 位于项目所在磁盘的 `mcpy-profiles/<摘要>`。摘要包含项目角色路径及宿主用户目录，不复用用户真实游戏资料；会话的 `network.windows_profile` 与角色目录中的 `windows-profile.json` 记录实际位置。普通单客户端、macOS 不改变布局。
+
+这是 ModPC 3.9 下载包加载器的路径兼容处理：标准 `.../AppData/Roaming/MinecraftPE_Netease/packcache/<包>/` 有固定层数，较深的项目目录会被拼进 Python 模块名。目录链接会被引擎解析为实际路径，不能修复问题；仅覆盖 APPDATA 也不能替代 Windows 按 USERPROFILE 查询目录。使用真实浅层 profile，不修改引擎、sys.path 或 Addon 入口。
+
+首次迁移在角色占用锁内复制旧 AppData 到临时目录，完成归属标记后原子改名，原副本保留。后续启动复用新位置；目标缺失、归属不符或遗留未完成迁移时停止，不回退到旧身份。旧资料的长路径用宿主扩展路径形式复制，传给游戏的仍是标准短路径。需要项目所在磁盘根目录允许创建 `mcpy-profiles`；不支持 UNC 或被替换为目录链接的位置，不自动提权。用户搬迁项目时需保留组记录及其指向的 profile，不能只把外部目录当缓存删除。
+
+
 Windows/macOS 共同基线是 `--local --project <目录> --non-interactive run --no-gui --detach --json`，后续统一 status/logs/runtime py/runtime reload/stop。控制端不打开 Qt、小窗或 TUI，游戏本身仍需要显示服务及原生窗口。完整操作顺序维护在 [技能的公共流程](../skills/mcpywrap/references/local-development.md)。
 
 `runtime capabilities --session <id> --json` 返回 schema_version=1：control 描述控制端要求，python 提供执行端侧与 worker 队列声明，reload 按同一后端限制返回 available/unsupported/unavailable。查询不执行游戏代码、不返回控制凭据，available 只说明允许调用。旧 worker 缺少队列声明时返回 null，不能推断支持。Windows 已知 Shader 限制也由 WindowsBackend 提供，实际重载与查询没有两份规则。

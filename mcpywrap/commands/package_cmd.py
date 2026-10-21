@@ -10,6 +10,7 @@ from ..command_context import OperationCommand, project_dir as current_project, 
 from ..config import config_exists
 from ..dependencies import DependencyError, read_project
 from ..builders.project_builder import AddonProjectBuilder, MapProjectBuilder
+from ..utils.paths import is_link
 
 
 @click.command(cls=OperationCommand)
@@ -35,7 +36,7 @@ def package_cmd(merge):
         if project_type not in ('addon', 'map'):
             raise ValueError('当前仅支持 Addon 和 Map 项目的打包')
 
-        from ..project_scripts import before, configured, validate_build
+        from ..project_scripts import before, configured, validate_build, operation
         from ..consumer_prepare import PreparationPlan
         plan = PreparationPlan(source)
         if configured(source):
@@ -52,6 +53,15 @@ def package_cmd(merge):
                 success, error = builder.build()
                 if not success:
                     raise click.ClickException(f'构建失败: {error}')
+                # 依赖组装完成后，仅将隔离副本提供给压缩前处理器。
+                identity = _package_manifests(output)
+                with operation(source, 'before_archive', lock_held=True, after_task=plan.check,
+                               package_root=output) as finalizers:
+                    scripts.extend(finalizers)
+                if identity != _package_manifests(output):
+                    raise ValueError('压缩前处理不得修改包 manifest 或包身份')
+                if any(is_link(p) for p in output.rglob('*')):
+                    raise ValueError('压缩前处理不能在产物中引入目录或文件链接')
                 archive = Path(temporary) / 'package.zip'
                 with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as zipf:
                     if project_type == 'addon':
@@ -75,6 +85,11 @@ def package_cmd(merge):
 
     click.secho(f'✅ 打包成功！分发文件路径: {destination}', fg='green')
     return {'artifact': str(destination), **({'scripts': scripts} if scripts else {})}
+
+
+def _package_manifests(root):
+    return {str(p.relative_to(root)): p.read_bytes() for p in root.rglob('*')
+            if p.is_file() and p.name in ('manifest.json', 'pack_manifest.json')}
 
 
 def _zip_dir_keep_empty(zipf, src_dir, dst_root):

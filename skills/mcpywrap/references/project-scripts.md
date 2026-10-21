@@ -83,3 +83,22 @@ Ctrl+C、任务 timeout 或本次 session 的 stop 请求会取消任务并回�
 **脚本对源码的写入不会自动回滚。** 脚本失败会阻止本次 builder/启动，但源码中的半成品可能被下一次构建或已开启 watcher 读取。批量生成时暂停 watcher；单文件可使用上述包外临时文件和原子替换。多个文件的替换不构成事务，工具不承诺“生成成功前绝不热更”。
 
 不要让脚本写入 `.mcpy/runtime`、`.runtime`、依赖缓存、全局游戏包或世界数据库。普通 build/package 使用源码生成结果，受管运行产物始终由原部署服务发布。资源文件更新、重载请求投递与游戏中实际生效是不同结果；组资源热更仍遵守现有不支持的限制。
+
+## 组装后、压缩前处理
+
+`local_capabilities` 包含 `package-finalize` 时，根项目可使用 `before_archive`。它在依赖组装完成后、ZIP写入前执行，不会重复运行消费者准备，也不在 build、run 或热更中执行。
+
+```toml
+[tool.mcpywrap.scripts.trim-release]
+python = "tools/prepare_release.py"
+timeout = 180
+
+[tool.mcpywrap.hooks]
+before_archive = ["trim-release"]
+```
+
+处理器从 `MCPY_PACKAGE_ROOT` 读取本次隔离组装目录；`MCPY_PROJECT_ROOT` 仍是源码根，工作目录也不变。只处理临时副本，不改依赖缓存或运行目录。入口应拒绝缺少该上下文的手动执行。
+
+用于裁剪未使用依赖或准备发布文件时，优先使用依赖官方工具并保留许可证；区分静态引用与动态导入。处理后检查实际文件，不能仅凭退出码宣称裁剪成功。不得修改 manifest 或包身份、引入文件／目录链接。任务失败时停止打包，原有 ZIP 保留；成功后仍须用实际生成的包验证游戏加载与受影响功能。
+
+`script list --effective --json` 的 `execution_order.before_archive` 会列出这个阶段。旧 CLI 遇到未知 hook 会拒绝，不能通过删除 hook 生成未经处理的发布包。
