@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -71,3 +73,19 @@ class LogStreamTests(unittest.TestCase):
         result = CliRunner().invoke(cli,['--remote','http://127.0.0.1:1','logs','--session','a'*32,'--follow','--format','jsonl'])
         self.assertNotEqual(result.exit_code,0)
         self.assertIn('--local',result.output)
+
+    def test_public_cli_process_emits_stream_without_wrapping_it_as_one_json(self):
+        with tempfile.TemporaryDirectory() as root:
+            sid = 'a'*32
+            directory = Path(root)/'.runtime/sessions'/sid
+            directory.mkdir(parents=True)
+            (directory/'session.json').write_text(json.dumps({'state':'exited'}), encoding='utf-8')
+            (directory/'engine.log').write_text('engine output\n', encoding='utf-8')
+            (directory/'game.log').write_text('中文\n中文\n', encoding='utf-8')
+            process = subprocess.run([sys.executable,'-m','mcpywrap','--local','--project',root,
+                                      '--non-interactive','logs','--session',sid,'--follow',
+                                      '--source','all','--format','jsonl'], capture_output=True, timeout=10)
+            self.assertEqual(process.returncode,0,process.stderr.decode('utf-8','replace'))
+            events = [json.loads(line) for line in process.stdout.decode('ascii').splitlines()]
+            self.assertEqual(events[-1]['event'],'end')
+            self.assertEqual(next(e['text'] for e in events if e.get('source')=='game'),'中文\n中文\n')
