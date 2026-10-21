@@ -9,7 +9,7 @@
 | 新空项目 | `init --name demo --type addon` 或 `--type map` | 不覆盖现有配置，不自动安装 SDK/依赖 |
 | 刚克隆已有项目 | `sync` | 不重做 init；依赖种类与锁规则见[依赖](project-dependencies.md) |
 | 原生 Mod 模板 | `mod --name DemoMod --script-dir DemoScript` | 保留用户已有入口；需要 QuMod 直接走依赖页的快捷流程 |
-| ModSDK 补全库 | `modsdk --list` / `--version <目标版本>` / `--latest` | 安装到工具环境，不是向游戏安装库 |
+| ModSDK 补全库 | `modsdk --list` / `--version <目标版本>` / `--latest` | 默认安装到工具环境；`--python <绝对解释器路径>` 定向安装到开发环境，不向游戏安装库 |
 | 构建工程 | `build`，地图可加 `--merge` | 需要 tool.mcpywrap.target_dir；不能指向受管运行目录 |
 | 持续离线构建 | `dev` | 仅 Addon，持续文本、不加 --json；不是游戏热更 |
 | 游戏分发 ZIP | `package`，地图可加 `--merge` | 返回 artifact；无需 target_dir |
@@ -35,3 +35,16 @@ dev 只维护配置的离线构建目录；源码变化不会因此自动注入�
 游戏世界数据由实例保存。build/package 产物、当前运行部署、世界存档是不同对象；离线打包不应删除或重建测试世界。共享部署占用、重新启动和失败处理见[本地生命周期](local-development.md)。
 
 具体玩法的 API/事件/JSON 组件要查目标网易 ModSDK 版本；不要套用 Java 版或通用 Bedrock 的同名接口。mcpywrap 只负责工程与测试流程，不证明业务 API 兼容。
+
+## 明确 ModSDK 补全库的 Python 环境
+
+有多个 Python 时，先在编辑器中确认实际选用的解释器，再用其完整调用路径检查。不要将 `.venv/bin/python` 的链接解析成系统 Python。
+
+```sh
+mcpy --local --project <项目绝对目录> --non-interactive modsdk --inspect --python <Python可执行文件绝对路径> --json
+mcpy --local --project <项目绝对目录> --non-interactive modsdk --version <目标版本> --python <同一Python绝对路径> --expected-environment <inspect返回的environment.identity> --json
+```
+
+`--inspect` 只读且不联网，不导入 SDK；返回解释器、Python 版本、环境前缀、identity 及已安装包的版本/位置。`installed.in_environment=false` 表示只是在继承路径可见，尚未装入此环境。显式安装由 mcpy 自身的 pip 定向处理，目标环境无需预装 pip；保留 Python 3 强制兼容补全数据的能力，源码无需在宿主 Python 导入或编译。安装前后检查身份和安装位置，失败不回退其他环境，不使用 `--break-system-packages`。
+
+无 `--python` 的旧安装命令继续安装到 mcpy 工具环境；这不一定是 VS Code/Pylance 选中的环境。VS Code 插件使用公开 Python 环境 API 传递资源作用域，不能用默认解释器设置或终端 `(base)` 推断选择；运行时游戏 Python 与宿主开发环境独立。
