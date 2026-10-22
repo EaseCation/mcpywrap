@@ -1,11 +1,13 @@
 # 更新记录
 
-## 0.6.0（开发中）
+## 0.6.0
 
 - 拆分为同版本的 `mcpywrap-core` 与完整 `mcpywrap`；默认 `pip install mcpywrap` / `uv tool install mcpywrap` 继续安装完整桌面依赖。
 - 解析、构建、打包、同步共用 `mcpywrap_core.api.Core`；Python 导入统一使用 `mcpywrap_core.*`，不提供旧 `mcpywrap.*` 别名。`mcpy` / `mcpywrap` 控制台命令及项目配置名称保持不变。
 - 提供核心 wheel 的校验、独立版本安装、健康检查和回滚；宿主二进制由完整发行包单独拥有。
 - 版本唯一来源为 `core/mcpywrap_core/_version.py`；发布先核心、再完整包，重试核验已发布文件摘要。
+- 修复 Windows 录制期间窗口最小化、关闭或缩放的竞态，正常结束并保留已写入的视频。
+- macOS 服务端 Python 请求等待当前会话世界就绪，启动期拒绝发送，避免未初始化的通道被未知请求占用。
 
 
 ## 0.5.8
