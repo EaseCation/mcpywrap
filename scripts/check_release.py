@@ -13,6 +13,7 @@ def check_native_payload(archive, folder):
     required = {
         'bridge_payload': {'manifest.json', 'Injector.exe', 'Loader.dll', 'McpyMcsAuth.dll', 'publisher.cer'},
         'window_capture': {'manifest.json', 'mcpy-window-capture.exe'},
+        'window_activation': {'manifest.json', 'mcpy-window-activation.dll'},
     }[folder]
     prefix = 'mcpywrap_assets/' + folder + '/'
     packaged = {name[len(prefix):] for name in archive.namelist() if name.startswith(prefix)}
@@ -54,7 +55,7 @@ def check(outdir, require_native=False):
                 assert 'mcpy = mcpywrap_core.__main__:main' in entries
                 assert not any(n.startswith('mcpywrap/') for n in files), 'Legacy import package must not be shipped'
                 if require_native:
-                    for folder in ('bridge_payload','window_capture'):
+                    for folder in ('bridge_payload','window_capture','window_activation'):
                         check_native_payload(archive, folder)
             for path in files:
                 assert not any(p in ('.local-notes','__pycache__','.runtime','.git') for p in Path(path).parts), path

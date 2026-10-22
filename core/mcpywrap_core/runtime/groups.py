@@ -385,7 +385,9 @@ def _connect_member(record, index, target=None, local_host=None, created=None):
     if local_host:
         host = sessions.read(record['project'], local_host)
     options = dict(project_dir=record['project'], session_id=sid, group=record['group'],
-                   role=member['role'], player=member['player'])
+                   role=member['role'], player=member['player'],
+                   background=record['recipe'].get('background',
+                              record['recipe'].get('options', {}).get('background', False)))
     if local_host:
         result = backend.start_guest(host, **options)
     else:
@@ -489,10 +491,11 @@ def start_local(project, backend, options):
             return dict(_failure(record, error), owned_sessions=created)
 
 
-def start_network(project, backend, target, overrides=None):
+def start_network(project, backend, target, overrides=None, *, background=False):
     if target.auth != 'none':
         raise EngineError('双客户端进服尚不支持双账号认证。', 'unsupported_auth')
-    record = _new(project, backend, 'network', {'target': asdict(target), 'overrides': overrides or {}})
+    record = _new(project, backend, 'network', {'target': asdict(target), 'overrides': overrides or {},
+                                             'background': background})
     created = []
     with directory_lock(path(project, record['group']).parent/'lock'):
         try:
@@ -662,5 +665,7 @@ def restart(project, *, session=None, group=None, migration=None):
             raise EngineError('此客机的联调组记录缺失，不能按外服会话重启。', 'group_not_found')
         from ..mcstudio.network import ServerTarget
         return backend.connect(ServerTarget(**data['network']['target']), project_dir=project,
-                               engine_overrides=data.get('engine_overrides'), detach=True)
-    return backend.run(project, instance_prefix=data['level_id'], overrides=data.get('engine_overrides'), detach=True, no_gui=True)
+                               engine_overrides=data.get('engine_overrides'), detach=True,
+                               background=data.get('background', False))
+    return backend.run(project, instance_prefix=data['level_id'], overrides=data.get('engine_overrides'), detach=True, no_gui=True,
+                       background=data.get('background', False))

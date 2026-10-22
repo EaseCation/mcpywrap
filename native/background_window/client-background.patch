@@ -1,0 +1,35 @@
+diff --git a/src/window_callbacks.cpp b/src/window_callbacks.cpp
+index 6721d73..c60015c 100644
+--- a/src/window_callbacks.cpp
++++ b/src/window_callbacks.cpp
+@@ -11,6 +11,13 @@
+ #include <string>
+ #include "settings.h"
+ #include "util.h"
++
++namespace {
++bool backgroundWindow() {
++    const char* value = std::getenv("MCPY_GAME_BACKGROUND");
++    return value && std::string(value) == "1";
++}
++}
+ #ifdef USE_IMGUI
+ #include "imgui_ui.h"
+ #endif
+@@ -18,7 +25,7 @@
+ WindowCallbacks::WindowCallbacks(GameWindow& window, JniSupport& jniSupport, FakeInputQueue& inputQueue) : window(window), jniSupport(jniSupport), inputQueue(inputQueue) {
+     useDirectMouseInput = Mouse::feed;
+     useDirectKeyboardInput = (Keyboard::_states && (Keyboard::_inputs || Keyboard::_inputsLegacy) && Keyboard::_gameControllerId);
+-    if(Settings::fullscreen) {
++    if(Settings::fullscreen && !backgroundWindow()) {
+         window.setFullscreen(true);
+     }
+     useRawInput = ReadEnvFlag("MCPELAUNCHER_CLIENT_RAW_INPUT");
+@@ -89,6 +96,7 @@ void WindowCallbacks::onClose() {
+ }
+
+ void WindowCallbacks::setFullscreen(bool isFs) {
++    if (backgroundWindow()) return;
+     if(Settings::fullscreen != isFs) {
+         window.setFullscreen(isFs);
+         Settings::fullscreen = isFs;

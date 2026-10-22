@@ -69,6 +69,14 @@ jobs:
             desktop/mcpywrap_assets/window_capture/*.exe
             desktop/mcpywrap_assets/window_capture/manifest.json
           if-no-files-found: error
+      - run: python scripts/check_window_activation.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: window-activation
+          path: |
+            desktop/mcpywrap_assets/window_activation/*.dll
+            desktop/mcpywrap_assets/window_activation/manifest.json
+          if-no-files-found: error
 
   test:
     needs: native
@@ -94,7 +102,12 @@ jobs:
         with:
           name: window-capture
           path: desktop/mcpywrap_assets/window_capture
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: window-activation
+          path: desktop/mcpywrap_assets/window_activation
       - run: python -m pip install ./core .
+      - run: python scripts/check_window_activation.py
       - run: python -m unittest discover -s tests -p 'test_core*.py' -v
       - run: python -m unittest discover -s tests -p test_host_services.py -v
       - run: python -m unittest discover -s tests -p test_distribution_layout.py -v
@@ -170,6 +183,8 @@ jobs:
       - run: python -m unittest discover -s tests -p test_launcher_python.py -v
       - run: python -m unittest discover -s tests -p test_screenshot.py -v
       - run: python -m unittest discover -s tests -p test_game_window_skill.py -v
+      - run: python -m unittest discover -s tests -p test_window_policy.py -v
+      - run: python -m unittest discover -s tests -p test_window_activation.py -v
       - name: Build a project using the public CLI
         run: |
           mkdir -p "$RUNNER_TEMP/中文 project"
@@ -194,7 +209,12 @@ jobs:
         with:
           name: window-capture
           path: desktop/mcpywrap_assets/window_capture
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: window-activation
+          path: desktop/mcpywrap_assets/window_activation
       - run: python -m pip install build twine
+      - run: python scripts/check_window_activation.py
       - name: Check release version and main ancestry
         shell: bash
         run: |

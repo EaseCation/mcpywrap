@@ -13,7 +13,9 @@ mcpy --local --project <项目> --non-interactive runtime capabilities --session
 
 先保存 session、instance、config_path 和日志路径。status 的 running 只是进程阶段；world_ready 表示观察到世界就绪，正常 Mod 加载还需双端日志或业务探针。source 可选 game/engine/worker；准备脚本输出位于 worker 日志及其 script_log。
 
-`--no-gui` 只抑制辅助窗口，游戏仍需图形会话/GPU。人工 run 默认有日志小窗，完整项目页用 ui。Qt 准备阶段可看任务和取消自己发起的准备；关闭管理/调试窗口不代表游戏已退出。
+`--no-gui` 抑制辅助窗口，游戏仍需图形会话/GPU。非交互、JSON、`--no-gui` 或 `--detach` 启动默认请求后台窗口；`--background` / `--foreground` 可显式覆盖，返回和 status 的 `background` 表示会话策略。普通交互终端的 `mcpy run` 与 Qt 启动保持自动聚焦；人工 run 默认有日志小窗，完整项目页用 ui。Qt 准备阶段可看任务和取消自己发起的准备；关闭管理/调试窗口不代表游戏已退出。
+
+后台模式保留可见窗口。Windows 需要完整安装的原生窗口保护组件；macOS 要求运行包 `background_window_protocol=1`，旧包返回 `background_window_unavailable`。后台会话截图不回退前台，输入使用 `game` 后端；会激活窗口的桌面键鼠入口被拒绝。只有用户允许占用前台时才用 `--foreground`。
 
 | 意图 | 用法与结果 |
 |---|---|
@@ -26,7 +28,7 @@ mcpy --local --project <项目> --non-interactive runtime capabilities --session
 | 启动响应丢失 | 同一项目 status --list 找回，不立刻再次 --new |
 | 明确删除世界 | `run --delete <前缀> --force --json`；仅用户要求删除时使用，不作为修启动的方法 |
 
-restart 会产生新 session，世界 ID 保留；需要 MCS 身份的会话按提示重新 run 并提供本次身份。旧 session 可查历史，不能继续向它发送输入。实例是世界，session 是一次进程运行，group 是联调成员关系。
+restart 会产生新 session，世界 ID 和窗口策略保留；需要 MCS 身份的会话按提示重新 run 并提供本次身份。旧 session 可查历史，不能继续向它发送输入。实例是世界，session 是一次进程运行，group 是联调成员关系。
 
 ## 持续日志
 

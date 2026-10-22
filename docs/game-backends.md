@@ -36,7 +36,9 @@ Windows 联调成员的生命周期记录、角色归属及占用锁仍位于项
 首次迁移在角色占用锁内复制旧 AppData 到临时目录，完成归属标记后原子改名，原副本保留。后续启动复用新位置；目标缺失、归属不符或遗留未完成迁移时停止，不回退到旧身份。旧资料的长路径用宿主扩展路径形式复制，传给游戏的仍是标准短路径。需要项目所在磁盘根目录允许创建 `mcpy-profiles`；不支持 UNC 或被替换为目录链接的位置，不自动提权。用户搬迁项目时需保留组记录及其指向的 profile，不能只把外部目录当缓存删除。
 
 
-Windows/macOS 共同基线是 `--local --project <目录> --non-interactive run --no-gui --detach --json`，后续统一 status/logs/runtime py/runtime reload/stop。控制端不打开 Qt、小窗或 TUI，游戏本身仍需要显示服务及原生窗口。完整操作顺序维护在 [技能的公共流程](../skills/mcpywrap/references/local-development.md)。
+Windows/macOS 共同基线是 `--local --project <目录> --non-interactive run --no-gui --detach --json`，后续统一 status/logs/runtime py/runtime reload/stop。非交互、JSON、no-gui 或 detach 默认请求后台窗口，`--background / --foreground` 可覆盖；普通交互式 run 和 Qt 默认保留前台聚焦。策略写入会话并随双客户端、重启和部署重试传递，复用已有会话不改变其策略。
+
+Windows 后台启动使用独立桌面包提供的进程内线程级 CBT 保护及非激活启动参数；保护范围与构建见 [窗口保护](../native/window_activation/README.md)。macOS 通过运行包 helper 的 `--background` 传到 GLFW，要求 `background_window_protocol=1`，旧包在创建实例/进程前拒绝；配套源码见 [原生补丁](../native/background_window/README.md)。后台会话强制后台截图并拒绝会激活窗口的桌面键鼠输入。游戏仍需显示服务及原生窗口，完整用法维护在 [技能公共流程](../skills/mcpywrap/references/local-development.md)。
 
 `runtime capabilities --session <id> --json` 返回 schema_version=1：control 描述控制端要求，python 提供执行端侧与 worker 队列声明，reload 按同一后端限制返回 available/unsupported/unavailable。查询不执行游戏代码、不返回控制凭据，available 只说明允许调用。旧 worker 缺少队列声明时返回 null，不能推断支持。Windows 已知 Shader 限制也由 WindowsBackend 提供，实际重载与查询没有两份规则。
 

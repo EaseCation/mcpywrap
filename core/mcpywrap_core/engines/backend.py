@@ -34,10 +34,11 @@ class GameBackend:
     def delete_instances(self, project, identity=None):
         return self.run(project, delete=identity, clean_all=identity is None, force=True)
 
-    def start_session(self, project, identity=None, auth_context=None, overrides=None, world_config=None, clients=1):
+    def start_session(self, project, identity=None, auth_context=None, overrides=None, world_config=None, clients=1,
+                      background=False):
         from ..command_context import project_scope
         with project_scope(project):
-            options = dict(new=identity is None, instance_prefix=identity, detach=True, no_gui=True,
+            options = dict(new=identity is None, instance_prefix=identity, detach=True, no_gui=True, background=background,
                            **({'auth_context': auth_context} if auth_context else {}),
                            **({'overrides': overrides} if overrides else {}),
                            **({'world_config': world_config} if world_config is not None else {}))

@@ -4,17 +4,19 @@ import click
 from ..command_context import OperationCommand
 from ..mcstudio.discovery import engine_options
 from ..mcstudio.network import ServerTarget
+from ..runtime.window_policy import window_options, resolve_background
 
 
 @click.command(cls=OperationCommand)
 @engine_options
+@window_options
 @click.argument('host')
 @click.option('--port', type=click.IntRange(1, 65535), default=19132, show_default=True)
 @click.option('--mcs-auth', is_flag=True, help='本次连接使用已登录的 MC Studio 身份')
 @click.option('--detach', is_flag=True, help='后台连接并返回游戏会话；JSON 必须指定')
 @click.option('--clients', type=click.IntRange(1, 2), default=1, show_default=True)
 @click.option('--request-id', help='远程启动的 32 位十六进制请求 ID，用于找回或重试同一请求')
-def connect_cmd(host, port, mcs_auth=False, detach=False, request_id=None, clients=1, **engine_overrides):
+def connect_cmd(host, port, mcs_auth=False, detach=False, request_id=None, clients=1, background=None, **engine_overrides):
     """尝试连接服务器；前台采集日志，Ctrl+C 结束本次游戏。
 
     默认不读取登录身份；--mcs-auth 要求 MCS 已登录及本机桥接可用。
@@ -26,21 +28,22 @@ def connect_cmd(host, port, mcs_auth=False, detach=False, request_id=None, clien
     from ..engines.host import EngineError
     backend = get_backend()
     target = ServerTarget(host, port, 'mcs' if mcs_auth else 'none')
+    background = resolve_background(background, detach=detach)
     if clients == 2:
         from ..runtime import groups
         from ..command_context import project_dir, json_output
         if json_output() and not detach:
             raise click.UsageError('connect --json 需要 --detach')
-        result = groups.start_network(project_dir(), backend, target, engine_overrides)
+        result = groups.start_network(project_dir(), backend, target, engine_overrides, background=background)
         if detach or result.get('ok') is False:
             return result
         from ..engines.tui import watch_group
         return watch_group(project_dir(), result)
     try:
-        return backend.connect(target, engine_overrides=engine_overrides, detach=detach)
+        return backend.connect(target, engine_overrides=engine_overrides, detach=detach, background=background)
     except EngineError as error:
         if error.code != 'setup_required' or not backend.managed_install: raise
         from .engine_cmd import perform_install
         click.echo('首次运行：自动下载并准备本地游戏环境…', err=True)
         perform_install()
-        return backend.connect(target, engine_overrides=engine_overrides, detach=detach)
+        return backend.connect(target, engine_overrides=engine_overrides, detach=detach, background=background)

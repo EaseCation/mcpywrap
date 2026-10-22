@@ -9,7 +9,7 @@ from .host import EngineError, require_macos
 
 
 def connect(target, *, project_dir=None, packs=(), engine_overrides=None, detach=False,
-            session_id=None, group=None, role=None, player=None):
+            session_id=None, group=None, role=None, player=None, background=False):
     from ..command_context import project_dir as current_project, json_output
     from ..mcstudio import sessions
     from ..remote.service import directory_lock
@@ -24,6 +24,8 @@ def connect(target, *, project_dir=None, packs=(), engine_overrides=None, detach
     root = Path(project_dir or current_project()).resolve()
     with directory_lock(install.home()/'install-lock'):
         state = pinned_runtime({'installation': ensure_runtime()})
+        from ..runtime.window_policy import require_native_background
+        require_native_background(state, background)
         if state.get('network_connect_protocol') != 1:
             raise EngineError('此 macOS 运行包尚不支持连接服务器。', 'runtime_incompatible',
                               '请执行 mcpy engine install --catalog ' + install.DEFAULT_CATALOG + '，再重试；已有世界保留原绑定。')
@@ -47,7 +49,7 @@ def connect(target, *, project_dir=None, packs=(), engine_overrides=None, detach
             profile = player_directory(root, group, role)
             plan.update(data=str(profile/'data'), cache=str(profile/'cache'))
         data = sessions.start(root, backend='macos-arm64', session_id=session, launch=plan,
-                              group=group, role=role,
+                              group=group, role=role, background=background,
                               network={'target': asdict(target), 'engine': {'version': version},
                                        'player': player})
     result = sessions.handoff(data)

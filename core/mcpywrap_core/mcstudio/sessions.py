@@ -66,7 +66,9 @@ def read(project, session):
 
 def start(project, config_path=None, level_id=None, overrides=None, timeout=30, auth_context=None,
           network=None, session_id=None, origin=None, request_id=None, backend=None, launch=None,
-          group=None, role=None):
+          group=None, role=None, background=False):
+    from ..runtime.window_policy import validate_background
+    validate_background(background)
     root = Path(project).resolve()
     session = session_id or uuid.uuid4().hex
     script_options = {}
@@ -85,7 +87,7 @@ def start(project, config_path=None, level_id=None, overrides=None, timeout=30, 
               'config_path': str(Path(config_path).resolve()) if config_path else str(directory / 'runtime.cppconfig'),
               'level_id': level_id, 'mode': 'network' if network else 'local',
               'network': network,
-              'backend': backend or 'windows', 'launch': launch,
+              'backend': backend or 'windows', 'launch': launch, 'background': background,
               'engine_overrides': overrides or {}, 'mcs_auth': auth_context is not None,
               'mcs_pid': auth_context.mcs_pid if auth_context else None}
     from .processes import identity
@@ -182,7 +184,7 @@ def handoff(data):
     result = {'application': 'game', 'project': data['project'], 'session': data['session'],
               'state': data['state'], **data['game'], 'log_path': data['log_path'],
               'engine_log_path': data.get('engine_log_path'),
-              'mode': data.get('mode', 'local'),
+              'mode': data.get('mode', 'local'), 'background': data.get('background', False),
               'window_title_hint': 'Minecraft', 'window_verified': False}
     if data.get('operation_id'):
         result['operation_id'] = data['operation_id']

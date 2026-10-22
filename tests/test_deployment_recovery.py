@@ -646,7 +646,7 @@ class RecoveryTests(unittest.TestCase):
         runner = CliRunner()
         with patch(
             "mcpywrap_core.runtime.deployment_service.global_root", return_value=self.engine
-        ):
+        ), patch("mcpywrap_core.engines.host.describe", return_value={"backend": "windows"}):
             result = runner.invoke(
                 cli,
                 [

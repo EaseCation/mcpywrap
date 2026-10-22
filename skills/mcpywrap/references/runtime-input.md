@@ -100,7 +100,7 @@ mcpy runtime input key "CTRL+W" --duration-ms 500 --session <sid> --json
 
 原始指针计划提供width/height参考客户区；坐标移动、滚轮及点击核验窗口尺寸和焦点/遮挡。VK/SC/E0、明确左右/扩展键仅在能保留语义的设备后端使用。普通game中不把RCTRL悄悄映射CTRL、不把NUMPAD_ENTER悄悄映射ENTER。常用规范名及旧别名集中映射，具体支持键以capabilities为准。
 
-Windows特殊后端会激活并占用游戏前台。统一调度器记录SendInput调用边界；不承诺0–20ms硬实时或游戏消费间隔。旧顶层input-sequence仍保持原有批量提交与调度行为，见[兼容输入参考](input-writing.md)。
+Windows特殊后端会激活并占用游戏前台，因此后台启动会话拒绝该后端和旧桌面键鼠入口；需使用 game，只有允许占用前台时才用 --foreground 重新启动。统一调度器记录SendInput调用边界；不承诺0–20ms硬实时或游戏消费间隔。旧顶层input-sequence仍保持原有批量提交与调度行为，见[兼容输入参考](input-writing.md)。
 
 macOS 使用同一游戏协议，时钟能力取决于实例固定的原生包。missing_monotonic_clock 的升级与旧实例规则见[macOS 平台](macos-local.md#游戏输入与资源重载)，不自动换后端或用 CPU/墙钟替代；pointer/text 缺能力仍明确拒绝。
 

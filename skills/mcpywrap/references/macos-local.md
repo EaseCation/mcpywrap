@@ -28,10 +28,10 @@ mcpy --local engine check-updates --json
 
 此命令只发现网易 pe/pe_old 的真实版本和 URL，不下载；compatibility=not_checked 不能当作可运行。首次安装已会查询 pe，无需为了普通启动先检查更新。
 
-CLI 0.5.1 默认使用运行包 0.4.5，包含原生游戏截图。全新安装直接 run 即可自动准备；已有安装保留所选来源，升级资源时明确指定：
+CLI 0.6.1 默认使用运行包 0.4.6，包含原生游戏截图和后台窗口协议。全新安装直接 run 即可自动准备；已有安装保留所选来源，升级资源时明确指定：
 
 ```text
-mcpy --local --non-interactive engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.5/catalog.json --json
+mcpy --local --non-interactive engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.6/catalog.json --json
 ```
 
 此 catalog 仍按其来源规则发现 APK，不等于固定旧 APK。旧版本若不在官方频道无法下载时，报告缺失，不猜 URL。更新 CLI/Skill 或重新 runtime install 都不能替换原生包。
@@ -48,6 +48,7 @@ mcpy --local --non-interactive engine install --catalog https://github.com/EaseC
 | 双外服客户端 | 需要独立开发身份协议的原生包；已做候选实验不代表公开 0.4.5 已具备，按实际能力拒绝或使用已明确选择的构建 |
 | MCS 身份 / MCEditor | macOS 不支持；MCS 网络身份可由 Windows 服务提供，编辑器必须 Windows 本机 |
 | 游戏截图 | 需要实例运行包 screenshot_protocol=1；按需获取游戏帧，见[画面采集](capture.md#截图) |
+| 后台窗口 | 需要 background_window_protocol=1；旧包明确拒绝，允许聚焦时显式 --foreground；运行包构建补丁见仓库 native/background_window |
 | 录屏/视频提帧/原始设备输入 | macOS 本地不支持；远程可针对 Windows 会话使用 |
 
 网络使用与结果判断见[网络会话](network-sessions.md)。3.10.100.299889 曾在本机允许无认证的 Nemisys/SynapseAPI/Nukkit 测试栈验证进服，不能推及公开服务器。当前网络运行包对外 HTTP 资源包下载未完成验收；需要这类分发时不能宣称完整支持。

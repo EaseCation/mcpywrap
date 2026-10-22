@@ -21,7 +21,8 @@ class MacOSNetworkTests(unittest.TestCase):
         self.root = Path(temporary.name).resolve()
         self.backend = MacOSBackend()
         self.state = {'runtime': str(self.root/'runtime'), 'game': str(self.root/'game'),
-                      'profile': {'apk': {'version': '3.10'}}, 'network_connect_protocol': 1}
+                      'profile': {'apk': {'version': '3.10'}}, 'network_connect_protocol': 1,
+                      'background_window_protocol': 1}
         for name, value in [('mcpywrap_core.engines.backend.get_backend', self.backend),
                             ('mcpywrap_core.engines.macos.require_macos', {}),
                             ('mcpywrap_core.engines.macos_network.require_macos', {}),
@@ -66,6 +67,15 @@ class MacOSNetworkTests(unittest.TestCase):
         self.assertFalse(data['addons_assembled'])
         self.assertFalse((self.root/'.runtime/macos/instances').exists())
         self.assertIn(data['session'], self.start_mock.call_args.kwargs['launch']['data'])
+
+    def test_old_background_runtime_rejected_but_explicit_foreground_still_works(self):
+        self.state.pop('background_window_protocol')
+        result = self.call('connect', 'localhost', '--detach')
+        self.assertEqual(json.loads(result.stdout)['code'], 'background_window_unavailable')
+        self.start_mock.assert_not_called()
+        result = self.call('connect', 'localhost', '--detach', '--foreground')
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertFalse(self.start_mock.call_args.kwargs['background'])
 
     def test_old_runtime_rejected_before_start(self):
         self.state.pop('network_connect_protocol')

@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def asset_directory(name):
-    if name not in ('bridge_payload', 'window_capture'):
+    if name not in ('bridge_payload', 'window_capture', 'window_activation'):
         raise ValueError('Unknown host resource group')
     spec = find_spec('mcpywrap_assets')
     if spec and spec.submodule_search_locations:

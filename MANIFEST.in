@@ -3,7 +3,7 @@ include setup.py
 include core/mcpywrap_core/_version.py
 recursive-include desktop *.py *.exe *.dll *.cer *.json
 recursive-include scripts *.py *.ps1
-recursive-include native *.cs *.c *.cpp *.h *.cer *.json *.md *.patch
+recursive-include native *.cs *.c *.cpp *.h *.cer *.json *.md *.patch *.py
 recursive-include docs *.md
 recursive-include tests *.py *.md *.json
 recursive-include skills *.md *.yaml *.ps1 *.py *.toml *.json .gitignore

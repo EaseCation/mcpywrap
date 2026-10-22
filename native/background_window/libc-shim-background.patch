@@ -1,0 +1,25 @@
+diff --git a/src/semaphore.cpp b/src/semaphore.cpp
+index 1388f93..4adad85 100644
+--- a/src/semaphore.cpp
++++ b/src/semaphore.cpp
+@@ -56,7 +56,12 @@ int shim::sem_destroy(host_sem_t *sem) {
+ }
+ 
+ int shim::sem_wait(host_sem_t *sem) {
+-    return semaphore_wait(*sem);
++    auto result = semaphore_wait(*sem);
++    if(result == KERN_SUCCESS) return 0;
++    // POSIX 调用方不能接收 Mach 错误码，否则会误用未持有的锁。
++    errno = result == KERN_ABORTED ? EINTR : EINVAL;
++    bionic::update_errno();
++    return -1;
+ }
+ 
+ int shim::sem_trywait(host_sem_t *sem) {
+@@ -113,4 +118,4 @@ void shim::add_sem_shimmed_symbols(std::vector<shim::shimmed_symbol> &list) {
+         {"sem_timedwait", &detail::arg_rewrite_helper<int (::sem_t *, const struct timespec *)>::rewrite<sem_timedwait>},
+         {"sem_post", &detail::arg_rewrite_helper<int (::sem_t *)>::rewrite<sem_post>},
+     });
+-}
+\ No newline at end of file
++}

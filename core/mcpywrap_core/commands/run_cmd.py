@@ -4,6 +4,7 @@ from ..command_context import OperationCommand, project_dir as current_project, 
 from ..config import config_exists
 from ..mcstudio.discovery import engine_options
 from ..mcstudio.runtime_cppconfig import creation_settings, RULE_LABELS
+from ..runtime.window_policy import window_options, resolve_background
 
 WORLD_CHOICES = {
     'world_type': {'infinite': 1, 'flat': 2},
@@ -55,6 +56,7 @@ def take_world_options(arguments, cppconfig=None):
 @click.command(cls=OperationCommand)
 @world_options
 @engine_options
+@window_options
 @click.option("--no-gui", is_flag=True, help="不显示调试小窗；适用于 AI、脚本或纯终端操作")
 @click.option("--detach", is_flag=True, help="后台运行并返回游戏会话")
 @click.option('--mcs-auth', is_flag=True, help='本次单人测试或网络连接使用已登录的 MC Studio 身份')
@@ -68,7 +70,7 @@ def take_world_options(arguments, cppconfig=None):
 @click.option('--clients', type=click.IntRange(1, 2), default=1, show_default=True,
               help='本机玩家客户端数量；本地双客户端需在客户端 2 手动点击目标局域网卡片加入')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, clients=1, **engine_overrides):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, clients=1, background=None, **engine_overrides):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例。
@@ -107,7 +109,8 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         from ..ui.run_session import show_session_window
     options = dict(new=new, listing=list, delete=delete, force=force, clean_all=clean_all,
                    instance_prefix=instance_prefix, no_gui=True, detach=detach or show_debug,
-                   mcs_auth=mcs_auth, overrides=engine_overrides, world_config=world_config)
+                   mcs_auth=mcs_auth, overrides=engine_overrides, world_config=world_config,
+                   background=resolve_background(background, no_gui=no_gui, detach=detach))
     def perform():
         if clients == 1:
             return backend.run(base_dir, **options)
@@ -119,7 +122,8 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
                 raise click.UsageError('网络联调不支持世界创建参数')
             if mcs_auth:
                 raise click.UsageError('双客户端进服暂不支持双账号认证')
-            return groups.start_network(base_dir, backend, target, engine_overrides)
+            return groups.start_network(base_dir, backend, target, engine_overrides,
+                                        background=options['background'])
         return groups.start_local(base_dir, backend, options)
     recovered = False
     try:

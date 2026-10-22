@@ -53,6 +53,8 @@ Remove-Item Env:QT_QPA_PLATFORM, Env:PYTHONUTF8, Env:PYTHONIOENCODING
 
 需要焦点或原始键鼠的测试应单独运行，避免并行游戏启动或可见 Qt 测试干扰桌面和部署占用状态。结束后只清理自己创建的会话，保留原始证据。
 
+后台启动验收使用 `python tests/manual_background_launch.py --output <新的证据目录> --engine-version <已安装版本>`，可重复指定版本。脚本创建独立项目/profile，记录 Windows 前台事件，验证后台启动至 HUD、默认截图不回退、桌面输入拒绝，并以显式前台启动作对照；最后停止自己的会话。前台对照会短暂聚焦游戏，profile 和报告保留。Mac 构建与验收见 [原生运行包补丁](../native/background_window/README.md)。
+
 ## 全局部署恢复
 
 隔离实机脚本预置旧父项目双包链接，先验证完整冲突，注入发布后的启动失败以验证回滚，再迁移并用游戏内探针验证新代码。随后执行依赖 `0 → 1 → 0`、多世界共享、重复启动和删除测试实例后重新创建：

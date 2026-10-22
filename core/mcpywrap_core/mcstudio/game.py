@@ -9,6 +9,7 @@ import sys
 
 from .mcs import is_windows
 from .discovery import discover_engines, DiscoveryError, studio_installation
+from ..engines.host import EngineError
 
 
 def _launch_message(message, **style):
@@ -27,7 +28,8 @@ except ImportError:
 
 
 def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system_color=True, wait=True,
-              engine=None, project_dir=None, output_path=None, capture_output=False, environment=None):
+              engine=None, project_dir=None, output_path=None, capture_output=False, environment=None,
+              background=False):
     """
     打开MC Studio游戏引擎
 
@@ -82,13 +84,33 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
 
         # 启动游戏
         import contextlib
+        from ..runtime.window_policy import validate_background
+        validate_background(background)
+        startup = None
+        guard = None
+        if background:
+            from .window_activation import ActivationGuard
+            guard = ActivationGuard()
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startup.wShowWindow = 4  # SW_SHOWNOACTIVATE; leave rendering and WGC available.
         with open(output_path, 'ab') if output_path else contextlib.nullcontext() as output:
             proc = subprocess.Popen(
                 [minecraft_exe, *(['config=' + os.path.abspath(config_path)] if config_path is not None else []),
                  'loggingIP=' + logging_ip, 'loggingPort=' + str(logging_port)],
-                cwd=engine_path, stdin=subprocess.DEVNULL, env=environment,
+                cwd=engine_path, stdin=subprocess.DEVNULL, env=environment, startupinfo=startup,
                 stdout=subprocess.PIPE if capture_output else output,
-                stderr=subprocess.STDOUT if capture_output else output)
+                stderr=subprocess.STDOUT if capture_output else output,
+                creationflags=0x00000004 if background else 0)  # CREATE_SUSPENDED
+        if guard:
+            try:
+                guard.start(proc)
+                proc._mcpy_activation_guard = guard
+            except BaseException:
+                proc.kill()
+                proc.wait(timeout=10)
+                guard.close()
+                raise
 
         # 如果需要使用系统主题色且Win32API可用，使用定时器异步应用窗口样式
         if use_system_color and HAS_WIN32API and is_windows():
@@ -105,6 +127,8 @@ def open_game(config_path, logging_ip="localhost", logging_port=8678, use_system
     except json.JSONDecodeError:
         _launch_message(f"❌ 配置文件格式错误: {config_path}", fg="red", bold=True)
         return False
+    except EngineError:
+        raise
     except Exception as e:
         _launch_message(f"❌ 启动游戏失败: {str(e)}", fg="red", bold=True)
         return False
