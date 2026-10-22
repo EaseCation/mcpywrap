@@ -10,12 +10,12 @@ import unittest
 from unittest.mock import Mock, patch
 from click.testing import CliRunner
 
-from mcpywrap.cli import cli
-from mcpywrap.engines.backend import GameBackend, LaunchedGame, get_backend
-from mcpywrap.engines.host import EngineError, describe
-from mcpywrap.engines.macos import MacOSBackend
-from mcpywrap.mcstudio.launcher_control import LauncherProcessMismatch
-from mcpywrap.engines.windows import WindowsBackend
+from mcpywrap_core.cli import cli
+from mcpywrap_core.engines.backend import GameBackend, LaunchedGame, get_backend
+from mcpywrap_core.engines.host import EngineError, describe
+from mcpywrap_core.engines.macos import MacOSBackend
+from mcpywrap_core.mcstudio.launcher_control import LauncherProcessMismatch
+from mcpywrap_core.engines.windows import WindowsBackend
 
 
 class BackendTests(unittest.TestCase):
@@ -77,7 +77,7 @@ class BackendTests(unittest.TestCase):
             progress(1024*1024, 4*1024*1024)
             raise EngineError('连接中断', 'download_failed', '重新运行即可续传。')
         backend.install.side_effect = failed
-        with patch('mcpywrap.commands.engine_cmd.get_backend', return_value=backend):
+        with patch('mcpywrap_core.commands.engine_cmd.get_backend', return_value=backend):
             result = self.call('engine', 'install')
         self.assertEqual(result.exit_code, 1)
         data = json.loads(result.stdout)
@@ -99,9 +99,9 @@ class BackendTests(unittest.TestCase):
             progress.phase('下载游戏资源'); progress(1, 2)
             raise EngineError('连接中断', 'download_failed', '重新运行即可续传。')
         backend.install.side_effect = failed
-        with patch('mcpywrap.commands.engine_cmd.get_backend', return_value=backend), \
-                patch('mcpywrap.commands.engine_cmd.Console', return_value=Console(file=stream, force_terminal=True, force_interactive=True)), \
-                patch('mcpywrap.commands.engine_cmd.Progress', side_effect=create_progress):
+        with patch('mcpywrap_core.commands.engine_cmd.get_backend', return_value=backend), \
+                patch('mcpywrap_core.commands.engine_cmd.Console', return_value=Console(file=stream, force_terminal=True, force_interactive=True)), \
+                patch('mcpywrap_core.commands.engine_cmd.Progress', side_effect=create_progress):
             result = self.runner.invoke(cli, ['--local', '--project', str(self.root), 'engine', 'install'])
         self.assertEqual(result.exit_code, 1)
         self.assertIn('连接中断', result.stderr)
@@ -110,7 +110,7 @@ class BackendTests(unittest.TestCase):
         self.assertFalse(progress_views[0].live.is_started)
 
     def test_official_version_discovery_uses_both_channels_without_guessing(self):
-        from mcpywrap.engines import official
+        from mcpywrap_core.engines import official
         urls = []
         def response(url, **kwargs):
             urls.append(url)
@@ -126,7 +126,7 @@ class BackendTests(unittest.TestCase):
         self.assertFalse((self.root/'engine').exists())
 
     def test_official_channel_failure_does_not_claim_no_updates(self):
-        from mcpywrap.engines import official
+        from mcpywrap_core.engines import official
         from urllib.error import URLError
         good = io.BytesIO(json.dumps({'status':'ok','data':{'url':
             'https://g79.gdl.netease.com/dev_launcher_3.10.100.299889.apk'}}).encode())
@@ -140,23 +140,23 @@ class BackendTests(unittest.TestCase):
 
     def test_single_selection_point_and_explicit_resume(self):
         for selected, expected in [('windows', WindowsBackend), ('macos-arm64', MacOSBackend), (None, GameBackend)]:
-            with patch('mcpywrap.engines.backend.describe', return_value={'backend': selected}):
+            with patch('mcpywrap_core.engines.backend.describe', return_value={'backend': selected}):
                 self.assertIsInstance(get_backend(), expected)
                 self.assertIsInstance(get_backend('windows'), WindowsBackend)
         with self.assertRaises(EngineError): get_backend('bogus')
 
     def test_rosetta_uses_native_backend_and_intel_does_not(self):
-        with patch('mcpywrap.engines.host.sys.platform', 'darwin'), patch('platform.machine', return_value='x86_64'), \
+        with patch('mcpywrap_core.engines.host.sys.platform', 'darwin'), patch('platform.machine', return_value='x86_64'), \
                 patch('subprocess.check_output', return_value='1\n'):
             self.assertEqual(describe()['backend'], 'macos-arm64')
             self.assertTrue(describe()['translated_python'])
-        with patch('mcpywrap.engines.host.sys.platform', 'darwin'), patch('platform.machine', return_value='x86_64'), \
+        with patch('mcpywrap_core.engines.host.sys.platform', 'darwin'), patch('platform.machine', return_value='x86_64'), \
                 patch('subprocess.check_output', return_value='0\n'):
             self.assertIsNone(describe()['backend'])
 
     def test_cli_run_uses_identical_backend_contract(self):
         for backend in (WindowsBackend(), MacOSBackend()):
-            with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
+            with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend), \
                     patch.object(backend, 'run', return_value={'session': 'a'*32}) as run:
                 result = self.call('run', '--new', '--detach')
                 self.assertEqual(result.exit_code, 0, result.output)
@@ -168,10 +168,10 @@ class BackendTests(unittest.TestCase):
         backend = Mock(spec=GameBackend, managed_install=True)
         backend.run.side_effect = [EngineError('missing', 'setup_required'), {'session': 'a'*32}]
         backend.install.return_value = {'ok': True}
-        with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
-                patch('mcpywrap.commands.engine_cmd.get_backend', return_value=backend), \
+        with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend), \
+                patch('mcpywrap_core.commands.engine_cmd.get_backend', return_value=backend), \
                 patch('click.prompt', side_effect=AssertionError('prompt')), \
-                patch('mcpywrap.ui.project_ui.show_run_ui', side_effect=AssertionError('GUI')):
+                patch('mcpywrap_core.ui.project_ui.show_run_ui', side_effect=AssertionError('GUI')):
             result = self.call('run', '--detach')
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(backend.run.call_count, 2)
@@ -181,11 +181,11 @@ class BackendTests(unittest.TestCase):
 
     def test_human_run_shows_only_shared_debug_window_on_both_backends(self):
         for backend in (WindowsBackend(), MacOSBackend()):
-            with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
+            with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend), \
                     patch.object(backend, 'run', return_value={'session': 'a'*32}) as run, \
-                    patch('mcpywrap.command_context.human_interaction', return_value=True), \
-                    patch('mcpywrap.ui.run_session.show_session_window', return_value={}) as debug, \
-                    patch('mcpywrap.ui.project_ui.show_run_ui') as main:
+                    patch('mcpywrap_core.command_context.human_interaction', return_value=True), \
+                    patch('mcpywrap_core.ui.run_session.show_session_window', return_value={}) as debug, \
+                    patch('mcpywrap_core.ui.project_ui.show_run_ui') as main:
                 result = self.runner.invoke(cli, ['--local', '--project', str(self.root),
                     'run', '--engine-version', '3.9.0.401155', '--new'])
             self.assertEqual(result.exit_code, 0, result.output)
@@ -199,9 +199,9 @@ class BackendTests(unittest.TestCase):
         backend = Mock(spec=GameBackend)
         backend.run.return_value = {'session': 'a'*32}
         for arguments in (['--no-gui'], ['--detach'], ['--list']):
-            with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
-                    patch('mcpywrap.command_context.human_interaction', return_value=True), \
-                    patch('mcpywrap.ui.run_session.show_session_window') as debug:
+            with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend), \
+                    patch('mcpywrap_core.command_context.human_interaction', return_value=True), \
+                    patch('mcpywrap_core.ui.run_session.show_session_window') as debug:
                 result = self.runner.invoke(cli, ['--local', '--project', str(self.root), 'run', *arguments])
             self.assertEqual(result.exit_code, 0, result.output)
             debug.assert_not_called()
@@ -209,8 +209,8 @@ class BackendTests(unittest.TestCase):
     def test_ai_run_never_opens_debug_window(self):
         backend = Mock(spec=GameBackend)
         backend.run.return_value = {'session': 'a'*32}
-        with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
-                patch('mcpywrap.ui.run_session.show_session_window') as debug:
+        with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend), \
+                patch('mcpywrap_core.ui.run_session.show_session_window') as debug:
             result = self.call('run', '--no-gui', '--detach')
         self.assertEqual(result.exit_code, 0, result.output)
         debug.assert_not_called()
@@ -224,20 +224,20 @@ class BackendTests(unittest.TestCase):
 
     def test_engine_doctor_never_routes_remote_or_creates_files(self):
         backend = GameBackend()
-        with patch('mcpywrap.commands.engine_cmd.get_backend', return_value=backend), \
-                patch('mcpywrap.remote.client.routed_command', side_effect=AssertionError('remote')):
+        with patch('mcpywrap_core.commands.engine_cmd.get_backend', return_value=backend), \
+                patch('mcpywrap_core.remote.client.routed_command', side_effect=AssertionError('remote')):
             result = self.call('engine', 'doctor')
         self.assertEqual(result.exit_code, 1)
         self.assertFalse((self.root/'engine').exists())
 
     def test_windows_install_explains_studio_instead_of_downloading_apk(self):
-        with patch('mcpywrap.commands.engine_cmd.get_backend', return_value=WindowsBackend()):
+        with patch('mcpywrap_core.commands.engine_cmd.get_backend', return_value=WindowsBackend()):
             result = self.call('engine', 'install')
         self.assertEqual(result.exit_code, 1)
         self.assertIn('MC Studio', json.loads(result.stdout)['hint'])
 
     def test_default_engine_setup_does_not_ask_for_sources(self):
-        command = importlib.import_module('mcpywrap.commands.engine_cmd')
+        command = importlib.import_module('mcpywrap_core.commands.engine_cmd')
         backend = Mock(managed_install=True, setup_description='fixture')
         backend.diagnose.return_value = {'ok': False}
         backend.install.return_value = {'ok': True}
@@ -271,11 +271,11 @@ class BackendTests(unittest.TestCase):
     def test_macos_old_process_record_waits_only_until_startup_deadline(self):
         backend, data, channel, unused = self.macos_startup([{}], {})
         channel._rpc.side_effect = LauncherProcessMismatch('old process')
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=10):
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=10):
             self.assertFalse(backend.refresh(data, channel))
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=99):
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=99):
             self.assertFalse(backend.refresh(data, channel))
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=100):
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=100):
             with self.assertRaises(EngineError) as error:
                 backend.refresh(data, channel)
         self.assertEqual(error.exception.code, 'launcher_control_timeout')
@@ -286,10 +286,10 @@ class BackendTests(unittest.TestCase):
         backend, data, channel, log = self.macos_startup([{}], {})
         channel._rpc.side_effect = [LauncherProcessMismatch('old process'),
                                    {'request_id': 'startup-0', 'state': 'completed'}]
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=10):
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=10):
             self.assertFalse(backend.refresh(data, channel))
         log.write_text('{"top_screen":"hud_screen"}', encoding='utf-8')
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=11):
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=11):
             self.assertTrue(backend.refresh(data, channel))
         self.assertTrue(data['world_ready'])
         self.assertTrue(all(call.args[0] == 'result' for call in channel._rpc.call_args_list))
@@ -298,9 +298,9 @@ class BackendTests(unittest.TestCase):
         backend, data, channel, unused = self.macos_startup([{}], {})
         channel._rpc.side_effect = [{'request_id': 'startup-0', 'state': 'queued'},
                                    LauncherProcessMismatch('changed process')]
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=10):
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=10):
             self.assertFalse(backend.refresh(data, channel))
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=11):
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=11):
             with self.assertRaises(LauncherProcessMismatch):
                 backend.refresh(data, channel)
 
@@ -320,23 +320,23 @@ class BackendTests(unittest.TestCase):
                    'startup-1': {'request_id': 'startup-1', 'state': 'failed',
                                  'error': 'Request expired before execution'}}
         backend, data, channel, log = self.macos_startup([{}, probe], results)
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=10), \
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=10), \
                 patch('sys.stderr', new_callable=io.StringIO) as notices:
             self.assertFalse(backend.refresh(data, channel))
             self.assertFalse(data.get('world_ready'))
             backend._next_probe = 0
             self.assertFalse(backend.refresh(data, channel))
             self.assertEqual(notices.getvalue().count('继续等待'), 1)
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=909):
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=909):
             self.assertFalse(backend.refresh(data, channel))
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=910):
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=910):
             with self.assertRaises(EngineError) as error:
                 backend.refresh(data, channel)
         self.assertEqual(error.exception.code, 'world_start_timeout')
         self.assertFalse(data.get('world_ready'))
         backend._next_probe = 0
         log.write_text('{"top_screen":"hud_screen"}', encoding='utf-8')
-        with patch('mcpywrap.engines.macos.time.monotonic', return_value=910):
+        with patch('mcpywrap_core.engines.macos.time.monotonic', return_value=910):
             self.assertTrue(backend.refresh(data, channel))
         self.assertTrue(all(call.args[0] == 'result' for call in channel._rpc.call_args_list))
 
@@ -367,8 +367,8 @@ class BackendTests(unittest.TestCase):
                 self.assertFalse(data.get('world_ready'))
 
     def test_tui_interrupt_stops_owned_session(self):
-        from mcpywrap.engines.tui import watch_session
-        from mcpywrap.mcstudio import sessions
+        from mcpywrap_core.engines.tui import watch_session
+        from mcpywrap_core.mcstudio import sessions
         record = {'state': 'exited', 'backend': 'macos-arm64'}
         with patch.object(sessions, 'read', side_effect=[KeyboardInterrupt(), record]), \
                 patch.object(sessions, 'stop') as stop:
@@ -378,8 +378,8 @@ class BackendTests(unittest.TestCase):
 
     def test_tui_requested_stop_accepts_nonzero_termination_but_not_failure(self):
         import click
-        from mcpywrap.engines.tui import watch_session
-        from mcpywrap.mcstudio import sessions
+        from mcpywrap_core.engines.tui import watch_session
+        from mcpywrap_core.mcstudio import sessions
         sid = 'd'*32
         directory = sessions.session_path(self.root, sid)
         directory.mkdir(parents=True)

@@ -1,5 +1,7 @@
 # 维护者：开发与验证
 
+完整开发依赖安装为 `pip install -e ./core -e .`。仅工程核心环境使用 `pip install -e ./core`，并单独运行核心测试。共享 API、宿主能力和版本升级协议见 [shared-core.md](docs/shared-core.md)。
+
 ```powershell
 python -X utf8 -m unittest discover -s tests -v
 ```

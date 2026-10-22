@@ -9,10 +9,10 @@ from pathlib import Path
 from unittest.mock import patch, Mock
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.mcstudio.runtime_ui import install_source, call_source, compact_source
-from mcpywrap.mcstudio.runtime_ui_payload import UIController, UIError
-from mcpywrap.remote.http_server import GameHTTPServer
+from mcpywrap_core.cli import cli
+from mcpywrap_core.mcstudio.runtime_ui import install_source, call_source, compact_source
+from mcpywrap_core.mcstudio.runtime_ui_payload import UIController, UIError
+from mcpywrap_core.remote.http_server import GameHTTPServer
 
 
 ROOT = '/variables_button_mappings_and_controls'
@@ -370,7 +370,7 @@ class RuntimeUIInjectionTests(unittest.TestCase):
 
     def test_real_payload_installs_idempotently_and_lifecycle_is_guarded(self):
         source = install_source('3.10.0.420447')
-        from mcpywrap.mcstudio.runtime_ui import install_sources
+        from mcpywrap_core.mcstudio.runtime_ui import install_sources
         self.assertTrue(all(len(piece.encode('utf-8')) <= 32768 for piece in install_sources('3.10.0.420447')))
         self.assertTrue(self.run_code(source)['lifecycle_guard'])
         ui = self.scope['mcpy'].ui
@@ -395,7 +395,7 @@ class RuntimeUIInjectionTests(unittest.TestCase):
         self.assertEqual(len(self.api.listeners), listeners)
 
     def test_staged_install_executes_only_after_all_source_arrives(self):
-        from mcpywrap.mcstudio.runtime_ui import install_sources
+        from mcpywrap_core.mcstudio.runtime_ui import install_sources
         sources = install_sources('3.10.0.420447')
         for piece in sources[:-1]:
             self.assertEqual(self.run_code(piece)['stage'], 'staged')
@@ -471,7 +471,7 @@ class RuntimeUIInjectionTests(unittest.TestCase):
                 for command in ('install','status','stop'):
                     result=CliRunner().invoke(cli,player_prefix+[command,'--session','a'*32,'--json'])
                     self.assertEqual(result.exit_code,0,result.output)
-                from mcpywrap.mcstudio.runtime_ui import install_sources
+                from mcpywrap_core.mcstudio.runtime_ui import install_sources
                 self.assertEqual(len(calls), 4 + 2*len(install_sources('3.10.0.420447')))
                 self.assertTrue(all(data['side'] == 'client' for _, data in calls))
                 self.assertEqual(service.record.call_count, 2)
@@ -480,7 +480,7 @@ class RuntimeUIInjectionTests(unittest.TestCase):
             server.shutdown(); server.server_close(); thread.join(2)
 
     def test_mutation_timeout_returns_operation_for_status_not_retry(self):
-        with patch('mcpywrap.mcstudio.runtime_debug.control_request', side_effect=OSError('lost reply')):
+        with patch('mcpywrap_core.mcstudio.runtime_debug.control_request', side_effect=OSError('lost reply')):
             result = CliRunner().invoke(cli, ['--local', 'runtime', 'ui', 'click', '1',
                 '--session', 'a'*32, '--snapshot', 'b'*32, '--request-id', 'c'*32, '--json'])
         self.assertEqual(result.exit_code, 1)

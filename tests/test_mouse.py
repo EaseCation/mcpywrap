@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from mcpywrap.mcstudio import window
+from mcpywrap_core.mcstudio import window
 
 
 class MouseTests(unittest.TestCase):

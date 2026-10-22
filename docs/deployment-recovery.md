@@ -102,14 +102,6 @@ mcpy --local --project 'D:\Mods\new-project' deployment retire --link 'C:\Users\
 | `deployment_relocated` | 使用提示中的新项目入口 |
 | `plan_stale` | 重新预览，不直接重放旧摘要 |
 
-现有 `links.json` 布局和链接命名保留；历史单文件链接事务仍可恢复。旧工具对链接表的改写会在新版启动时核验，一旦与持久归属不符就停止，不能保证旧二进制理解新版归属规则。普通单客户端的独立资料目录隔离不在本轮实现范围内。
+现有 `links.json` 布局和链接命名保留；历史单文件链接事务仍可恢复。旧工具对链接表的改写会在新版启动时核验，一旦与持久归属不符就停止，不能保证旧二进制理解新版归属规则。普通单客户端不提供独立资料目录隔离。
 
-## 开发验收
-
-隔离实机脚本预置旧父项目双包链接，先验证完整冲突，注入发布后的启动失败以验证回滚，再迁移并用游戏内探针验证新代码。随后执行依赖 `0 → 1 → 0`、多世界共享、重复启动和删除测试实例后重新创建：
-
-```powershell
-python tests/manual/lifecycle_dependency_audit.py --output '<新的隔离验收目录>' --migration --engine-version '<已安装版本>' --mcs-download-path '<下载目录>'
-```
-
-该脚本只操作新建的测试项目和独立 profile，并保留命令响应、日志和结果。个人真实 profile 的历史链接不用于破坏性验收。
+部署恢复的自动化与隔离实机验证见 [测试入口](../tests/README.md#全局部署恢复)。

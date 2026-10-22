@@ -9,9 +9,9 @@ from unittest.mock import patch
 import test_deployment_recovery
 from click.testing import CliRunner
 
-from mcpywrap.cli import cli
-from mcpywrap.engines.host import EngineError
-from mcpywrap.runtime.deployment_service import preview
+from mcpywrap_core.cli import cli
+from mcpywrap_core.engines.host import EngineError
+from mcpywrap_core.runtime.deployment_service import preview
 
 
 class DeploymentCliTests(unittest.TestCase):
@@ -27,21 +27,21 @@ class DeploymentCliTests(unittest.TestCase):
         self.addCleanup(stack.close)
         stack.enter_context(
             patch(
-                "mcpywrap.runtime.deployment_service.global_root",
+                "mcpywrap_core.runtime.deployment_service.global_root",
                 return_value=profile.engine,
             )
         )
         stack.enter_context(
             patch(
-                "mcpywrap.engines.backend.describe", return_value={"backend": "windows"}
+                "mcpywrap_core.engines.backend.describe", return_value={"backend": "windows"}
             )
         )
         self.human = stack.enter_context(
-            patch("mcpywrap.command_context.human_interaction", return_value=True)
+            patch("mcpywrap_core.command_context.human_interaction", return_value=True)
         )
         self.execute = stack.enter_context(
             patch(
-                "mcpywrap.runtime.deployment_service.execute",
+                "mcpywrap_core.runtime.deployment_service.execute",
                 return_value={"session": "new-session", "state": "running"},
             )
         )
@@ -126,7 +126,7 @@ class DeploymentCliTests(unittest.TestCase):
 
     def test_foreground_run_continues_to_watch_new_session(self):
         with patch(
-            "mcpywrap.engines.tui.watch_session", return_value={"state": "exited"}
+            "mcpywrap_core.engines.tui.watch_session", return_value={"state": "exited"}
         ) as watch:
             result = self.run_game(input="y\n")
         self.assertEqual(result.exit_code, 0, result.output)
@@ -145,7 +145,7 @@ class DeploymentCliTests(unittest.TestCase):
             ],
         )
         with patch(
-            "mcpywrap.runtime.deployment_service.preview", return_value=original
+            "mcpywrap_core.runtime.deployment_service.preview", return_value=original
         ):
             result = self.run_game("--detach", input="y\n")
         self.assertNotEqual(result.exit_code, 0)
@@ -188,8 +188,8 @@ class DeploymentCliTests(unittest.TestCase):
         self.execute.assert_called_once()
 
     def test_group_retry_uses_group_target_and_foreground_watcher(self):
-        from mcpywrap.runtime.deployment_service import startup_problem
-        from mcpywrap.runtime.diagnostics import exception
+        from mcpywrap_core.runtime.deployment_service import startup_problem
+        from mcpywrap_core.runtime.diagnostics import exception
 
         problem = startup_problem(self.project)
         for action in problem["actions"]:
@@ -205,12 +205,12 @@ class DeploymentCliTests(unittest.TestCase):
             "state": "starting",
         }
         with (
-            patch("mcpywrap.engines.backend.get_backend") as backend,
+            patch("mcpywrap_core.engines.backend.get_backend") as backend,
             patch(
-                "mcpywrap.runtime.deployment_service.preview", return_value=plan
+                "mcpywrap_core.runtime.deployment_service.preview", return_value=plan
             ) as inspect,
             patch(
-                "mcpywrap.engines.tui.watch_group", return_value={"state": "exited"}
+                "mcpywrap_core.engines.tui.watch_group", return_value={"state": "exited"}
             ) as watch,
         ):
             backend.return_value.capabilities = ()
@@ -228,7 +228,7 @@ class DeploymentCliTests(unittest.TestCase):
         watch.assert_called_once()
 
     def test_multiple_owners_not_silently_selected(self):
-        from mcpywrap.commands.deployment_output import recover_run
+        from mcpywrap_core.commands.deployment_output import recover_run
 
         problem = {
             "actions": [
@@ -260,7 +260,7 @@ class DeploymentCliTests(unittest.TestCase):
         self.assertIn("--interactive", result.output)
 
     def test_help_available_on_other_platforms_but_mutations_rejected(self):
-        with patch("mcpywrap.engines.host.describe", return_value={"backend": None}):
+        with patch("mcpywrap_core.engines.host.describe", return_value={"backend": None}):
             help_result = self.migrate("--help")
             result = self.runner.invoke(
                 cli, self.base + ["deployment", "inspect", "--json"]

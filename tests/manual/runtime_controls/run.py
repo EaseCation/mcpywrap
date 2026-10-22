@@ -34,7 +34,7 @@ class LiveTests:
         self.report = {'optional_manual_test': True, 'ok': False, 'platform': sys.platform,
                        'project': str(self.project), 'cases': [], 'history': [], 'cleanup': [],
                        'desktop_foreground_verified': False}
-        self.prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap', '--local',
+        self.prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap_core', '--local',
                        '--project', str(self.project), '--non-interactive']
 
     def call(self, *arguments, session=True, allow_failure=False):

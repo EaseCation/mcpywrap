@@ -37,7 +37,7 @@ def main():
     output = Path(args.output).resolve()
     if output.exists():
         raise ValueError('验收输出必须是新文件')
-    prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap', '--local', '--project', args.project]
+    prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap_core', '--local', '--project', args.project]
     history = []
 
     def call(*command, allow_failure=False):

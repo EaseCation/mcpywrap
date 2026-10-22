@@ -20,7 +20,7 @@
 | `input_probe.py` | 新统一操作的有界位置/输入与键盘事件观测；不计数模拟tick |
 | `key_timeline_probe.py` | 临时客户端有界观测：实际位置、输入向量与键盘事件；不计数或断言模拟 tick |
 
-安装的临时客户端扩展来自产品的 `mcpywrap/mcstudio/runtime_ui_payload.py`、`runtime_ui_outline.py`、`runtime_player_payload.py`，由 `runtime install` 注入，不在此目录复制一份实现。**`mcpy.*` 只供调试，不能成为业务 Addon 的依赖。** 服务端夹具同样不属于业务包，不需要复制到行为包中。
+安装的临时客户端扩展来自产品的 `core/mcpywrap_core/mcstudio/runtime_ui_payload.py`、`runtime_ui_outline.py`、`runtime_player_payload.py`，由 `runtime install` 注入，不在此目录复制一份实现。**`mcpy.*` 只供调试，不能成为业务 Addon 的依赖。** 服务端夹具同样不属于业务包，不需要复制到行为包中。
 
 ## macOS：显式运行
 
@@ -30,8 +30,8 @@
 
 ```sh
 mkdir -p "$HOME/mcpy-manual-project"
-python -m mcpywrap --local --project "$HOME/mcpy-manual-project" --non-interactive init --name manual-controls --type addon --json
-python -m mcpywrap --local --project "$HOME/mcpy-manual-project" --non-interactive mod --name ManualControls --json
+python -m mcpywrap_core --local --project "$HOME/mcpy-manual-project" --non-interactive init --name manual-controls --type addon --json
+python -m mcpywrap_core --local --project "$HOME/mcpy-manual-project" --non-interactive mod --name ManualControls --json
 
 # 先做双端探针，不操作 UI，不修改世界场景。
 python tests/manual/runtime_controls/run.py --project "$HOME/mcpy-manual-project" --launch --suite probe
@@ -45,11 +45,11 @@ python tests/manual/runtime_controls/run.py --project "$HOME/mcpy-manual-project
 若需保留游戏观察，可先自行启动，再传入 session：
 
 ```sh
-python -m mcpywrap --local --project "$HOME/mcpy-manual-project" --non-interactive run --new --no-gui --detach --json
+python -m mcpywrap_core --local --project "$HOME/mcpy-manual-project" --non-interactive run --new --no-gui --detach --json
 python tests/manual/runtime_controls/run.py --project "$HOME/mcpy-manual-project" --session SESSION_ID --suite ui
 python tests/manual/runtime_controls/run.py --project "$HOME/mcpy-manual-project" --session SESSION_ID --suite player --prepare-fixture
 # 附加模式不会关闭传入会话，由创建者在检查后停止。
-python -m mcpywrap --local --project "$HOME/mcpy-manual-project" stop --session SESSION_ID --json
+python -m mcpywrap_core --local --project "$HOME/mcpy-manual-project" stop --session SESSION_ID --json
 ```
 
 ## 用例与结果

@@ -11,16 +11,16 @@ import sys
 import unittest
 
 from test_runtime_deployment import fixture
-from mcpywrap.dependencies import read_project, write_project
-from mcpywrap.engines.backend import LaunchedGame
-from mcpywrap.engines.host import EngineError
-from mcpywrap.mcstudio import sessions, session_worker
-from mcpywrap.mcstudio.deployment_links import ManagedLinks
-from mcpywrap.mcstudio.processes import identity
-from mcpywrap.mcstudio.symlinks import _create_directory_link
-from mcpywrap.runtime import instances, storage, windows
-from mcpywrap.runtime.deployment import Deployment, inventory
-from mcpywrap.utils.locks import LockBusy
+from mcpywrap_core.dependencies import read_project, write_project
+from mcpywrap_core.engines.backend import LaunchedGame
+from mcpywrap_core.engines.host import EngineError
+from mcpywrap_core.mcstudio import sessions, session_worker
+from mcpywrap_core.mcstudio.deployment_links import ManagedLinks
+from mcpywrap_core.mcstudio.processes import identity
+from mcpywrap_core.mcstudio.symlinks import _create_directory_link
+from mcpywrap_core.runtime import instances, storage, windows
+from mcpywrap_core.runtime.deployment import Deployment, inventory
+from mcpywrap_core.utils.locks import LockBusy
 
 
 class LifecycleAudit(unittest.TestCase):
@@ -182,7 +182,7 @@ class LifecycleAudit(unittest.TestCase):
         with deployment.lock():
             next_pack = deployment.prepare()
             deployment.publish_config(config, {'world_info': {'name': 'uncommitted'}})
-            with patch('mcpywrap.mcstudio.deployment_links._create_directory_link', side_effect=fail_resource):
+            with patch('mcpywrap_core.mcstudio.deployment_links._create_directory_link', side_effect=fail_resource):
                 with self.assertRaisesRegex(OSError, 'injected'):
                     deployment.publish_links(engine, [next_pack])
             deployment.rollback()
@@ -198,7 +198,7 @@ class LifecycleAudit(unittest.TestCase):
 
     def test_map_removal_keeps_world_progress_and_removes_dependency_links(self):
         import shutil
-        from mcpywrap.builders.MapPack import MapPack
+        from mcpywrap_core.builders.MapPack import MapPack
         common = fixture(self.root, 'common')
         world_source = self.root/'map'
         world_source.mkdir()
@@ -241,7 +241,7 @@ class LifecycleAudit(unittest.TestCase):
         journal = storage.read(deployment.journal_path)
         journal['owner'] = None
         storage.write(deployment.journal_path, journal)
-        from mcpywrap.runtime.deployment import _replace_with_retry
+        from mcpywrap_core.runtime.deployment import _replace_with_retry
 
         def interrupt_restore(source, target):
             if Path(source).name == 'previous':
@@ -249,7 +249,7 @@ class LifecycleAudit(unittest.TestCase):
             _replace_with_retry(source, target)
 
         recovery = Deployment(self.project)
-        with recovery.lock(), patch('mcpywrap.runtime.deployment._replace_with_retry', side_effect=interrupt_restore):
+        with recovery.lock(), patch('mcpywrap_core.runtime.deployment._replace_with_retry', side_effect=interrupt_restore):
             with self.assertRaisesRegex(OSError, 'interrupted recovery'):
                 recovery.recover()
         self.assertTrue(deployment.journal_path.exists())
@@ -285,7 +285,7 @@ class LifecycleAudit(unittest.TestCase):
         self.assertEqual((deployment.target/'behavior_pack/main.py').read_text(), 'VALUE = 2\n')
 
     def test_dependency_refresh_and_editor_preparation_do_not_write_runtime(self):
-        from mcpywrap.runtime.preparation import prepare_editor, resolve_packs
+        from mcpywrap_core.runtime.preparation import prepare_editor, resolve_packs
         deployment, _ = self.publish()
         before = inventory(deployment.target)
         common = fixture(self.root, 'common')
@@ -352,9 +352,9 @@ class LifecycleAudit(unittest.TestCase):
             return changed
 
         backend.refresh.side_effect = refresh
-        with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
+        with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend), \
                 patch.object(session_worker, 'FileLogServer'), \
-                patch('mcpywrap.mcstudio.runtime_debug.RuntimeControlServer') as server, \
+                patch('mcpywrap_core.mcstudio.runtime_debug.RuntimeControlServer') as server, \
                 patch.object(session_worker.time, 'sleep'):
             server.return_value.server_address = ('localhost', 12345)
             session_worker.run(str(self.project), session)

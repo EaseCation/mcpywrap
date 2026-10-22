@@ -34,8 +34,8 @@ def main():
         bridge_output = output_root / 'bridge'
         capture_output = output_root / 'capture'
     else:
-        bridge_output = root / 'mcpywrap/mcstudio/bridge_payload'
-        capture_output = root / 'mcpywrap/mcstudio/window_capture'
+        bridge_output = root / 'desktop/mcpywrap_assets/bridge_payload'
+        capture_output = root / 'desktop/mcpywrap_assets/window_capture'
 
     with tempfile.TemporaryDirectory(prefix='mcpy-native-') as temporary:
         for arch, script, output in (

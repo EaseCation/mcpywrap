@@ -30,7 +30,7 @@ if __name__ == '__main__':
     with (Path(os.environ['MCPY_PROJECT_ROOT'])/'.mcpy/prepare-events.jsonl').open('a', encoding='utf-8') as stream:
         stream.write(json.dumps({'event': os.environ['MCPY_EVENT'], 'operation': os.environ['MCPY_OPERATION']})+'\\n')
 ''', encoding='utf-8')
-    command = [args.command] if args.command else [sys.executable, '-m', 'mcpywrap']
+    command = [args.command] if args.command else [sys.executable, '-m', 'mcpywrap_core']
     evidence, owned, groups = [], set(), set()
     report = {'ok': False, 'platform': sys.platform, 'project': str(project), 'game_requested': args.game,
               'clients': args.clients, 'verification': 'preparation_only', 'commands': evidence}

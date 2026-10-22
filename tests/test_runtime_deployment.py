@@ -7,11 +7,11 @@ import os
 import unittest
 import uuid
 
-from mcpywrap.dependencies import write_project, read_project
-from mcpywrap.runtime.deployment import Deployment, inventory
-from mcpywrap.mcstudio.deployment_links import ManagedLinks
-from mcpywrap.engines.host import EngineError
-from mcpywrap.mcstudio.processes import identity
+from mcpywrap_core.dependencies import write_project, read_project
+from mcpywrap_core.runtime.deployment import Deployment, inventory
+from mcpywrap_core.mcstudio.deployment_links import ManagedLinks
+from mcpywrap_core.engines.host import EngineError
+from mcpywrap_core.mcstudio.processes import identity
 
 
 def fixture(root, name):
@@ -72,7 +72,7 @@ class DeploymentTests(unittest.TestCase):
     def test_no_change_does_not_replace_runtime(self):
         first, _ = self.publish()
         inode = first.target.stat().st_ino
-        with patch('mcpywrap.runtime.deployment._replace_with_retry', side_effect=AssertionError('unexpected write')):
+        with patch('mcpywrap_core.runtime.deployment._replace_with_retry', side_effect=AssertionError('unexpected write')):
             second, _ = self.publish()
         self.assertEqual(first.record['id'], second.record['id'])
         self.assertEqual(inode, second.target.stat().st_ino)
@@ -92,8 +92,8 @@ class DeploymentTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'Windows extended path spelling')
     def test_pack_filter_accepts_mixed_extended_path_forms(self):
-        from mcpywrap.builders.AddonsPack import AddonsPack
-        from mcpywrap.source_files import long_path
+        from mcpywrap_core.builders.AddonsPack import AddonsPack
+        from mcpywrap_core.source_files import long_path
         ordinary = str(self.project.resolve())
         extended = str(long_path(ordinary))
         pack = AddonsPack('fixture', ordinary, is_origin=True)
@@ -108,7 +108,7 @@ class DeploymentTests(unittest.TestCase):
         old = inventory(deployment.target)
         (self.project/'behavior_pack/main.py').write_text('VALUE = 2\n')
         reader = {'session': 'a'*32}
-        with patch('mcpywrap.runtime.deployment.readers', return_value=[reader]):
+        with patch('mcpywrap_core.runtime.deployment.readers', return_value=[reader]):
             with deployment.lock(), self.assertRaisesRegex(EngineError, '运行包正在使用'):
                 deployment.prepare()
         self.assertEqual(inventory(deployment.target), old)
@@ -117,12 +117,12 @@ class DeploymentTests(unittest.TestCase):
         deployment, _ = self.publish()
         old = inventory(deployment.target)
         (self.project/'behavior_pack/main.py').write_text('VALUE = 2\n')
-        from mcpywrap.runtime.deployment import _replace_with_retry
+        from mcpywrap_core.runtime.deployment import _replace_with_retry
         def failing(source, target):
             if Path(source).name == 'output' and Path(target) == deployment.target:
                 raise OSError('fixture publish failure')
             return _replace_with_retry(source, target)
-        with patch('mcpywrap.runtime.deployment._replace_with_retry', side_effect=failing):
+        with patch('mcpywrap_core.runtime.deployment._replace_with_retry', side_effect=failing):
             with deployment.lock(), self.assertRaises(OSError):
                 deployment.prepare()
         self.assertEqual(inventory(deployment.target), old)
@@ -151,7 +151,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertTrue((unknown/'manifest.json').is_file())
 
     def test_build_cannot_write_runtime_directly(self):
-        from mcpywrap.builders.project_builder import AddonProjectBuilder
+        from mcpywrap_core.builders.project_builder import AddonProjectBuilder
         success, error = AddonProjectBuilder(self.project, self.project/'.mcpy/runtime/assembled').build()
         self.assertFalse(success)
         self.assertIn('run', error)
@@ -170,7 +170,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(list(outside.iterdir()), [marker])
 
     def test_build_rejects_link_target_before_resolving_it(self):
-        from mcpywrap.builders.project_builder import AddonProjectBuilder
+        from mcpywrap_core.builders.project_builder import AddonProjectBuilder
         outside = self.root/'outside'
         outside.mkdir()
         marker = outside/'keep.txt'
@@ -182,7 +182,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(list(outside.iterdir()), [marker])
 
     def test_map_build_rejects_link_before_clearing_destination(self):
-        from mcpywrap.builders.project_builder import MapProjectBuilder
+        from mcpywrap_core.builders.project_builder import MapProjectBuilder
         outside = self.root/'outside-map'
         outside.mkdir()
         marker = outside/'level.dat'
@@ -204,7 +204,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((outside/'keep').read_bytes(), b'owned elsewhere')
 
     def test_world_delete_rejects_link_and_preserves_external_world(self):
-        from mcpywrap.runtime import instances
+        from mcpywrap_core.runtime import instances
         outside = self.root/'external-world'
         outside.mkdir()
         (outside/'level.dat').write_bytes(b'world to preserve')
@@ -216,7 +216,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual((outside/'level.dat').read_bytes(), b'world to preserve')
 
     def test_link_rollback_preserves_later_registration(self):
-        from mcpywrap.runtime import storage
+        from mcpywrap_core.runtime import storage
         deployment, pack = self.publish()
         links = ManagedLinks(self.root/'engine', self.project)
         links.publish([pack], deployment.record['id'])
@@ -232,7 +232,7 @@ class DeploymentTests(unittest.TestCase):
         self.assertTrue((links.root/key).is_dir())
 
     def test_link_rollback_restores_metadata_without_changing_reused_links(self):
-        from mcpywrap.runtime import storage
+        from mcpywrap_core.runtime import storage
         deployment, pack = self.publish()
         links = ManagedLinks(self.root/'engine', self.project)
         links.publish([pack], deployment.record['id'])
@@ -245,8 +245,8 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(storage.read(links.path), before)
 
     def test_world_lease_survives_worker_exit_and_blocks_other_projects(self):
-        from mcpywrap.runtime import instances, storage
-        from mcpywrap.mcstudio.sessions import session_path
+        from mcpywrap_core.runtime import instances, storage
+        from mcpywrap_core.mcstudio.sessions import session_path
         other = fixture(self.root, 'other')
         world = self.root/'shared-worlds'/'one-world'
         record = {'project': str(self.project), 'session': 'a'*32, 'state': 'failed',
@@ -266,8 +266,8 @@ class DeploymentTests(unittest.TestCase):
             pass
 
     def test_world_launch_identity_gap_requires_recovery(self):
-        from mcpywrap.runtime import instances, storage
-        from mcpywrap.mcstudio.sessions import session_path
+        from mcpywrap_core.runtime import instances, storage
+        from mcpywrap_core.mcstudio.sessions import session_path
         world = self.root/'shared-worlds'/'one-world'
         record = {'project': str(self.project), 'session': 'a'*32, 'state': 'starting',
                   'phase': 'prepared', 'worker': None, 'game': None}

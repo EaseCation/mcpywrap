@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from mcpywrap.mcstudio.launcher_python import LauncherPythonChannel
-from mcpywrap.mcstudio.launcher_control import LauncherProcessMismatch
-from mcpywrap.mcstudio.runtime_debug import RuntimeControlServer, control_request
+from mcpywrap_core.mcstudio.launcher_python import LauncherPythonChannel
+from mcpywrap_core.mcstudio.launcher_control import LauncherProcessMismatch
+from mcpywrap_core.mcstudio.runtime_debug import RuntimeControlServer, control_request
 
 
 class LauncherPythonTests(unittest.TestCase):
@@ -58,7 +58,7 @@ class LauncherPythonTests(unittest.TestCase):
     def test_wrong_process_metadata_rejected_before_connect(self):
         self.channel.metadata.write_text(json.dumps({'protocol': 1, 'pid': 999, 'socket': '/tmp/unused'}))
         self.channel.metadata.chmod(0o600)
-        with patch('mcpywrap.mcstudio.launcher_control.socket.socket') as connect:
+        with patch('mcpywrap_core.mcstudio.launcher_control.socket.socket') as connect:
             with self.assertRaisesRegex(LauncherProcessMismatch, '不属于当前游戏进程'):
                 self.channel.status()
         connect.assert_not_called()
@@ -71,7 +71,7 @@ class LauncherPythonTests(unittest.TestCase):
                 self.channel.metadata.write_text(json.dumps({'protocol': protocol, 'pid': pid,
                                                             'socket': '/tmp/unused'}))
                 self.channel.metadata.chmod(mode)
-                with patch('mcpywrap.mcstudio.launcher_control.socket.socket') as connect:
+                with patch('mcpywrap_core.mcstudio.launcher_control.socket.socket') as connect:
                     with self.assertRaises(ValueError) as error:
                         self.channel.status()
                 self.assertNotIsInstance(error.exception, LauncherProcessMismatch)
@@ -85,9 +85,9 @@ class LauncherPythonTests(unittest.TestCase):
         server.start()
         self.addCleanup(server.close)
         (self.root / 'control.json').write_text(json.dumps({'port': server.server_address[1], 'token': 'test-token'}))
-        with patch('mcpywrap.mcstudio.sessions.session_path', return_value=self.root), \
-             patch('mcpywrap.mcstudio.sessions.read', return_value={'state': 'running', 'worker': {'pid': 1}}), \
-             patch('mcpywrap.mcstudio.processes.checked_process', return_value=True):
+        with patch('mcpywrap_core.mcstudio.sessions.session_path', return_value=self.root), \
+             patch('mcpywrap_core.mcstudio.sessions.read', return_value={'state': 'running', 'worker': {'pid': 1}}), \
+             patch('mcpywrap_core.mcstudio.processes.checked_process', return_value=True):
             first = control_request('.', 'e' * 32, 'submit', code='answer = 42', side='client', condition='True')
             second = control_request('.', 'e' * 32, 'python-result', request_id=first['request_id'])
         fake.submit.assert_called_once_with('answer = 42', 'True', None)

@@ -53,7 +53,7 @@ def main():
     if len((profile/'AppData/Roaming').parts) != 5:
         if not profile.drive.endswith(':'):
             parser.error('This engine acceptance fixture requires a local Windows drive.')
-        from mcpywrap.mcstudio.symlinks import _create_directory_link
+        from mcpywrap_core.mcstudio.symlinks import _create_directory_link
         alias_parent = Path(tempfile.mkdtemp(prefix='.mcpy-audit-', dir=profile.anchor))
         alias = alias_parent/'profile'
         try:
@@ -82,7 +82,7 @@ def main():
 
     def call(label, *command, expect=True, extra_env=None):
         started = time.monotonic()
-        completed = subprocess.run([sys.executable, '-m', 'mcpywrap', '--local', '--project', str(project),
+        completed = subprocess.run([sys.executable, '-m', 'mcpywrap_core', '--local', '--project', str(project),
                                     '--non-interactive', *command, '--json'], cwd=repo, env=dict(env, **(extra_env or {})),
                                    capture_output=True, text=True, encoding='utf-8', timeout=360)
         (evidence/(label + '.stdout')).write_text(completed.stdout, encoding='utf-8')
@@ -184,7 +184,7 @@ class Audit:
 ''', encoding='utf-8')
     (root/'common/behavior_pack/AuditDependency.py').write_text("VALUE = 'dependency-present'\n", encoding='utf-8')
     if args.with_hook:
-        from mcpywrap.dependencies import read_project, write_project
+        from mcpywrap_core.dependencies import read_project, write_project
         tools = project/'tools'
         tools.mkdir(exist_ok=True)
         (tools/'generate.py').write_text("""from pathlib import Path
@@ -203,9 +203,9 @@ if (root/'.mcpy/fail-hook').exists():
     try:
         call('capabilities', 'doctor', '--capabilities')
         if args.migration:
-            from mcpywrap.mcstudio.symlinks import _create_directory_link
-            from mcpywrap.runtime import storage
-            from mcpywrap.runtime.deployment import inventory
+            from mcpywrap_core.mcstudio.symlinks import _create_directory_link
+            from mcpywrap_core.runtime import storage
+            from mcpywrap_core.runtime.deployment import inventory
             legacy = root/'legacy-parent'
             assembled = legacy/'.mcpy/runtime/assembled'
             for kind in ('behavior','resource'):
@@ -236,7 +236,7 @@ if (root/'.mcpy/fail-hook').exists():
             assert plan['can_apply'] and len([c for c in plan['changes'] if c['action']=='migrate'])==2,plan
             injection=root/'failure-injection'
             injection.mkdir()
-            (injection/'sitecustomize.py').write_text("import os\nif os.environ.get('MCPY_AUDIT_FAIL_LAUNCH') == '1':\n    import mcpywrap.mcstudio.game as game\n    def fail(*args, **kwargs):\n        raise OSError('injected failure after global publication')\n    game.open_game = fail\n",encoding='utf-8')
+            (injection/'sitecustomize.py').write_text("import os\nif os.environ.get('MCPY_AUDIT_FAIL_LAUNCH') == '1':\n    import mcpywrap_core.mcstudio.game as game\n    def fail(*args, **kwargs):\n        raise OSError('injected failure after global publication')\n    game.open_game = fail\n",encoding='utf-8')
             failed=call('migration-injected-failure',*migration,'--apply','--expect',plan['plan_digest'],expect=False,
                 extra_env={'MCPY_AUDIT_FAIL_LAUNCH':'1','PYTHONPATH':str(injection)+os.pathsep+str(repo)})
             assert 'injected failure' in failed.get('error',''),failed
@@ -323,7 +323,7 @@ if (root/'.mcpy/fail-hook').exists():
                 stop('cleanup-'+item['session'], item['session'])
         if profile_alias:
             alias, expected = profile_alias
-            from mcpywrap.mcstudio.deployment_links import is_link, unlink
+            from mcpywrap_core.mcstudio.deployment_links import is_link, unlink
             if not is_link(alias) or alias.resolve() != expected:
                 raise RuntimeError('Test profile alias changed externally; preserved for inspection: ' + str(alias))
             unlink(alias)

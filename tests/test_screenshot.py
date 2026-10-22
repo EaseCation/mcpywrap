@@ -10,10 +10,10 @@ from unittest.mock import patch
 import zlib
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.engines.host import EngineError
-from mcpywrap.mcstudio import screenshot
-from mcpywrap.mcstudio.image import png_bytes
+from mcpywrap_core.cli import cli
+from mcpywrap_core.engines.host import EngineError
+from mcpywrap_core.mcstudio import screenshot
+from mcpywrap_core.mcstudio.image import png_bytes
 
 
 def png_rows(png):
@@ -38,7 +38,7 @@ class ImageTests(unittest.TestCase):
 
     def test_windows_still_uses_the_existing_capture_path(self):
         with patch.object(screenshot.sessions, 'read', return_value={'backend': 'windows'}), \
-             patch('mcpywrap.mcstudio.window.operate', return_value={'content': b'png'}) as operate:
+             patch('mcpywrap_core.mcstudio.window.operate', return_value={'content': b'png'}) as operate:
             self.assertEqual(screenshot.capture('.', 'session', True), {'content': b'png'})
         operate.assert_called_once_with('.', 'session', 'screenshot', {'background_only': True})
 
@@ -162,9 +162,9 @@ class NativeScreenshotTests(unittest.TestCase):
                 self.assertEqual(self.calls[-1][1]['op'], 'release')
 
     def test_macos_recording_remains_explicitly_unsupported(self):
-        from mcpywrap.mcstudio import recordings
+        from mcpywrap_core.mcstudio import recordings
         with patch.object(recordings, 'cleanup'), \
-             patch('mcpywrap.mcstudio.window.session_game', side_effect=AssertionError('Windows target selection')):
+             patch('mcpywrap_core.mcstudio.window.session_game', side_effect=AssertionError('Windows target selection')):
             with self.assertRaises(recordings.RecordingError) as caught:
                 recordings.start(self.root, 'a'*32)
         self.assertEqual(caught.exception.code, 'capability_missing')
@@ -172,10 +172,10 @@ class NativeScreenshotTests(unittest.TestCase):
 
     def test_host_capabilities_follow_selected_runtime_without_enabling_video(self):
         from types import SimpleNamespace
-        from mcpywrap.remote.service import capabilities
+        from mcpywrap_core.remote.service import capabilities
         backend = SimpleNamespace(id='macos-arm64', capabilities=(), managed_install=True,
                                   diagnose=lambda: {'ok': True, 'runtime': str(self.root)})
-        with patch('mcpywrap.engines.backend.get_backend', return_value=backend):
+        with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend):
             info = capabilities()
             self.assertIn('screenshot', info['capabilities'])
             self.assertNotIn('record', info['capabilities'])

@@ -15,8 +15,8 @@ import zipfile
 from unittest.mock import patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.minecraft import modsdk_environment as sdk
+from mcpywrap_core.cli import cli
+from mcpywrap_core.minecraft import modsdk_environment as sdk
 
 VERSION = '3.9.0.79920'
 DIST = 'mc_netease_sdk-' + VERSION + '.dist-info'

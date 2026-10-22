@@ -7,11 +7,11 @@ import unittest
 from unittest.mock import Mock, patch
 from click.testing import CliRunner
 
-from mcpywrap.cli import cli
-from mcpywrap.engines.macos import MacOSBackend
-from mcpywrap.engines.host import EngineError
-from mcpywrap.mcstudio import sessions
-from mcpywrap.mcstudio.network import ServerTarget
+from mcpywrap_core.cli import cli
+from mcpywrap_core.engines.macos import MacOSBackend
+from mcpywrap_core.engines.host import EngineError
+from mcpywrap_core.mcstudio import sessions
+from mcpywrap_core.mcstudio.network import ServerTarget
 
 
 class MacOSNetworkTests(unittest.TestCase):
@@ -22,12 +22,12 @@ class MacOSNetworkTests(unittest.TestCase):
         self.backend = MacOSBackend()
         self.state = {'runtime': str(self.root/'runtime'), 'game': str(self.root/'game'),
                       'profile': {'apk': {'version': '3.10'}}, 'network_connect_protocol': 1}
-        for name, value in [('mcpywrap.engines.backend.get_backend', self.backend),
-                            ('mcpywrap.engines.macos.require_macos', {}),
-                            ('mcpywrap.engines.macos_network.require_macos', {}),
-                            ('mcpywrap.engines.macos.ensure_runtime', self.state),
-                            ('mcpywrap.engines.macos.pinned_runtime', self.state),
-                            ('mcpywrap.engines.install.home', self.root/'resources')]:
+        for name, value in [('mcpywrap_core.engines.backend.get_backend', self.backend),
+                            ('mcpywrap_core.engines.macos.require_macos', {}),
+                            ('mcpywrap_core.engines.macos_network.require_macos', {}),
+                            ('mcpywrap_core.engines.macos.ensure_runtime', self.state),
+                            ('mcpywrap_core.engines.macos.pinned_runtime', self.state),
+                            ('mcpywrap_core.engines.install.home', self.root/'resources')]:
             obj = patch(name, return_value=value); obj.start(); self.addCleanup(obj.stop)
         obj = patch.object(sessions, 'start', side_effect=self.start)
         self.start_mock = obj.start(); self.addCleanup(obj.stop)
@@ -50,9 +50,9 @@ class MacOSNetworkTests(unittest.TestCase):
             self.assertEqual(record['session'], data['session'])
             return Mock()
 
-        with patch('mcpywrap.engines.preferences.NativePreferences'), \
+        with patch('mcpywrap_core.engines.preferences.NativePreferences'), \
                 patch.object(sessions, 'require_launch_requested') as requested, \
-                patch('mcpywrap.engines.macos.launch_session', side_effect=launched):
+                patch('mcpywrap_core.engines.macos.launch_session', side_effect=launched):
             self.backend.launch(data, None)
         requested.assert_called_once_with(data['project'], data['session'])
 
@@ -96,7 +96,7 @@ class MacOSNetworkTests(unittest.TestCase):
 
     def test_configured_run_and_world_flags(self):
         (self.root/'pyproject.toml').write_text('[project]\nname="network-test"\nversion="0.0.0"\n[tool.mcpywrap.server]\nhost="localhost"\nport=29132\n')
-        with patch('mcpywrap.mcstudio.network.prepare_project', return_value=[]):
+        with patch('mcpywrap_core.mcstudio.network.prepare_project', return_value=[]):
             result = self.call('run', '--no-gui', '--detach')
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertEqual(json.loads(result.stdout)['mode'], 'network')
@@ -108,8 +108,8 @@ class MacOSNetworkTests(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout)['instances'], [])
 
     def test_connect_installs_missing_resources_once(self):
-        with patch('mcpywrap.engines.macos.ensure_runtime', side_effect=[EngineError('missing', 'setup_required'), self.state]), \
-                patch('mcpywrap.commands.engine_cmd.perform_install') as install:
+        with patch('mcpywrap_core.engines.macos.ensure_runtime', side_effect=[EngineError('missing', 'setup_required'), self.state]), \
+                patch('mcpywrap_core.commands.engine_cmd.perform_install') as install:
             result = self.call('connect', 'localhost', '--detach')
         self.assertEqual(result.exit_code, 0, result.output)
         install.assert_called_once()
@@ -127,7 +127,7 @@ class MacOSNetworkTests(unittest.TestCase):
         self.assertTrue(data['connection_verified'])
 
     def test_worker_rejects_server_execution_and_reload(self):
-        from mcpywrap.mcstudio.runtime_debug import RuntimeControlServer, recv_exact
+        from mcpywrap_core.mcstudio.runtime_debug import RuntimeControlServer, recv_exact
         import socket, struct
         channel = Mock()
         server = RuntimeControlServer(channel, 'test', mode='network'); server.start()

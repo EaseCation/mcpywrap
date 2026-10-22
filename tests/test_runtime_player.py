@@ -4,11 +4,11 @@ import types
 import unittest
 from unittest.mock import Mock, patch
 from click.testing import CliRunner
-from mcpywrap.cli import cli
+from mcpywrap_core.cli import cli
 
 from test_runtime_ui import API, GUI
-from mcpywrap.mcstudio.runtime_ui_payload import UIController, UIError
-from mcpywrap.mcstudio.runtime_player_payload import PlayerController
+from mcpywrap_core.mcstudio.runtime_ui_payload import UIController, UIError
+from mcpywrap_core.mcstudio.runtime_player_payload import PlayerController
 
 
 def item(name,count=1):
@@ -127,7 +127,7 @@ class PlayerTests(unittest.TestCase):
         self.assertFalse(self.p.snapshot()['target']['in_reach'])
 
     def test_cli_accepts_negative_world_coordinates_without_shell_workarounds(self):
-        with patch('mcpywrap.mcstudio.runtime_ui.execute',return_value={'ok':True}) as execute:
+        with patch('mcpywrap_core.mcstudio.runtime_ui.execute',return_value={'ok':True}) as execute:
             result=CliRunner().invoke(cli,['--local','runtime','player','look-at','-10','65','-20','--session','a'*32,'--json'])
         self.assertEqual(result.exit_code,0,result.output)
         self.assertEqual(execute.call_args.args[3],{'x':-10.,'y':65.,'z':-20.})

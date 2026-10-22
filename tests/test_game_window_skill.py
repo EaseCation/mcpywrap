@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import Mock, patch
 import zlib
 
-from mcpywrap.mcstudio import window, sessions
+from mcpywrap_core.mcstudio import window, sessions
 
 
 class SkillWindowTests(unittest.TestCase):
@@ -241,7 +241,7 @@ class SkillWindowTests(unittest.TestCase):
                 json.dumps({'executable_sha256': hashlib.sha256(b'original').hexdigest()}),
                 encoding='utf-8')
             target = window.GameWindow.__new__(window.GameWindow)
-            with patch.object(window, '__file__', str(Path(folder) / 'window.py')):
+            with patch('mcpywrap_core.host_assets.asset_directory', return_value=payload):
                 with self.assertRaisesRegex(window.BackgroundCaptureUnavailable, '完整性'):
                     target._background_helper()
 
@@ -251,7 +251,7 @@ class SkillWindowTests(unittest.TestCase):
             fake = Mock()
             fake.screenshot_with_fallback.side_effect = ValueError('游戏客户区被其他窗口覆盖')
             from click.testing import CliRunner
-            from mcpywrap.cli import cli
+            from mcpywrap_core.cli import cli
             with patch.object(sessions, 'read', return_value={'backend': 'windows'}), \
                     patch.object(window, 'session_game', return_value={}), \
                     patch.object(window, 'GameWindow', return_value=fake):
@@ -278,7 +278,7 @@ class SkillWindowTests(unittest.TestCase):
             output = Path(folder) / 'already.png'
             output.write_bytes(b'preserve')
             from click.testing import CliRunner
-            from mcpywrap.cli import cli
+            from mcpywrap_core.cli import cli
             with patch.object(window, 'session_game') as lookup:
                 result = CliRunner().invoke(cli, ['--local', '--project', folder, 'screenshot', '--session', 'id', '--output', str(output), '--json'])
             self.assertEqual(result.exit_code, 1)

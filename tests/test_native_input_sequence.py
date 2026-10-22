@@ -8,8 +8,8 @@ import tempfile
 import time
 import unittest
 
-from mcpywrap.mcstudio.input_sequence import run_sequence
-from mcpywrap.mcstudio.window import GameWindow, desktop_input_lock
+from mcpywrap_core.mcstudio.input_sequence import run_sequence
+from mcpywrap_core.mcstudio.window import GameWindow, desktop_input_lock
 
 
 @unittest.skipUnless(os.name == 'nt' and os.environ.get('MCPY_NATIVE_TESTS') == '1', 'opt-in interactive Windows desktop')

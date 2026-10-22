@@ -4,44 +4,29 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcpywrap"
-version = "0.5.8"
-description = "A wrapper for Minecraft China Edition Addons management"
+dynamic = ["version", "dependencies"]
+description = "Complete mcpy desktop tools, powered by the shared mcpywrap-core"
 readme = "README.md"
 authors = [{name = "boybook", email = "boybook@easecation.net"}]
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
-]
 requires-python = ">=3.9"
-dependencies = [
-    "pip>=23",
-    "build>=1.0",
-    "click>=8.0.0",
-    "watchdog>=2.0.0",
-    "twine>=3.4.0",
-    "tomli",
-    "tomli-w",
-    "setuptools",
-    "packaging>=21",
-    "jsonschema>=4.18,<5",
-    "PySide6-Essentials>=6.6,<7; sys_platform == 'win32' or sys_platform == 'darwin'",
-    "psutil>=5.8.0",
-    "rich>=10.0.0"
-]
 
 [project.scripts]
-mcpywrap = "mcpywrap.__main__:main"
-mcpy = "mcpywrap.__main__:main"
+mcpy = "mcpywrap_core.__main__:main"
+mcpywrap = "mcpywrap_core.__main__:main"
 
 [project.urls]
-"Homepage" = "https://github.com/EaseCation/mcpywrap"
+Homepage = "https://github.com/EaseCation/mcpywrap"
 "Bug Tracker" = "https://github.com/EaseCation/mcpywrap/issues"
 
+[tool.setuptools]
+package-dir = {"" = "desktop"}
+
 [tool.setuptools.packages.find]
-include = ["mcpywrap*"]
+where = ["desktop"]
+include = ["mcpywrap_assets"]
+namespaces = false
 
 [tool.setuptools.package-data]
-"mcpywrap.ui" = ["assets/*.png", "assets/*.icns", "assets/mcpy.icon/*.json", "assets/mcpy.icon/Assets/*.svg"]
-"mcpywrap.mcstudio" = ["bridge_payload/*.exe", "bridge_payload/*.dll", "bridge_payload/*.cer", "bridge_payload/manifest.json", "window_capture/*.exe", "window_capture/manifest.json"]
+mcpywrap_assets = ["bridge_payload/*.exe", "bridge_payload/*.dll", "bridge_payload/*.cer", "bridge_payload/*.json", "window_capture/*.exe", "window_capture/*.json"]

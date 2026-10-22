@@ -1,0 +1,69 @@
+"""Versioned engineering API. All frontends call the same operation functions."""
+from pathlib import Path
+
+from . import __version__
+from .host import HOST_API, HostServices, host_scope, current_host
+
+CORE_API = 1
+OPERATIONS = ('resolve', 'build', 'package', 'sync')
+
+
+class Core:
+    def __init__(self, host=None):
+        self.host = host or current_host()
+
+    def describe(self):
+        return {'core_api': CORE_API, 'host_api': HOST_API, 'version': __version__,
+                'operations': list(OPERATIONS), 'capabilities': self.host.capabilities()}
+
+    def execute(self, operation, project, **options):
+        """Execute or raise the original structured error; never invoke another core."""
+        if operation not in OPERATIONS:
+            raise ValueError('未知工程操作：' + str(operation))
+        allowed = {'resolve': set(), 'build': {'merge'}, 'package': {'merge'},
+                   'sync': {'install', 'migrate_windows_lock'}}[operation]
+        if set(options) - allowed or any(type(value) is not bool for value in options.values()):
+            raise ValueError('无效的工程操作参数')
+        project = Path(project).expanduser().resolve()
+        if not project.is_dir() or not (project/'pyproject.toml').is_file():
+            raise ValueError('未找到项目 pyproject.toml：' + str(project))
+        from .command_context import project_scope
+        with host_scope(self.host), project_scope(project) as context:
+            if operation == 'resolve':
+                from .dependencies import DependencyService
+                manager = DependencyService(project).resolve()
+                result = {'project': str(project), 'dependencies': [
+                    {'name': pack.pkg_name, 'path': str(pack.path)}
+                    for pack in manager.get_all_dependencies().values()], 'warnings': manager.warnings}
+            elif operation == 'build':
+                from .operations.build import build_project
+                result = build_project(project, **options)
+            elif operation == 'package':
+                from .operations.package import package_project
+                result = package_project(project, **options)
+            else:
+                from .operations.sync import sync_project
+                result = sync_project(project, **options)
+            if context.warnings:
+                result['warnings'] = list(dict.fromkeys([*result.get('warnings', []), *context.warnings]))
+            return result
+
+    def request(self, request):
+        """Transport-neutral envelope. Authentication/path grants belong to the host.
+
+        The host resolves an authorized project ID to a path before calling this
+        method. Do not expose raw caller-supplied paths on an unauthenticated port.
+        """
+        try:
+            if not isinstance(request, dict) or request.get('core_api') != CORE_API:
+                raise ValueError('不兼容的核心协议')
+            if request.get('operation') == 'describe':
+                return {'ok': True, 'result': self.describe()}
+            options = request.get('options', {})
+            if not isinstance(options, dict) or not isinstance(request.get('project'), str):
+                raise ValueError('无效的工程请求')
+            result = self.execute(request.get('operation'), request['project'], **options)
+            return {'ok': True, 'result': result, 'core': self.describe()}
+        except (ValueError, OSError) as error:
+            return {'ok': False, 'error': str(error), 'code': getattr(error, 'code', 'operation_failed'),
+                    'hint': getattr(error, 'hint', None), 'details': getattr(error, 'details', {})}

@@ -12,8 +12,8 @@ from pathlib import Path
 
 from test_runtime_deployment import directory_link, fixture
 
-from mcpywrap.runtime import storage
-from mcpywrap.utils.console import echo
+from mcpywrap_core.runtime import storage
+from mcpywrap_core.utils.console import echo
 
 
 class DeploymentEncodingTests(unittest.TestCase):
@@ -38,7 +38,7 @@ class DeploymentEncodingTests(unittest.TestCase):
             [
                 sys.executable,
                 "-m",
-                "mcpywrap",
+                "mcpywrap_core",
                 "--local",
                 "--project",
                 str(self.project),
@@ -95,8 +95,8 @@ class DeploymentEncodingTests(unittest.TestCase):
         # Use real GBK input/output streams; emulate only the terminal detection.
         script = (
             "from unittest.mock import patch\n"
-            "from mcpywrap.__main__ import main\n"
-            "with patch('mcpywrap.command_context.human_interaction', return_value=True):\n"
+            "from mcpywrap_core.__main__ import main\n"
+            "with patch('mcpywrap_core.command_context.human_interaction', return_value=True):\n"
             "    main()\n"
         )
         result = subprocess.run(
@@ -166,7 +166,7 @@ class DeploymentEncodingTests(unittest.TestCase):
         injection.mkdir()
         (injection / "sitecustomize.py").write_text(
             "import os\nif os.environ.get('MCPY_EXIT_AFTER_COMMIT') == '1':\n"
-            "    from mcpywrap.mcstudio.deployment_links import ManagedLinks\n"
+            "    from mcpywrap_core.mcstudio.deployment_links import ManagedLinks\n"
             "    original = ManagedLinks.commit\n"
             "    def commit(self, transaction):\n"
             "        original(self, transaction)\n"

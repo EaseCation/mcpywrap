@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from mcpywrap.engines.preferences import NativePreferences, read_properties, write_properties
+from mcpywrap_core.engines.preferences import NativePreferences, read_properties, write_properties
 
 
 class PreferenceTests(unittest.TestCase):

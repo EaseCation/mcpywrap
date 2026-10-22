@@ -7,7 +7,7 @@ import struct
 
 root = Path(__file__).resolve().parent.parent
 source = root / 'native/window_capture/window_capture.cpp'
-payload = root / 'mcpywrap/mcstudio/window_capture'
+payload = root / 'desktop/mcpywrap_assets/window_capture'
 executable = payload / 'mcpy-window-capture.exe'
 manifest = json.loads((payload / 'manifest.json').read_text(encoding='utf-8'))
 assert set(manifest) == {'executable_sha256', 'source_sha256', 'sources', 'media_protocol'}

@@ -79,7 +79,7 @@ mcpy publish
 
 ### 项目结构
 
-- `mcpywrap/` - 主包目录
+- `core/mcpywrap_core/` - Python 实现目录；宿主公开入口为 `mcpywrap_core.api.Core`
   - `cli.py` - Click CLI 入口点
   - `commands/` - 所有CLI命令实现
   - `builders/` - 项目构建器（AddonsPack, MapPack, 依赖管理）
@@ -87,6 +87,8 @@ mcpy publish
   - `mcstudio/` - MC Studio 集成（game, symlinks, runtime配置）
   - `utils/` - 工具函数和项目设置
   - `ui/` - PySide6 用户界面组件
+- `core/mcpywrap_host/` - 固定启动器和核心版本管理
+- `desktop/mcpywrap_assets/` - 完整发行包的宿主资源；`mcpywrap` 是发行包和命令名称，不提供同名 Python 导入包
 
 ### 关键组件详解
 

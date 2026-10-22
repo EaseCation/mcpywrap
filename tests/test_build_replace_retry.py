@@ -6,8 +6,8 @@ import inspect
 from pathlib import Path
 from unittest.mock import patch
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.builders.project_builder import _replace_with_retry, AddonProjectBuilder
+from mcpywrap_core.cli import cli
+from mcpywrap_core.builders.project_builder import _replace_with_retry, AddonProjectBuilder
 from test_local_dependencies import addon
 
 
@@ -19,7 +19,7 @@ def locked(code=5):
 
 class ReplaceRetry(unittest.TestCase):
     def test_recovers_from_transient_windows_lock(self):
-        with patch('mcpywrap.builders.project_builder.os.replace',side_effect=[locked(),locked(32),None]) as replace, patch('mcpywrap.builders.project_builder.time.sleep') as sleep:
+        with patch('mcpywrap_core.builders.project_builder.os.replace',side_effect=[locked(),locked(32),None]) as replace, patch('mcpywrap_core.builders.project_builder.time.sleep') as sleep:
             _replace_with_retry('source','target')
         self.assertEqual(replace.call_count,3)
         self.assertEqual([c.args[0] for c in sleep.call_args_list],[.05,.1])
@@ -27,7 +27,7 @@ class ReplaceRetry(unittest.TestCase):
 
     def test_persistent_lock_is_bounded_and_propagated(self):
         error=locked(33)
-        with patch('mcpywrap.builders.project_builder.os.replace',side_effect=error) as replace, patch('mcpywrap.builders.project_builder.time.sleep') as sleep:
+        with patch('mcpywrap_core.builders.project_builder.os.replace',side_effect=error) as replace, patch('mcpywrap_core.builders.project_builder.time.sleep') as sleep:
             with self.assertRaises(PermissionError) as caught:_replace_with_retry('source','target')
         self.assertIs(caught.exception,error)
         self.assertEqual(replace.call_count,7)
@@ -35,7 +35,7 @@ class ReplaceRetry(unittest.TestCase):
 
     def test_non_windows_or_non_lock_errors_are_not_retried(self):
         for error in (PermissionError('permissions'),FileNotFoundError('missing')):
-            with patch('mcpywrap.builders.project_builder.os.replace',side_effect=error) as replace, patch('mcpywrap.builders.project_builder.time.sleep') as sleep:
+            with patch('mcpywrap_core.builders.project_builder.os.replace',side_effect=error) as replace, patch('mcpywrap_core.builders.project_builder.time.sleep') as sleep:
                 with self.assertRaises(type(error)):_replace_with_retry('source','target')
                 self.assertEqual(replace.call_count,1);sleep.assert_not_called()
 
@@ -56,8 +56,8 @@ class BuildRecovery(unittest.TestCase):
             if Path(src).name == 'output':
                 raise locked()
             return replace(src, dst)
-        with patch('mcpywrap.builders.project_builder.os.replace', side_effect=fail_install), \
-             patch('mcpywrap.builders.project_builder.time.sleep'):
+        with patch('mcpywrap_core.builders.project_builder.os.replace', side_effect=fail_install), \
+             patch('mcpywrap_core.builders.project_builder.time.sleep'):
             ok, error = AddonProjectBuilder(self.source, self.target).build()
         self.assertFalse(ok)
         self.assertIn('locked', error)
@@ -70,8 +70,8 @@ class BuildRecovery(unittest.TestCase):
             if Path(dst) == self.target:
                 raise OSError('restore denied' if Path(src).name == 'previous' else 'install denied')
             return replace(src, dst)
-        with patch('mcpywrap.builders.project_builder.os.replace', side_effect=fail_destination), \
-             patch('mcpywrap.builders.project_builder.report_warning'):
+        with patch('mcpywrap_core.builders.project_builder.os.replace', side_effect=fail_destination), \
+             patch('mcpywrap_core.builders.project_builder.report_warning'):
             ok, error = AddonProjectBuilder(self.source, self.target).build()
         self.assertFalse(ok)
         backup = next(self.source.glob('.mcpy-build-*/previous'))
@@ -86,15 +86,15 @@ class BuildRecovery(unittest.TestCase):
             if Path(src).name == 'output':
                 raise KeyboardInterrupt()
             return replace(src, dst)
-        with patch('mcpywrap.builders.project_builder.os.replace', side_effect=interrupt), \
-             patch('mcpywrap.builders.project_builder.report_warning'):
+        with patch('mcpywrap_core.builders.project_builder.os.replace', side_effect=interrupt), \
+             patch('mcpywrap_core.builders.project_builder.report_warning'):
             with self.assertRaises(KeyboardInterrupt):
                 AddonProjectBuilder(self.source, self.target).build()
         self.assertEqual(len(list(self.source.glob('.mcpy-build-*/previous/known-good.txt'))), 1)
 
     def test_cleanup_failure_keeps_success_and_json_warning(self):
         options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
-        with patch('mcpywrap.builders.project_builder.shutil.rmtree', side_effect=locked()):
+        with patch('mcpywrap_core.builders.project_builder.shutil.rmtree', side_effect=locked()):
             result = CliRunner(**options).invoke(cli, ['--project', str(self.source), 'build', '--json'])
         self.assertEqual(result.exit_code, 0, result.output)
         data = json.loads(result.stdout)
@@ -104,7 +104,7 @@ class BuildRecovery(unittest.TestCase):
         self.assertEqual(len(list(self.source.glob('.mcpy-build-*/previous/known-good.txt'))), 1)
 
     def test_assembly_failure_leaves_existing_build_and_cleans_stage(self):
-        with patch('mcpywrap.builders.project_builder.assemble_addon', side_effect=ValueError('bad input')):
+        with patch('mcpywrap_core.builders.project_builder.assemble_addon', side_effect=ValueError('bad input')):
             ok, error = AddonProjectBuilder(self.source, self.target).build()
         self.assertFalse(ok)
         self.assertEqual(error, 'bad input')

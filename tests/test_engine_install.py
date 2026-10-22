@@ -10,8 +10,8 @@ import tempfile
 import unittest
 from unittest.mock import patch, Mock
 import zipfile
-from mcpywrap.engines import install as installer
-from mcpywrap.engines.host import EngineError
+from mcpywrap_core.engines import install as installer
+from mcpywrap_core.engines.host import EngineError
 
 
 class InstallerTests(unittest.TestCase):
@@ -61,7 +61,7 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse(installer.home().exists())
 
     def test_old_missing_version_is_not_guessed_on_cdn(self):
-        from mcpywrap.engines import official
+        from mcpywrap_core.engines import official
         with patch.object(official, 'discover', return_value={'version':'9.9', 'url':'https://g79.gdl.netease.com/dev_launcher_9.9.apk'}) as discover:
             with self.assertRaises(EngineError) as caught:
                 installer.official_apk_url(self.profile)
@@ -70,7 +70,7 @@ class InstallerTests(unittest.TestCase):
 
     def test_automatic_install_discovers_profile_before_installing(self):
         self.cat['apk_source'] = 'netease-pe'; self.catalog.write_text(json.dumps(self.cat))
-        with patch('mcpywrap.engines.official.prepare_latest', return_value=(self.profile, self.apk)) as latest:
+        with patch('mcpywrap_core.engines.official.prepare_latest', return_value=(self.profile, self.apk)) as latest:
             result = installer.install(str(self.catalog))
         self.assertTrue(result['ok']); latest.assert_called_once()
         self.assertEqual(installer.selected()['catalog']['apk_source'], 'netease-pe')
@@ -79,7 +79,7 @@ class InstallerTests(unittest.TestCase):
         installer.install(str(self.catalog), str(self.apk))
         before = (installer.home()/'current.json').read_bytes()
         self.cat['apk_source'] = 'netease-pe'; self.catalog.write_text(json.dumps(self.cat))
-        with patch('mcpywrap.engines.official.prepare_latest', side_effect=EngineError('offline','version_check_failed')):
+        with patch('mcpywrap_core.engines.official.prepare_latest', side_effect=EngineError('offline','version_check_failed')):
             with self.assertRaises(EngineError): installer.install(str(self.catalog))
         self.assertEqual((installer.home()/'current.json').read_bytes(), before)
         self.assertTrue(installer.diagnose(check_files=True)['ok'])
@@ -302,7 +302,7 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse(target.with_suffix('.bin.part').exists())
 
     def test_profile_is_derived_from_actual_future_apk(self):
-        from mcpywrap.engines.apk_profile import inspect_apk
+        from mcpywrap_core.engines.apk_profile import inspect_apk
         apk = self.root/'dev_launcher_3.11.777.123456.apk'
         elf = bytearray(64); elf[:6] = b'\x7fELF\x02\x01'; struct.pack_into('<H', elf, 18, 183)
         with zipfile.ZipFile(apk, 'w') as archive:
@@ -319,7 +319,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual((destination/'assets/new-resource.json').read_bytes(), b'{}')
 
     def test_dynamic_download_uses_discovered_url_and_reuses_verified_receipt(self):
-        from mcpywrap.engines import official
+        from mcpywrap_core.engines import official
         apk = self.root/'latest.apk'; apk.write_bytes(b'official bytes')
         item = {'channel':'pe','version':'8.2.123.456789','url':'https://g79.gdl.netease.com/dev_launcher_8.2.123.456789.apk'}
         def probe(request, **kwargs):
@@ -336,7 +336,7 @@ class InstallerTests(unittest.TestCase):
         with patch.object(official, 'discover', return_value=item) as discover, \
                 patch.object(official, 'urlopen', side_effect=probe), \
                 patch.object(installer, '_fetch_ranges', side_effect=download) as fetch, \
-                patch('mcpywrap.engines.apk_profile.inspect_apk', side_effect=inspect):
+                patch('mcpywrap_core.engines.apk_profile.inspect_apk', side_effect=inspect):
             first, target = official.prepare_latest(installer.home())
             second, reused = official.prepare_latest(installer.home())
         self.assertEqual(fetch.call_count,1)

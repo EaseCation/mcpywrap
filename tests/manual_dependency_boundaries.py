@@ -9,12 +9,12 @@ import time
 import zipfile
 
 from manual_integration import make_addon, snapshot
-from mcpywrap.dependencies import read_project, write_project
+from mcpywrap_core.dependencies import read_project, write_project
 
 
 def remove_test_links(workspace):
     """只清理指向本次临时项目的链接，让解包验收不借用开发源码。"""
-    from mcpywrap.mcstudio.mcs import get_mcs_game_engine_netease_data_path
+    from mcpywrap_core.mcstudio.mcs import get_mcs_game_engine_netease_data_path
     base = Path(get_mcs_game_engine_netease_data_path())
     for kind in ('behavior', 'resource'):
         folder = base / (kind + '_packs')
@@ -41,7 +41,7 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
 
     def call(project, *command):
-        proc = subprocess.run([sys.executable, '-m', 'mcpywrap', '--local', '--project', str(project),
+        proc = subprocess.run([sys.executable, '-m', 'mcpywrap_core', '--local', '--project', str(project),
                                '--non-interactive', *command, '--json'], capture_output=True,
                               text=True, encoding='utf-8', errors='replace',
                               env=dict(os.environ, PYTHONIOENCODING='utf-8'))

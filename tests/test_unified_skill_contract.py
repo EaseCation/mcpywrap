@@ -6,7 +6,7 @@ import re
 import unittest
 from unittest.mock import Mock, patch
 
-from mcpywrap.input_plan import normalize_input_plan, InputPlanError
+from mcpywrap_core.input_plan import normalize_input_plan, InputPlanError
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -1,0 +1,6 @@
+{
+  "format": 1,
+  "core_api": 1,
+  "requires_host_api": 1,
+  "entrypoint": "mcpywrap_core.api:Core"
+}

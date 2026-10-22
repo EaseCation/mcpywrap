@@ -26,7 +26,7 @@ def main():
     if args.require_background and sys.platform != 'win32':
         parser.error('--require-background 只验证 Windows 前台；macOS 请省略')
     if output.exists():raise ValueError('输出必须是新文件')
-    prefix=[sys.executable,'-X','utf8','-m','mcpywrap','--local','--project',args.project]
+    prefix=[sys.executable,'-X','utf8','-m','mcpywrap_core','--local','--project',args.project]
     history=[]
     def call(*command):
         result,code=invoke_json(prefix+list(command)+['--session',args.session,'--json'],timeout=60)

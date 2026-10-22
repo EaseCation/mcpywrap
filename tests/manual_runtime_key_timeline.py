@@ -62,7 +62,7 @@ class TimelineLiveTest:
         self.owned = False
         self.history = []
         self.report = {'ok': False, 'optional_manual_test': True, 'cases': [], 'history': self.history}
-        self.prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap', '--local', '--project',
+        self.prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap_core', '--local', '--project',
                        str(Path(args.project).resolve()), '--non-interactive']
         self.probe = "sys.modules['_mcpy_optional_key_timeline_probe'].probe"
 

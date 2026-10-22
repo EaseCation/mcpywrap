@@ -11,11 +11,11 @@ from urllib.request import Request, urlopen
 from unittest.mock import Mock, patch
 from types import SimpleNamespace
 
-from mcpywrap.input_executor import InputExecutor
-from mcpywrap.input_plan import input_key_plan, normalize_input_plan, InputPlanError
-from mcpywrap.mcstudio.host_input import WindowsInputAdapter, HostInputManager
-from mcpywrap.mcstudio import window
-from mcpywrap.mcstudio.unified_input import execute
+from mcpywrap_core.input_executor import InputExecutor
+from mcpywrap_core.input_plan import input_key_plan, normalize_input_plan, InputPlanError
+from mcpywrap_core.mcstudio.host_input import WindowsInputAdapter, HostInputManager
+from mcpywrap_core.mcstudio import window
+from mcpywrap_core.mcstudio.unified_input import execute
 
 
 class WindowsUnifiedTests(unittest.TestCase):
@@ -50,10 +50,10 @@ class WindowsUnifiedTests(unittest.TestCase):
             return count
         self.target.user.SendInput.side_effect = send
         self.stack = contextlib.ExitStack()
-        self.stack.enter_context(patch('mcpywrap.mcstudio.host_input.os.name', 'nt'))
-        self.stack.enter_context(patch('mcpywrap.mcstudio.window.session_game', return_value=self.target.game))
-        self.stack.enter_context(patch('mcpywrap.mcstudio.window.GameWindow', return_value=self.target))
-        self.stack.enter_context(patch('mcpywrap.mcstudio.window.desktop_input_lock', return_value=contextlib.nullcontext()))
+        self.stack.enter_context(patch('mcpywrap_core.mcstudio.host_input.os.name', 'nt'))
+        self.stack.enter_context(patch('mcpywrap_core.mcstudio.window.session_game', return_value=self.target.game))
+        self.stack.enter_context(patch('mcpywrap_core.mcstudio.window.GameWindow', return_value=self.target))
+        self.stack.enter_context(patch('mcpywrap_core.mcstudio.window.desktop_input_lock', return_value=contextlib.nullcontext()))
         self.addCleanup(self.stack.close)
 
     def schedule(self, delay, callback):
@@ -131,7 +131,7 @@ class WindowsUnifiedTests(unittest.TestCase):
 
 class UnifiedWorkerRoutingTests(unittest.TestCase):
     def test_http_input_endpoint_preserves_request_and_result(self):
-        from mcpywrap.remote.http_server import GameHTTPServer
+        from mcpywrap_core.remote.http_server import GameHTTPServer
         service = Mock()
         service.instance = 'fixture'
         service.unified_input.return_value = {'ok': True, 'state': 'pending', 'operation_id': 'b'*32, 'request_id': 'b'*32}
@@ -177,16 +177,16 @@ class UnifiedWorkerRoutingTests(unittest.TestCase):
     def test_old_worker_windows_rejected_without_game_fallback(self):
         recipe = input_key_plan('W'); recipe['backend'] = 'windows-sendinput'
         with tempfile.TemporaryDirectory() as directory:
-            with patch('mcpywrap.command_context.remote_url', return_value=None), \
-                 patch('mcpywrap.mcstudio.runtime_ui.execute') as game:
+            with patch('mcpywrap_core.command_context.remote_url', return_value=None), \
+                 patch('mcpywrap_core.mcstudio.runtime_ui.execute') as game:
                 result = execute(Path(directory), 'a'*32, 'run', {'plan': recipe})
             self.assertEqual(result['code'], 'not_supported')
             game.assert_not_called()
 
     def test_remote_worker_receives_same_plan_once_no_device_on_caller(self):
         recipe = normalize_input_plan({'schema_version': 1, 'steps': [{'action': 'player.jump'}]})
-        with patch('mcpywrap.command_context.remote_url', return_value='http://windows'), \
-             patch('mcpywrap.remote.client.Client') as client:
+        with patch('mcpywrap_core.command_context.remote_url', return_value='http://windows'), \
+             patch('mcpywrap_core.remote.client.Client') as client:
             client.return_value.request.side_effect = [
                 {'capabilities': ['unified-input']}, {'ok': True, 'state': 'pending', 'operation_id': 'b'*32, 'request_id': 'b'*32}]
             result = execute(Path('.'), 'a'*32, 'run', {'plan': recipe, 'request_id': 'b'*32})

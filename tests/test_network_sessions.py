@@ -9,15 +9,15 @@ import unittest
 from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.command_context import project_scope
-from mcpywrap.mcstudio import network, sessions
-from mcpywrap.mcstudio.discovery import Engine
+from mcpywrap_core.cli import cli
+from mcpywrap_core.command_context import project_scope
+from mcpywrap_core.mcstudio import network, sessions
+from mcpywrap_core.mcstudio.discovery import Engine
 
 
 class NetworkSessions(unittest.TestCase):
     def setUp(self):
-        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host = patch('mcpywrap_core.engines.backend.describe', return_value={'backend': 'windows'})
         backend_host.start()
         self.addCleanup(backend_host.stop)
         self.temp = tempfile.TemporaryDirectory()
@@ -55,7 +55,7 @@ class NetworkSessions(unittest.TestCase):
         self.assertFalse(self.discovery.call_args.kwargs['read_project_config'])
         self.assertFalse((self.root/'.runtime').exists())  # mocked worker, no world side effects
         # Existing screenshot/input script accepts network status without an arbitrary PID bypass.
-        from mcpywrap.mcstudio import window
+        from mcpywrap_core.mcstudio import window
         with patch.object(sessions, 'read', return_value=self.data):
             self.assertEqual(window.session_game(self.root, data['session']), self.data['game'])
 
@@ -68,7 +68,7 @@ class NetworkSessions(unittest.TestCase):
         self.assertEqual(self.start.call_args.kwargs['network']['engine'], asdict(self.engine))
 
     def test_json_without_detach_fails_before_discovery_or_identity(self):
-        with patch('mcpywrap.mcstudio.mcs_auth.acquire_identity') as acquire:
+        with patch('mcpywrap_core.mcstudio.mcs_auth.acquire_identity') as acquire:
             result = self.call('connect', 'localhost', '--mcs-auth')
         self.assertEqual(result.exit_code, 2)
         self.assertFalse(json.loads(result.stdout)['ok'])

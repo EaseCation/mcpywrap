@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPainter, QColorSpace
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSETS = ROOT/'mcpywrap/ui/assets'
+ASSETS = ROOT/'core/mcpywrap_core/ui/assets'
 
 
 def main():

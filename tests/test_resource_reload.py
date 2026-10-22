@@ -2,8 +2,8 @@
 import unittest
 from unittest.mock import patch
 import types
-from mcpywrap.mcstudio.hot_reload import reload_session, reload_ui
-from mcpywrap.engines.macos import MacOSBackend
+from mcpywrap_core.mcstudio.hot_reload import reload_session, reload_ui
+from mcpywrap_core.engines.macos import MacOSBackend
 
 
 class ResourceReloadTests(unittest.TestCase):
@@ -13,9 +13,9 @@ class ResourceReloadTests(unittest.TestCase):
 
     def test_unavailable_native_resources_never_deploy_or_invoke(self):
         for kind in ('ui','material','shader'):
-            with self.subTest(kind=kind), patch('mcpywrap.mcstudio.sessions.read',return_value=self.data), \
+            with self.subTest(kind=kind), patch('mcpywrap_core.mcstudio.sessions.read',return_value=self.data), \
                     patch.object(MacOSBackend,'deploy') as deploy, \
-                    patch('mcpywrap.mcstudio.runtime_debug.control_request') as request:
+                    patch('mcpywrap_core.mcstudio.runtime_debug.control_request') as request:
                 result=reload_session('.', 'a'*32, kind, 'fixture')
             self.assertEqual(result['state'],'unsupported')
             self.assertIn('重载世界',result['error'])
@@ -24,9 +24,9 @@ class ResourceReloadTests(unittest.TestCase):
     def test_unknown_version_keeps_unverified_shader_and_material_disabled(self):
         self.data['launch']['engine_version'] = 'future'
         for kind in ('material', 'shader'):
-            with self.subTest(kind=kind), patch('mcpywrap.mcstudio.sessions.read', return_value=self.data), \
+            with self.subTest(kind=kind), patch('mcpywrap_core.mcstudio.sessions.read', return_value=self.data), \
                     patch.object(MacOSBackend, 'deploy') as deploy, \
-                    patch('mcpywrap.mcstudio.runtime_debug.control_request') as request:
+                    patch('mcpywrap_core.mcstudio.runtime_debug.control_request') as request:
                 result = reload_session('.', 'a'*32, kind, 'fixture')
             self.assertEqual(result['state'], 'unsupported')
             deploy.assert_not_called(); request.assert_not_called()
@@ -34,17 +34,17 @@ class ResourceReloadTests(unittest.TestCase):
     def test_optional_ui_recognition_failure_blocks_before_deploy(self):
         self.data['launch'].update(runtime='/runtime/app', compat_report='/report.json')
         metadata = {'json_ui_reload_protocol': 1, 'game_compatibility': {'elf_rules_schema': 1}}
-        with patch('mcpywrap.mcstudio.sessions.read', return_value=self.data), \
-                patch('mcpywrap.engines.macos.install.read_json', side_effect=[metadata, {'ui': None}]), \
+        with patch('mcpywrap_core.mcstudio.sessions.read', return_value=self.data), \
+                patch('mcpywrap_core.engines.macos.install.read_json', side_effect=[metadata, {'ui': None}]), \
                 patch.object(MacOSBackend, 'deploy') as deploy, \
-                patch('mcpywrap.mcstudio.runtime_debug.control_request') as request:
+                patch('mcpywrap_core.mcstudio.runtime_debug.control_request') as request:
             result = reload_session('.', 'a'*32, 'ui')
         self.assertEqual(result['state'], 'unsupported')
         deploy.assert_not_called(); request.assert_not_called()
 
     def test_direct_ui_helper_respects_same_restriction(self):
-        with patch('mcpywrap.mcstudio.sessions.read',return_value=self.data), \
-                patch('mcpywrap.mcstudio.runtime_debug.control_request') as request:
+        with patch('mcpywrap_core.mcstudio.sessions.read',return_value=self.data), \
+                patch('mcpywrap_core.mcstudio.runtime_debug.control_request') as request:
             result=reload_ui('.', 'a'*32)
         self.assertEqual(result['state'],'unsupported');request.assert_not_called()
 
@@ -55,11 +55,11 @@ class ResourceReloadTests(unittest.TestCase):
                                   ({'ok': False}, 'failed'),
                                   ({'ok': False, 'unsupported': True}, 'unsupported')):
             with self.subTest(payload=payload), \
-                    patch('mcpywrap.mcstudio.sessions.read', return_value=self.data), \
-                    patch('mcpywrap.engines.macos.install.read_json', return_value={'json_ui_reload_protocol': 1}), \
-                    patch('mcpywrap.mcstudio.processes.checked_process', return_value=True), \
+                    patch('mcpywrap_core.mcstudio.sessions.read', return_value=self.data), \
+                    patch('mcpywrap_core.engines.macos.install.read_json', return_value={'json_ui_reload_protocol': 1}), \
+                    patch('mcpywrap_core.mcstudio.processes.checked_process', return_value=True), \
                     patch.object(MacOSBackend, 'deploy') as deploy, \
-                    patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value={
+                    patch('mcpywrap_core.mcstudio.runtime_debug.control_request', return_value={
                         'state': 'completed', 'side': 'client', 'value': payload}) as request:
                 result = reload_session('.', 'a'*32, 'ui')
             self.assertEqual(result['state'], expected)
@@ -78,9 +78,9 @@ class ResourceReloadTests(unittest.TestCase):
                 self.assertEqual(scope['_result'], expected)
 
     def test_particle_acknowledgement_is_triggered_not_verified_effect(self):
-        with patch('mcpywrap.mcstudio.sessions.read',return_value=self.data), \
+        with patch('mcpywrap_core.mcstudio.sessions.read',return_value=self.data), \
                 patch.object(MacOSBackend,'deploy') as deploy, \
-                patch('mcpywrap.mcstudio.runtime_debug.control_request',return_value={
+                patch('mcpywrap_core.mcstudio.runtime_debug.control_request',return_value={
                     'state':'completed','side':'client','value':{'ok':True}}) as request:
             result=reload_session('.', 'a'*32, 'particle', 'probe.json')
         self.assertEqual(result['state'],'triggered')
@@ -89,9 +89,9 @@ class ResourceReloadTests(unittest.TestCase):
         deploy.assert_called_once();request.assert_called_once()
 
     def test_python_remains_completed(self):
-        with patch('mcpywrap.mcstudio.sessions.read',return_value=self.data), \
+        with patch('mcpywrap_core.mcstudio.sessions.read',return_value=self.data), \
                 patch.object(MacOSBackend,'deploy'), \
-                patch('mcpywrap.mcstudio.runtime_debug.control_request',return_value={
+                patch('mcpywrap_core.mcstudio.runtime_debug.control_request',return_value={
                     'state':'completed','side':'server','value':{'ok':True}}):
             result=reload_session('.', 'a'*32, 'python', 'Probe.config', b'VALUE=1', 'server')
         self.assertEqual(result['state'],'completed')

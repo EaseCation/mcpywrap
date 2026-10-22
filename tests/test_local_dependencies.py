@@ -14,12 +14,12 @@ from unittest.mock import patch, Mock
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from click.testing import CliRunner
 from watchdog.events import FileModifiedEvent, FileDeletedEvent, FileCreatedEvent
-from mcpywrap.cli import cli
-from mcpywrap.dependencies import (DependencyService, DependencyDeclaration, DependencyError,
+from mcpywrap_core.cli import cli
+from mcpywrap_core.dependencies import (DependencyService, DependencyDeclaration, DependencyError,
                                   read_project, write_project, path_for_storage)
-from mcpywrap.builders.dependency_manager import DependencyManager
-from mcpywrap.builders.project_builder import AddonProjectBuilder, MapProjectBuilder
-from mcpywrap.builders.watcher import ProjectWatcher
+from mcpywrap_core.builders.dependency_manager import DependencyManager
+from mcpywrap_core.builders.project_builder import AddonProjectBuilder, MapProjectBuilder
+from mcpywrap_core.builders.watcher import ProjectWatcher
 from runtime_support import prepare_packs as _setup_dependencies
 
 
@@ -77,8 +77,8 @@ class ProjectFixture(unittest.TestCase):
 class Projects(ProjectFixture):
     @unittest.skipUnless(os.name == 'nt', 'Windows extended paths')
     def test_extended_path_parent_dependency(self):
-        from mcpywrap.source_files import long_path
-        from mcpywrap.dependencies import resolve_path
+        from mcpywrap_core.source_files import long_path
+        from mcpywrap_core.dependencies import resolve_path
         resolved = resolve_path(long_path(self.main), '../中文 shared')
         self.assertTrue(resolved.samefile(self.dep))
         self.assertNotIn('..', resolved.parts)
@@ -156,10 +156,10 @@ class Projects(ProjectFixture):
         config = read_project(self.main)
         config['project']['dependencies'] = ['Shared_Pack>=1', 'not-installed; python_version < "2"']
         write_project(self.main, config)
-        with patch('mcpywrap.builders.dependency_manager.metadata.distribution', return_value=FakeDist(self.dep)):
+        with patch('mcpywrap_core.builders.dependency_manager.metadata.distribution', return_value=FakeDist(self.dep)):
             self.add()
             self.assertEqual(len(self.service.resolve().dependency_map), 1)
-        with patch('mcpywrap.builders.dependency_manager.metadata.distribution', return_value=FakeDist(self.dep, '0.1')):
+        with patch('mcpywrap_core.builders.dependency_manager.metadata.distribution', return_value=FakeDist(self.dep, '0.1')):
             with self.assertRaisesRegex(DependencyError, '版本约束'):
                 self.service.resolve()
 
@@ -176,13 +176,13 @@ class Projects(ProjectFixture):
         self.assertEqual(self.service.list(), [])
         self.assertEqual(path_for_storage(self.main, self.dep), '../中文 shared')
         self.assertEqual(path_for_storage(self.main, self.dep, True), self.dep.as_posix())
-        with patch('mcpywrap.dependencies.os.path.relpath', side_effect=ValueError):
+        with patch('mcpywrap_core.dependencies.os.path.relpath', side_effect=ValueError):
             self.assertEqual(path_for_storage(self.main, self.dep), self.dep.as_posix())
 
     def test_symlink_identity(self):
         link = self.root / 'alias'
         try:
-            from mcpywrap.mcstudio.symlinks import _create_directory_link
+            from mcpywrap_core.mcstudio.symlinks import _create_directory_link
             _create_directory_link(str(self.dep), str(link))
         except OSError:
             self.skipTest('系统未授权目录符号链接')
@@ -200,7 +200,7 @@ class Projects(ProjectFixture):
 
     def test_invalid_schema_rejected_before_install(self):
         (self.main / 'pyproject.toml').write_text('project = "invalid"', encoding='utf-8')
-        with patch('mcpywrap.dependencies.subprocess.run') as pip:
+        with patch('mcpywrap_core.dependencies.subprocess.run') as pip:
             with self.assertRaises(DependencyError):
                 self.service.add_package('click')
             pip.assert_not_called()
@@ -209,7 +209,7 @@ class Projects(ProjectFixture):
         config = read_project(self.main)
         config['project']['dependencies'] = ['missing-source>=1']
         write_project(self.main, config)
-        with patch('mcpywrap.builders.dependency_manager.metadata.distribution', return_value=FakeDist(self.root / 'removed')):
+        with patch('mcpywrap_core.builders.dependency_manager.metadata.distribution', return_value=FakeDist(self.root / 'removed')):
             with self.assertRaisesRegex(DependencyError, '安装来源目录不存在'):
                 self.service.resolve()
 
@@ -222,13 +222,13 @@ class Projects(ProjectFixture):
         self.assertEqual((output / 'resource_pack/manifest.json').read_bytes(), (self.main / 'resource_pack/manifest.json').read_bytes())
 
     def test_run_revalidates_before_linking(self):
-        from mcpywrap.runtime.deployment import Deployment, inventory
+        from mcpywrap_core.runtime.deployment import Deployment, inventory
         self.add()
         _setup_dependencies('main', str(self.main))
         deployment = Deployment(self.main)
         before = inventory(deployment.target)
         shutil.rmtree(self.dep)
-        with patch('mcpywrap.mcstudio.deployment_links.ManagedLinks.publish') as link, patch('mcpywrap.mcstudio.game.open_game') as game:
+        with patch('mcpywrap_core.mcstudio.deployment_links.ManagedLinks.publish') as link, patch('mcpywrap_core.mcstudio.game.open_game') as game:
             with deployment.lock(), self.assertRaises(DependencyError):
                 deployment.prepare()
             link.assert_not_called()
@@ -236,7 +236,7 @@ class Projects(ProjectFixture):
         self.assertEqual(inventory(deployment.target), before)
 
     def test_global_links_preserve_unrelated_and_reuse(self):
-        from mcpywrap.mcstudio.symlinks import create_symlinks, _create_directory_link
+        from mcpywrap_core.mcstudio.symlinks import create_symlinks, _create_directory_link
         self.add()
         packs = _setup_dependencies('main', str(self.main))
         global_dir = self.root / 'engine'
@@ -254,8 +254,8 @@ class Projects(ProjectFixture):
         self.assertTrue(collision.is_dir())
 
     def test_game_uses_argument_list_and_own_process(self):
-        game = importlib.import_module('mcpywrap.mcstudio.game')
-        from mcpywrap.mcstudio.discovery import Engine
+        game = importlib.import_module('mcpywrap_core.mcstudio.game')
+        from mcpywrap_core.mcstudio.discovery import Engine
         config = self.root / 'space config.cppconfig'
         config.write_text('{"version":"3.10"}')
         proc = Mock()
@@ -267,7 +267,7 @@ class Projects(ProjectFixture):
             self.assertNotIn('shell', start.call_args.kwargs)
 
     def test_instances_use_explicit_project_root(self):
-        from mcpywrap.runtime.instances import list_instances
+        from mcpywrap_core.runtime.instances import list_instances
         runtime = self.main / '.runtime'
         runtime.mkdir()
         (runtime / 'test.cppconfig').write_text('{"world_info":{"level_id":"test"}}')
@@ -300,7 +300,7 @@ class Projects(ProjectFixture):
                          {p.relative_to(fresh): p.read_bytes() for p in fresh.rglob('*') if p.is_file()})
 
     def test_incremental_events_through_directory_alias(self):
-        from mcpywrap.mcstudio.symlinks import _create_directory_link
+        from mcpywrap_core.mcstudio.symlinks import _create_directory_link
         self.add()
         out = self.main / 'build'
         self.assertTrue(AddonProjectBuilder(self.main, out).build()[0])
@@ -350,7 +350,7 @@ class Projects(ProjectFixture):
         packs = _setup_dependencies('main', str(self.main), raise_errors=True)
         self.assertEqual(len(packs), 1)
         self.assertEqual(Path(packs[0].path), self.main / '.mcpy/runtime/assembled')
-        edit = importlib.import_module('mcpywrap.commands.edit_cmd')
+        edit = importlib.import_module('mcpywrap_core.commands.edit_cmd')
         with patch.object(edit, 'discover_engines'), patch.object(edit, 'require_resources'), patch.object(edit, 'studio_installation', return_value=('test-studio', [])), patch.object(edit, 'create_editor_config', return_value={}) as config, patch.object(edit, 'open_editor'):
             edit.open_edit(str(self.main))
             self.assertEqual(config.call_args.kwargs['addon_paths'], [str(self.main / '.mcpy/editor/assembled')])
@@ -377,7 +377,7 @@ class Projects(ProjectFixture):
 
     def test_cli_add_remove_and_noninteractive(self):
         runner = CliRunner()
-        with cwd(self.main), patch('mcpywrap.dependencies.subprocess.run') as install:
+        with cwd(self.main), patch('mcpywrap_core.dependencies.subprocess.run') as install:
             result = runner.invoke(cli, ['add', '--path', '../中文 shared'])
             self.assertEqual(result.exit_code, 0, result.output)
             install.assert_not_called()
@@ -389,10 +389,10 @@ class Projects(ProjectFixture):
         self.assertTrue(self.dep.exists())
 
     def test_cli_interactive_add_and_remove(self):
-        with cwd(self.main), patch('mcpywrap.commands.dependency_prompt.sys.stdin.isatty', return_value=True):
+        with cwd(self.main), patch('mcpywrap_core.commands.dependency_prompt.sys.stdin.isatty', return_value=True):
             runner = CliRunner()
             # CliRunner 替换 stdin，使用共用交互入口的检查替身。
-            with patch('mcpywrap.commands.add_cmd.require_interactive'), patch('mcpywrap.commands.remove_cmd.require_interactive'):
+            with patch('mcpywrap_core.commands.add_cmd.require_interactive'), patch('mcpywrap_core.commands.remove_cmd.require_interactive'):
                 result = runner.invoke(cli, ['add'], input='2\n../中文 shared\n')
                 self.assertEqual(result.exit_code, 0, result.output)
                 result = runner.invoke(cli, ['remove'], input='1\n')
@@ -400,18 +400,18 @@ class Projects(ProjectFixture):
 
     def test_failed_package_install_does_not_save(self):
         before = (self.main / 'pyproject.toml').read_bytes()
-        with cwd(self.main), patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=1, stderr='failed', stdout='')):
+        with cwd(self.main), patch('mcpywrap_core.dependencies.subprocess.run', return_value=Mock(returncode=1, stderr='failed', stdout='')):
             result = CliRunner().invoke(cli, ['add', 'example>=1'])
             self.assertNotEqual(result.exit_code, 0)
         self.assertEqual(before, (self.main / 'pyproject.toml').read_bytes())
-        with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=0)), patch(
-                'mcpywrap.builders.dependency_manager.metadata.distribution', return_value=FakeDist()):
+        with patch('mcpywrap_core.dependencies.subprocess.run', return_value=Mock(returncode=0)), patch(
+                'mcpywrap_core.builders.dependency_manager.metadata.distribution', return_value=FakeDist()):
             self.service.add_package('example>=1')
         self.assertIn(DependencyDeclaration('package', 'example>=1'), self.service.list())
 
     def test_init_wizard_accepts_local_dependency(self):
         (self.main / 'pyproject.toml').unlink()
-        init = importlib.import_module('mcpywrap.commands.init_cmd')
+        init = importlib.import_module('mcpywrap_core.commands.init_cmd')
         with cwd(self.main), patch.object(init, 'non_interactive', return_value=False):
             result = CliRunner().invoke(cli, ['init'], input='main\n0.1.0\naddon\n./build\ny\n2\n../中文 shared\nn\n')
         self.assertEqual(result.exit_code, 0, result.output)
@@ -423,15 +423,15 @@ class GuiProjects(ProjectFixture):
     def test_gui_local_add_preview_remove_and_refresh(self):
         from PySide6.QtWidgets import QApplication, QMessageBox
         from PySide6.QtCore import Qt
-        from mcpywrap.ui import project_ui as ui
+        from mcpywrap_core.ui import project_ui as ui
         app = QApplication.instance() or QApplication([])
-        with patch.object(ui, 'find_all_mcpywrap_packages', return_value=[]), patch('mcpywrap.engines.macos.MacOSBackend.instances', return_value=[]):
+        with patch.object(ui, 'find_all_mcpywrap_packages', return_value=[]), patch('mcpywrap_core.engines.macos.MacOSBackend.instances', return_value=[]):
             window = ui.GameInstanceManager(str(self.main))
         try:
             window.dependency_kind.setCurrentIndex(1)
             window.local_path_input.setText(str(self.dep))
             self.assertIn('../中文 shared', window.path_preview.toPlainText())
-            with patch('mcpywrap.dependencies.subprocess.run') as install:
+            with patch('mcpywrap_core.dependencies.subprocess.run') as install:
                 window.add_dependency()
                 install.assert_not_called()
             self.assertEqual(window.dependency_list.count(), 1)
@@ -451,21 +451,21 @@ class GuiProjects(ProjectFixture):
             app.processEvents()
 
     def test_gui_worker_failure_and_success(self):
-        from mcpywrap.ui.project_ui import DependencyInstallThread
+        from mcpywrap_core.ui.project_ui import DependencyInstallThread
         thread = DependencyInstallThread('example>=1', str(self.main))
         outcomes = []
         thread.result.connect(lambda success, message: outcomes.append(success))
-        with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=1, stderr='failed', stdout='')):
+        with patch('mcpywrap_core.dependencies.subprocess.run', return_value=Mock(returncode=1, stderr='failed', stdout='')):
             thread.run()
         self.assertEqual(self.service.list(), [])
-        with patch('mcpywrap.dependencies.subprocess.run', return_value=Mock(returncode=0)), patch(
-                'mcpywrap.builders.dependency_manager.metadata.distribution', return_value=FakeDist()):
+        with patch('mcpywrap_core.dependencies.subprocess.run', return_value=Mock(returncode=0)), patch(
+                'mcpywrap_core.builders.dependency_manager.metadata.distribution', return_value=FakeDist()):
             thread.run()
         self.assertEqual(outcomes, [False, True])
 
     def test_gui_browse_cancel_absolute_and_invalid_removal(self):
         from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
-        from mcpywrap.ui import project_ui as ui
+        from mcpywrap_core.ui import project_ui as ui
         app = QApplication.instance() or QApplication([])
         window = ui.GameInstanceManager(str(self.main))
         try:
@@ -498,7 +498,7 @@ class GuiProjects(ProjectFixture):
         import time
         import threading
         from PySide6.QtWidgets import QApplication
-        from mcpywrap.ui import project_ui as ui
+        from mcpywrap_core.ui import project_ui as ui
         app = QApplication.instance() or QApplication([])
         window = ui.GameInstanceManager(str(self.main))
         try:
@@ -507,7 +507,7 @@ class GuiProjects(ProjectFixture):
                 def install(*args, **kwargs):
                     released.wait(5)
                     return Mock(returncode=0 if succeeds else 1, stderr='install failed', stdout='')
-                with patch('mcpywrap.dependencies.subprocess.run', side_effect=install):
+                with patch('mcpywrap_core.dependencies.subprocess.run', side_effect=install):
                     window.new_dep_input.setCurrentText('click>=8')
                     window.add_dependency()
                     self.assertTrue(window.dependency_busy)

@@ -12,7 +12,7 @@ try {
     # The signing subprocess does not need the encrypted PFX or its password in its environment.
     Remove-Item Env:\MCS_BRIDGE_SIGNING_PFX
     Remove-Item Env:\MCS_BRIDGE_SIGNING_PASSWORD
-    python scripts/build_mcs_auth_bridge.py --sign-only --output mcpywrap/mcstudio/bridge_payload --sign-thumbprint $certificate.Thumbprint
+    python scripts/build_mcs_auth_bridge.py --sign-only --output desktop/mcpywrap_assets/bridge_payload --sign-thumbprint $certificate.Thumbprint
     if ($LASTEXITCODE -ne 0) { throw 'Bridge signing failed' }
 } finally {
     if (Test-Path -LiteralPath $pfxPath) { Remove-Item -LiteralPath $pfxPath -Force }

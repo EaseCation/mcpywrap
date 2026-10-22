@@ -8,10 +8,10 @@ import unittest
 from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.mcstudio import runtime_key_timeline_payload as payload
-from mcpywrap.mcstudio.runtime_player_payload import PlayerController
-from mcpywrap.mcstudio.runtime_ui_payload import UIController, UIError
+from mcpywrap_core.cli import cli
+from mcpywrap_core.mcstudio import runtime_key_timeline_payload as payload
+from mcpywrap_core.mcstudio.runtime_player_payload import PlayerController
+from mcpywrap_core.mcstudio.runtime_ui_payload import UIController, UIError
 from test_runtime_player import PlayerAPI, GUI
 
 
@@ -359,7 +359,7 @@ class KeyTimelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             filename = Path(directory)/'plan.json'
             filename.write_text(json.dumps(plan()), encoding='utf-8-sig')
-            with patch('mcpywrap.mcstudio.runtime_ui.execute', return_value={'ok': True}) as execute:
+            with patch('mcpywrap_core.mcstudio.runtime_ui.execute', return_value={'ok': True}) as execute:
                 result = CliRunner().invoke(cli, ['--local', 'runtime', 'player', 'timeline', '--session', 'a'*32,
                                                   '--file', str(filename), '--request-id', 'b'*32, '--json'])
             self.assertEqual(result.exit_code, 0, result.output)
@@ -367,9 +367,9 @@ class KeyTimelineTests(unittest.TestCase):
             self.assertEqual(execute.call_args.kwargs['family'], 'player')
 
     def test_remote_transport_sends_one_plan_and_unknown_result_keeps_id(self):
-        from mcpywrap.mcstudio.runtime_ui import execute
-        with patch('mcpywrap.command_context.remote_url', return_value='http://remote'), \
-             patch('mcpywrap.remote.client.Client') as client:
+        from mcpywrap_core.mcstudio.runtime_ui import execute
+        with patch('mcpywrap_core.command_context.remote_url', return_value='http://remote'), \
+             patch('mcpywrap_core.remote.client.Client') as client:
             client.return_value.request.side_effect = OSError('reply lost')
             result = execute(Path('.'), 'a'*32, 'timeline', {'plan': plan(), 'request_id': 'b'*32}, family='player')
             self.assertEqual(result['state'], 'unknown')
@@ -381,29 +381,29 @@ class KeyTimelineTests(unittest.TestCase):
             self.assertIn("dispatch", args[2]['code'])
 
     def test_unconfirmed_install_stage_does_not_send_remaining_source(self):
-        from mcpywrap.mcstudio.runtime_ui import execute
-        with patch('mcpywrap.command_context.remote_url', return_value=None), \
-             patch('mcpywrap.mcstudio.sessions.read', return_value={
+        from mcpywrap_core.mcstudio.runtime_ui import execute
+        with patch('mcpywrap_core.command_context.remote_url', return_value=None), \
+             patch('mcpywrap_core.mcstudio.sessions.read', return_value={
                  'state': 'running', 'game': {'executable': 'D:/engine/test/Minecraft.Windows.exe'}}), \
-             patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value={
+             patch('mcpywrap_core.mcstudio.runtime_debug.control_request', return_value={
                  'state': 'unknown', 'side': 'client', 'request_id': 'stage'}) as request:
             result = execute(Path('.'), 'a'*32, 'install', family='player')
             self.assertEqual(result['state'], 'unknown')
             request.assert_called_once()
 
     def test_queued_install_stage_queries_original_request_before_final_install(self):
-        from mcpywrap.mcstudio.runtime_ui import execute
-        from mcpywrap.mcstudio.runtime_ui import install_sources
+        from mcpywrap_core.mcstudio.runtime_ui import execute
+        from mcpywrap_core.mcstudio.runtime_ui import install_sources
         replies = [{'state': 'queued', 'side': 'client', 'request_id': 'stage-id'}] + [
                    {'state': 'completed', 'side': 'client', 'value': {'ok': True, 'stage': 'staged'}}
                    for _ in install_sources('test')[:-1]] + [
                    {'state': 'completed', 'side': 'client', 'value': {
                        'ok': True, 'player_capabilities': {'timeline': True}, 'player_timeline': {'clocks': ['monotonic_ms']}}}]
-        with patch('mcpywrap.command_context.remote_url', return_value=None), \
-             patch('mcpywrap.mcstudio.sessions.read', return_value={
+        with patch('mcpywrap_core.command_context.remote_url', return_value=None), \
+             patch('mcpywrap_core.mcstudio.sessions.read', return_value={
                  'state': 'running', 'game': {'executable': 'D:/engine/test/Minecraft.Windows.exe'}}), \
-             patch('mcpywrap.mcstudio.runtime_debug.control_request', side_effect=replies) as request, \
-             patch('mcpywrap.mcstudio.runtime_ui.time.sleep'):
+             patch('mcpywrap_core.mcstudio.runtime_debug.control_request', side_effect=replies) as request, \
+             patch('mcpywrap_core.mcstudio.runtime_ui.time.sleep'):
             result = execute(Path('.'), 'a'*32, 'install', family='player')
             self.assertTrue(result['capabilities']['timeline'])
             self.assertEqual(result['timeline']['clocks'], ['monotonic_ms'])

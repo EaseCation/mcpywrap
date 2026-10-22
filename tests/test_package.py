@@ -7,8 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.dependencies import read_project, write_project
+from mcpywrap_core.cli import cli
+from mcpywrap_core.dependencies import read_project, write_project
 from test_local_dependencies import addon, cwd, FakeDist
 
 
@@ -45,7 +45,7 @@ class Packaging(unittest.TestCase):
         config['project']['dependencies'] = ['shared>=1']
         config['tool']['mcpywrap'] = {'local_dependencies': ['../shared']}
         write_project(self.main, config)
-        with patch('mcpywrap.builders.dependency_manager.metadata.distribution', return_value=FakeDist(self.dep)):
+        with patch('mcpywrap_core.builders.dependency_manager.metadata.distribution', return_value=FakeDist(self.dep)):
             result = self.invoke()
         self.assertEqual(result.exit_code, 0, result.output)
         files = self.contents()

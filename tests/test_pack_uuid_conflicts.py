@@ -3,8 +3,8 @@ import shutil
 import tempfile
 from pathlib import Path
 import unittest
-from mcpywrap.builders.AddonsPack import AddonsPack
-from mcpywrap.mcstudio.symlinks import create_symlinks, pack_uuid_conflict
+from mcpywrap_core.builders.AddonsPack import AddonsPack
+from mcpywrap_core.mcstudio.symlinks import create_symlinks, pack_uuid_conflict
 from test_local_dependencies import addon
 
 

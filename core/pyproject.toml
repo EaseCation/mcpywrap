@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcpywrap-core"
+dynamic = ["version"]
+description = "Shared mcpy project dependency, build and runtime logic"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [{name = "boybook", email = "boybook@easecation.net"}]
+dependencies = ["click>=8", "packaging>=21", "tomli>=2", "tomli-w>=1"]
+
+[project.optional-dependencies]
+watch = ["watchdog>=2"]
+prepare = ["jsonschema>=4.18,<5", "psutil>=5.8"]
+
+[project.urls]
+Homepage = "https://github.com/EaseCation/mcpywrap"
+
+[tool.setuptools.dynamic]
+version = {attr = "mcpywrap_core._version.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["mcpywrap_core*", "mcpywrap_host*"]
+exclude = ["mcpywrap_core.mcstudio.bridge_payload*", "mcpywrap_core.mcstudio.window_capture*"]
+
+[tool.setuptools.package-data]
+mcpywrap_core = ["core-contract.json"]
+"mcpywrap_core.ui" = ["assets/*.png", "assets/*.icns", "assets/mcpy.icon/*.json", "assets/mcpy.icon/Assets/*.svg"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.exe", "*.dll", "*.so", "*.dylib", "*.pyd", "bridge_payload/*", "window_capture/*"]

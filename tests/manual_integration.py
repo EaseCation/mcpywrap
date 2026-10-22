@@ -17,10 +17,10 @@ import time
 import uuid
 from unittest.mock import patch
 
-from mcpywrap.dependencies import DependencyService, read_project, write_project
-from mcpywrap.builders.project_builder import AddonProjectBuilder
-from mcpywrap.builders.watcher import ProjectWatcher
-from mcpywrap.mcstudio.mcs import get_mcs_game_engine_netease_data_path, get_mcs_game_engine_data_path
+from mcpywrap_core.dependencies import DependencyService, read_project, write_project
+from mcpywrap_core.builders.project_builder import AddonProjectBuilder
+from mcpywrap_core.builders.watcher import ProjectWatcher
+from mcpywrap_core.mcstudio.mcs import get_mcs_game_engine_netease_data_path, get_mcs_game_engine_data_path
 
 
 def snapshot(path):
@@ -67,7 +67,7 @@ class AcceptanceMod(object):
 
 
 def cli(path, *args, expected=0):
-    result = subprocess.run([sys.executable, '-m', 'mcpywrap', *args], cwd=path,
+    result = subprocess.run([sys.executable, '-m', 'mcpywrap_core', *args], cwd=path,
                             capture_output=True, text=True, encoding='utf-8', errors='replace',
                             env=dict(os.environ, PYTHONIOENCODING='utf-8'))
     with (path.parent / 'cli.log').open('a', encoding='utf-8') as output:

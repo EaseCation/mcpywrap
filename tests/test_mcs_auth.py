@@ -12,10 +12,10 @@ from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
 
-from mcpywrap.cli import cli
-from mcpywrap.mcstudio import mcs_auth as auth, network, sessions, session_worker
-from mcpywrap.mcstudio.discovery import Engine
-from mcpywrap.mcstudio.private_logs import Redactor, RedactedDecoder, EngineLogCapture
+from mcpywrap_core.cli import cli
+from mcpywrap_core.mcstudio import mcs_auth as auth, network, sessions, session_worker
+from mcpywrap_core.mcstudio.discovery import Engine
+from mcpywrap_core.mcstudio.private_logs import Redactor, RedactedDecoder, EngineLogCapture
 
 
 def snapshot():
@@ -29,7 +29,7 @@ def snapshot():
 
 class AuthTests(unittest.TestCase):
     def setUp(self):
-        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host = patch('mcpywrap_core.engines.backend.describe', return_value={'backend': 'windows'})
         backend_host.start()
         self.addCleanup(backend_host.stop)
         self.temp = tempfile.TemporaryDirectory()
@@ -74,7 +74,7 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(path.read_text(), 'token=<redacted>')
 
     def test_explicit_auth_routing(self):
-        with patch('mcpywrap.mcstudio.network.run_network', return_value={}) as launch:
+        with patch('mcpywrap_core.mcstudio.network.run_network', return_value={}) as launch:
             result = self.runner.invoke(cli, ['connect', 'localhost', '--mcs-auth'])
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertEqual(launch.call_args.args[0].auth, 'mcs')

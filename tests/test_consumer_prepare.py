@@ -15,12 +15,12 @@ import zipfile
 
 from click.testing import CliRunner
 
-from mcpywrap.cli import cli
-from mcpywrap.consumer_prepare import PreparationPlan, source_digest
-from mcpywrap.dependencies import read_project, write_project
-from mcpywrap.prepare_environment import interpreter_path
-from mcpywrap.project_scripts import before, project_lock, startup_hooks, startup_options, ScriptError
-from mcpywrap.runtime.deployment import Deployment
+from mcpywrap_core.cli import cli
+from mcpywrap_core.consumer_prepare import PreparationPlan, source_digest
+from mcpywrap_core.dependencies import read_project, write_project
+from mcpywrap_core.prepare_environment import interpreter_path
+from mcpywrap_core.project_scripts import before, project_lock, startup_hooks, startup_options, ScriptError
+from mcpywrap_core.runtime.deployment import Deployment
 from test_runtime_deployment import fixture
 
 
@@ -243,8 +243,8 @@ with (root/'calls').open('a', encoding='utf-8') as stream: stream.write('NAME\\n
     def test_git_tools_outside_export_and_aliases_execute_once(self):
         repo, rev = self.git_provider(config_key='tool.sample')
         self.success('add', '--git', repo.as_uri(), '--ref', rev, '--dep-name', 'alias', '--target', 'Other/Library')
-        from mcpywrap.git_cache import read_snapshot
-        from mcpywrap.source_files import digest
+        from mcpywrap_core.git_cache import read_snapshot
+        from mcpywrap_core.source_files import digest
         raw = read_snapshot(repo.as_uri(), rev)
         original = digest(raw)
         self.success('package')
@@ -256,10 +256,10 @@ with (root/'calls').open('a', encoding='utf-8') as stream: stream.write('NAME\\n
 
     def test_git_missing_source_requires_sync_without_fetch(self):
         repo, rev = self.git_provider()
-        from mcpywrap.git_cache import read_snapshot
+        from mcpywrap_core.git_cache import read_snapshot
         raw = read_snapshot(repo.as_uri(), rev)
         shutil.rmtree(raw)
-        with patch('mcpywrap.git_cache.fetch_snapshot', side_effect=AssertionError('must not fetch')):
+        with patch('mcpywrap_core.git_cache.fetch_snapshot', side_effect=AssertionError('must not fetch')):
             plan = self.success('script', 'list', '--effective')
             self.assertFalse(plan['complete'])
             result, data = self.invoke('build', '--json')
@@ -293,7 +293,7 @@ with (root/'calls').open('a', encoding='utf-8') as stream: stream.write('NAME\\n
         result, data = self.invoke('build', '--json')
         self.assertNotEqual(result.exit_code, 0)
         self.assertEqual(data['code'], 'prepare_environment_unavailable')
-        with patch('mcpywrap.prepare_environment.candidates', return_value=[(sys.executable, '.'.join(map(str, sys.version_info[:3])))]):
+        with patch('mcpywrap_core.prepare_environment.candidates', return_value=[(sys.executable, '.'.join(map(str, sys.version_info[:3])))]):
             synced = self.success('sync')
         self.assertTrue(synced['sources_synced'])
         self.assertTrue(synced['environment']['created'])
@@ -320,7 +320,7 @@ with (root/'calls').open('a', encoding='utf-8') as stream: stream.write('NAME\\n
         dep = self.provider()
         config = read_project(dep); config['tool']['mcpywrap']['consumer_prepare']['requires_python'] = '>=3.99'
         write_project(dep, config); self.depend(dep); self.configure(prepare={})
-        with patch('mcpywrap.prepare_environment.candidates', return_value=[]):
+        with patch('mcpywrap_core.prepare_environment.candidates', return_value=[]):
             result, data = self.invoke('sync', '--json')
         self.assertNotEqual(result.exit_code, 0)
         self.assertEqual(data['code'], 'prepare_python_unavailable')
@@ -383,7 +383,7 @@ with (root/'calls').open('a', encoding='utf-8') as stream: stream.write('NAME\\n
         deployment = Deployment(self.project)
         with project_lock(self.project), deployment.lock():
             startup_hooks(data, deployment)
-            with patch('mcpywrap.runtime.deployment.DependencyService.resolve', side_effect=AssertionError('resolved twice')):
+            with patch('mcpywrap_core.runtime.deployment.DependencyService.resolve', side_effect=AssertionError('resolved twice')):
                 deployment.prepare(session=sid)
                 deployment.commit()
         self.assertEqual(self.calls(), ['framework'])
@@ -492,12 +492,12 @@ with (root/'calls').open('a', encoding='utf-8') as stream: stream.write('NAME\\n
         self.success('build')
         self.assertEqual(self.calls(), ['child', 'framework'])
         generated = json.loads((self.project/'behavior_pack/generated-child.json').read_text())
-        from mcpywrap.git_cache import read_snapshot
+        from mcpywrap_core.git_cache import read_snapshot
         self.assertEqual(Path(generated['dependency']), read_snapshot(repo.as_uri(), rev)/'child')
 
     @unittest.skipUnless(os.name == 'nt', 'Windows extended and ordinary paths')
     def test_local_provider_aliases_with_windows_path_prefix_execute_once(self):
-        from mcpywrap.source_files import long_path
+        from mcpywrap_core.source_files import long_path
         provider = self.provider()
         self.configure(local_dependencies=[str(provider), str(long_path(provider))])
         self.success('build')
@@ -505,7 +505,7 @@ with (root/'calls').open('a', encoding='utf-8') as stream: stream.write('NAME\\n
 
     def test_low_level_builder_does_not_execute_consumers(self):
         self.depend(self.provider())
-        from mcpywrap.builders.project_builder import AddonProjectBuilder
+        from mcpywrap_core.builders.project_builder import AddonProjectBuilder
         success, error = AddonProjectBuilder(self.project, self.project/'build').build()
         self.assertTrue(success, error)
         self.assertEqual(self.calls(), [])
