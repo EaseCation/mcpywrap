@@ -12,9 +12,9 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from mcpywrap.mcstudio import bridge_assets
-from mcpywrap.mcstudio.log_protocol import TextLogDecoder
-from mcpywrap.mcstudio.private_logs import EngineLogCapture
+from mcpywrap_core.mcstudio import bridge_assets
+from mcpywrap_core.mcstudio.log_protocol import TextLogDecoder
+from mcpywrap_core.mcstudio.private_logs import EngineLogCapture
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('skill_smoke', ROOT/'skills/mcpywrap/scripts/smoke.py')
@@ -267,7 +267,7 @@ class EncodingCompatibility(unittest.TestCase):
             for encoding in ('gbk', 'utf-8'):
                 env = dict(os.environ, PYTHONUTF8='0', PYTHONIOENCODING=encoding)
                 commands = [
-                    [sys.executable, '-m', 'mcpywrap', '--project', project, 'doctor', '--json'],
+                    [sys.executable, '-m', 'mcpywrap_core', '--project', project, 'doctor', '--json'],
                     [sys.executable, str(ROOT/'skills/mcpywrap/scripts/smoke.py'), '--project', project,
                      '--command', str(Path(tmp)/'missing.exe')],
                     [sys.executable, str(ROOT/'skills/mcpywrap/scripts/game_window.py'), '--project', project,

@@ -25,7 +25,7 @@ package-dir = {"" = "desktop"}
 
 [tool.setuptools.packages.find]
 where = ["desktop"]
-include = ["mcpywrap", "mcpywrap_assets"]
+include = ["mcpywrap_assets"]
 namespaces = false
 
 [tool.setuptools.package-data]

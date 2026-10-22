@@ -15,12 +15,12 @@ class RejectWatcher(importlib.abc.MetaPathFinder):
             raise AssertionError("Assembly imported watchdog")
 guard = RejectWatcher()
 sys.meta_path.insert(0, guard)
-from mcpywrap.builders import AddonProjectBuilder, DependencyManager
-from mcpywrap.builders.assembly import assemble_addon
+from mcpywrap_core.builders import AddonProjectBuilder, DependencyManager
+from mcpywrap_core.builders.assembly import assemble_addon
 assert "watchdog" not in sys.modules
 sys.meta_path.remove(guard)
-from mcpywrap.builders import ProjectWatcher, FileWatcher
-from mcpywrap.builders.watcher import ProjectWatcher as Original
+from mcpywrap_core.builders import ProjectWatcher, FileWatcher
+from mcpywrap_core.builders.watcher import ProjectWatcher as Original
 assert ProjectWatcher is Original
 '''
         subprocess.run([sys.executable, '-c', code], check=True)

@@ -15,7 +15,7 @@ def main():
     args = parser.parse_args()
     if args.output.exists():
         raise ValueError('Output must be new')
-    prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap', '--local', '--project', args.project]
+    prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap_core', '--local', '--project', args.project]
     history = []
 
     def call(*command):

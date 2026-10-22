@@ -10,13 +10,13 @@ from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
 
-from mcpywrap.cli import cli
-from mcpywrap.mcstudio import discovery as d
+from mcpywrap_core.cli import cli
+from mcpywrap_core.mcstudio import discovery as d
 
 
 class EngineDiscoveryTests(unittest.TestCase):
     def setUp(self):
-        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host = patch('mcpywrap_core.engines.backend.describe', return_value={'backend': 'windows'})
         backend_host.start()
         self.addCleanup(backend_host.stop)
         self.stack = ExitStack()
@@ -212,7 +212,7 @@ class EngineDiscoveryTests(unittest.TestCase):
         self.assertEqual(self.discover(instance_version='3.9').selected.version, '3.10')
 
     def test_doctor_is_readonly_without_project_and_json_on_failure(self):
-        doctor = importlib.import_module('mcpywrap.mcstudio.diagnostics')
+        doctor = importlib.import_module('mcpywrap_core.mcstudio.diagnostics')
         root = self.root / 'registered'
         self.engine(root, '3.10')
         self.resources(root)
@@ -234,7 +234,7 @@ class EngineDiscoveryTests(unittest.TestCase):
             self.assertEqual(set(Path.cwd().rglob('*')), before)
 
     def test_legacy_wrappers_only_return_selected_root(self):
-        from mcpywrap.mcstudio import mcs
+        from mcpywrap_core.mcstudio import mcs
         first = self.root / 'a'
         second = self.root / 'b'
         self.engine(first, '3.9')
@@ -245,7 +245,7 @@ class EngineDiscoveryTests(unittest.TestCase):
             self.assertEqual(mcs.get_mcs_game_engine_dirs(), ['3.10'])
 
     def test_open_game_reuses_engine_and_rejects_mismatch(self):
-        game = importlib.import_module('mcpywrap.mcstudio.game')
+        game = importlib.import_module('mcpywrap_core.mcstudio.game')
         exe = self.engine(self.root / 'download', '3.10')
         engine = d.Engine(str(exe), '3.10', str(exe.parent), str(self.root / 'download'), 'explicit')
         config = self.project / 'space config.cppconfig'
@@ -274,7 +274,7 @@ class EngineDiscoveryTests(unittest.TestCase):
             captured.append(kwargs['engine'])
             self.assertEqual(json.loads(Path(config_path).read_text(encoding='utf-8'))['version'], kwargs['engine'].version)
             return Mock(pid=os.getpid())
-        with patch('mcpywrap.mcstudio.game.open_game', side_effect=launch):
+        with patch('mcpywrap_core.mcstudio.game.open_game', side_effect=launch):
             launch_world(self.project, path, 'test')
             self.assertEqual(captured[-1].version, '3.9')
             launch_world(self.project, path, 'test', overrides={'engine_version': '3.10'})
@@ -284,7 +284,7 @@ class EngineDiscoveryTests(unittest.TestCase):
     def test_run_failure_does_not_link_write_or_launch(self):
         from runtime_support import launch_world
         path = self.project / '.runtime/test.cppconfig'
-        with patch('mcpywrap.mcstudio.deployment_links.ManagedLinks.publish') as links, patch('mcpywrap.mcstudio.game.open_game') as launch:
+        with patch('mcpywrap_core.mcstudio.deployment_links.ManagedLinks.publish') as links, patch('mcpywrap_core.mcstudio.game.open_game') as launch:
             with self.assertRaises(ValueError):
                 launch_world(self.project, path, 'test')
             links.assert_not_called(); launch.assert_not_called()
@@ -298,7 +298,7 @@ class EngineDiscoveryTests(unittest.TestCase):
         path = self.project / '.runtime/test.cppconfig'
         path.parent.mkdir(); path.write_text('{"version":"3.10"}')
         before = path.read_bytes()
-        with patch('mcpywrap.mcstudio.deployment_links.ManagedLinks.publish') as links, patch('mcpywrap.mcstudio.game.open_game') as launch:
+        with patch('mcpywrap_core.mcstudio.deployment_links.ManagedLinks.publish') as links, patch('mcpywrap_core.mcstudio.game.open_game') as launch:
             with self.assertRaises(ValueError):
                 launch_world(self.project, path, 'test')
             links.assert_not_called(); launch.assert_not_called()
@@ -310,14 +310,14 @@ class EngineDiscoveryTests(unittest.TestCase):
         self.engine(root, '3.10'); self.resources(root)
         self.registry.return_value = [(str(root), 'registry64')]
         path = self.project / '.runtime/test.cppconfig'
-        with patch('mcpywrap.mcstudio.game.open_game', return_value=False), patch('mcpywrap.mcstudio.game.open_safaia') as safaia:
+        with patch('mcpywrap_core.mcstudio.game.open_game', return_value=False), patch('mcpywrap_core.mcstudio.game.open_safaia') as safaia:
             with self.assertRaisesRegex(ValueError, '未创建游戏进程'):
                 launch_world(self.project, path, 'test')
             safaia.assert_not_called()
             self.assertFalse(path.exists())
 
     def test_cli_run_forwards_overrides(self):
-        from mcpywrap.engines.windows import WindowsBackend
+        from mcpywrap_core.engines.windows import WindowsBackend
         runner = CliRunner()
         with runner.isolated_filesystem(temp_dir=self.root):
             Path('pyproject.toml').write_text('[project]\nname="sample"\n')
@@ -328,7 +328,7 @@ class EngineDiscoveryTests(unittest.TestCase):
                 self.assertEqual(start.call_args.kwargs['overrides']['mcs_download_path'], 'custom')
 
     def test_nonstandard_exe_not_returned_as_legacy_version_directory(self):
-        from mcpywrap.mcstudio import mcs
+        from mcpywrap_core.mcstudio import mcs
         root = self.root / 'registered'
         self.engine(root, '3.9')
         exe = self.project / d.EXE_NAME
@@ -338,7 +338,7 @@ class EngineDiscoveryTests(unittest.TestCase):
             self.assertEqual(mcs.get_mcs_game_engine_dirs(), ['3.9'])
 
     def test_editor_uses_one_selection_for_configuration_and_launch(self):
-        edit = importlib.import_module('mcpywrap.commands.edit_cmd')
+        edit = importlib.import_module('mcpywrap_core.commands.edit_cmd')
         root = self.root / 'registered'
         self.engine(root, '3.10')
         self.registry.return_value = [(str(root), 'registry64')]
@@ -348,7 +348,7 @@ class EngineDiscoveryTests(unittest.TestCase):
         (root / 'EngineAssert').mkdir()
         install = self.root / 'studio'
         (install / 'data/inner_res').mkdir(parents=True)
-        with patch('mcpywrap.runtime.preparation.prepare_editor', return_value=[]), patch.object(edit, 'studio_installation', return_value=(str(install), [])), patch.object(edit, 'open_editor', return_value=Mock(pid=os.getpid())) as launch, patch.object(edit, 'discover_engines', wraps=d.discover_engines) as scan:
+        with patch('mcpywrap_core.runtime.preparation.prepare_editor', return_value=[]), patch.object(edit, 'studio_installation', return_value=(str(install), [])), patch.object(edit, 'open_editor', return_value=Mock(pid=os.getpid())) as launch, patch.object(edit, 'discover_engines', wraps=d.discover_engines) as scan:
             edit.open_edit(str(self.project))
             self.assertEqual(scan.call_count, 1)
             engine = launch.call_args.kwargs['engine']

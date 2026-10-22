@@ -143,7 +143,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_lock_storage.py -v
       - run: python -m pip check
       - name: Verify Qt6 availability and lazy CLI imports
-        run: python -c "import sys; import mcpywrap.cli; assert not any(k.startswith('PySide6') for k in sys.modules); import PySide6.QtCore"
+        run: python -c "import sys; import mcpywrap_core.cli; assert not any(k.startswith('PySide6') for k in sys.modules); import PySide6.QtCore"
       - run: python -m unittest discover -s tests -p test_modsdk_environment.py -v
       - run: python -m unittest discover -s tests -p test_remote.py -v
       - run: python -m unittest discover -s tests -p test_remote_scripts.py -v
@@ -222,7 +222,7 @@ jobs:
           python -m venv "$RUNNER_TEMP/wheel-smoke"
           "$RUNNER_TEMP/wheel-smoke/bin/python" -m pip install dist/core/*.whl dist/desktop/*.whl
           cd "$RUNNER_TEMP"
-          wheel-smoke/bin/python -c "from importlib.metadata import version; from mcpywrap import __version__; assert __version__ == version('mcpywrap'); from mcpywrap.dependencies import DependencyService; from mcpywrap.consumer_prepare import PreparationPlan; from jsonschema import Draft202012Validator; from mcpywrap.minecraft.template.generate_mod_files import generate_mod_framework"
+          wheel-smoke/bin/python -c "import importlib.util; from importlib.metadata import version; from mcpywrap_core import __version__; assert __version__ == version('mcpywrap'); assert importlib.util.find_spec('mcpywrap') is None; from mcpywrap_core.dependencies import DependencyService; from mcpywrap_core.consumer_prepare import PreparationPlan; from jsonschema import Draft202012Validator; from mcpywrap_core.minecraft.template.generate_mod_files import generate_mod_framework"
           wheel-smoke/bin/mcpy --help
           wheel-smoke/bin/mcpy add --help
           wheel-smoke/bin/mcpy connect --help

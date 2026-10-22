@@ -7,11 +7,11 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.mcstudio import runtime_cppconfig as cfg
-from mcpywrap.engines.windows import WindowsBackend
-from mcpywrap.engines.macos import MacOSBackend
-from mcpywrap.minecraft.level_dat import BedrockNBT
+from mcpywrap_core.cli import cli
+from mcpywrap_core.mcstudio import runtime_cppconfig as cfg
+from mcpywrap_core.engines.windows import WindowsBackend
+from mcpywrap_core.engines.macos import MacOSBackend
+from mcpywrap_core.minecraft.level_dat import BedrockNBT
 
 
 class ConfigTests(unittest.TestCase):
@@ -84,7 +84,7 @@ class ConfigTests(unittest.TestCase):
         args = ['--local', '--non-interactive', '--project', str(self.root), 'run', '--new', '--detach',
                 '--cppconfig', str(source), '--json']
         for backend in (WindowsBackend(), MacOSBackend()):
-            with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
+            with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend), \
                     patch.object(backend, 'run', return_value={'session':'test'}) as run:
                 result = CliRunner().invoke(cli, args)
                 self.assertEqual(result.exit_code, 0, result.output)
@@ -94,12 +94,12 @@ class ConfigTests(unittest.TestCase):
                 self.assertEqual(run.call_count, 1)
 
     def test_direct_cli_values_override_template_without_becoming_engine_options(self):
-        from mcpywrap.commands.run_cmd import run_cmd, WORLD_CHOICES
+        from mcpywrap_core.commands.run_cmd import run_cmd, WORLD_CHOICES
         (self.root/'pyproject.toml').write_text('[project]\nname="test"\nversion="0.0.0"\n')
         template = self.root/'template.cppconfig'
         template.write_text('{"world_info":{"difficulty":0,"seed":"template","cheat_info":{"keep_inventory":true,"mob_spawn":false}}}')
         backend = WindowsBackend()
-        with patch('mcpywrap.engines.backend.get_backend', return_value=backend), \
+        with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend), \
                 patch.object(backend, 'run', return_value={'session':'test'}) as run:
             result = CliRunner().invoke(cli, ['--local','--non-interactive','--project',str(self.root),
                 'run','--new','--detach','--cppconfig',str(template),'--world-type','flat',
@@ -120,14 +120,14 @@ class ConfigTests(unittest.TestCase):
             self.assertIn('world_rule_'+key,destinations)
 
     def test_macos_rejects_unverified_options_before_installation(self):
-        with patch('mcpywrap.engines.macos.run') as launch:
+        with patch('mcpywrap_core.engines.macos.run') as launch:
             with self.assertRaises(ValueError):
                 MacOSBackend().run(self.root, new=True, world_config={
                     'world_info': {'cheat_info': {'experimental_holiday': True}}})
         launch.assert_not_called()
 
     def test_macos_uses_cppconfig_instead_of_duplicate_world_and_pack_arguments(self):
-        from mcpywrap.engines import macos
+        from mcpywrap_core.engines import macos
         app = self.root/'app';helper = app/'Contents/Resources/launcher/run_netease_dev.py'
         helper.parent.mkdir(parents=True);helper.touch()
         data = {'launch': {'runtime':str(app),'game':'/game','data':'/data','cache':'/cache',
@@ -136,7 +136,7 @@ class ConfigTests(unittest.TestCase):
         process = Mock(pid=999);process.poll.return_value = None
         with patch.object(macos.install, 'read_json', return_value={'addon_link_protocol':1}), \
                 patch.object(macos.subprocess, 'Popen', return_value=process) as popen, \
-                patch('mcpywrap.mcstudio.processes.identity', return_value={'executable':'/bin/mcpelauncher-client'}):
+                patch('mcpywrap_core.mcstudio.processes.identity', return_value={'executable':'/bin/mcpelauncher-client'}):
             self.assertIs(macos.launch_session(data), process)
         command = popen.call_args.args[0]
         self.assertEqual(command[command.index('--runtime') + 1], '/local/Minecraft China.app')

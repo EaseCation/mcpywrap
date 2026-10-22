@@ -6,14 +6,14 @@
 
 | 发行包 | 安装方式 | 唯一拥有的内容 |
 | --- | --- | --- |
-| 完整桌面工具 `mcpywrap` | `pip install mcpywrap` 或 `uv tool install mcpywrap` | `mcpy` / `mcpywrap` 控制台脚本、旧导入兼容层 `mcpywrap`、宿主资源 `mcpywrap_assets` |
+| 完整桌面工具 `mcpywrap` | `pip install mcpywrap` 或 `uv tool install mcpywrap` | `mcpy` / `mcpywrap` 控制台脚本、宿主资源 `mcpywrap_assets` |
 | 共享核心 `mcpywrap-core` | `pip install mcpywrap-core` 或 `uv pip install mcpywrap-core` | 实现 `mcpywrap_core`、固定启动支撑库 `mcpywrap_host` |
 
 完整包精确依赖 `mcpywrap-core==同一版本`，并默认安装 Qt、监控、发布和消费者准备等完整依赖。核心包只要求 click、packaging、tomli、tomli-w，它们均有纯 Python 实现；额外可选 `mcpywrap-core[watch]`、`mcpywrap-core[prepare]`。
 
 核心库不拥有控制台脚本，避免安装/卸载完整包时争夺 `mcpy` 文件。需要最小环境中的命令调试，可使用 `python -m mcpywrap_core`；执行的还是同一 CLI 实现，不维护第二套命令逻辑。
 
-0.5.x 的完整包拥有 `mcpywrap/` 下全部实现。新核心使用独立的 `mcpywrap_core/`，完整包才拥有兼容目录。这样 pip 先安装核心、再卸载旧完整包时，不会删除新核心。旧 `mcpywrap.*` 导入与新 `mcpywrap_core.*` 指向同一个模块对象，旧代码中的类身份和状态不分裂。
+0.5.x 的完整包拥有 `mcpywrap/` 下全部实现。核心使用独立的 `mcpywrap_core/`，pip 安装核心后再卸载旧完整包不会删除新核心。完整包不提供 `mcpywrap` Python 导入包；宿主接入使用 `mcpywrap_core.api.Core`，内部测试使用实现所属的 `mcpywrap_core.*`。发行包名、控制台命令和项目 `[tool.mcpywrap]` 配置保持原名。
 
 ## 目录
 
@@ -29,7 +29,6 @@ core/
     host.py                       平台能力接口
   mcpywrap_host/                  固定启动器和核心版本管理，不实现工程规则
 desktop/
-  mcpywrap/                       旧导入路径的轻量兼容层
   mcpywrap_assets/                Windows 原生组件，构建生成，不进核心 wheel
 scripts/                          构建、版本、发布检查、原生组件工具
 tests/                            跨平台、兼容、包归属与升级检查

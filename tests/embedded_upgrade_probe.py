@@ -1,6 +1,6 @@
 """Android harness payload; diagnostic controller is NOT a production updater.
 
-Called by the disposable Chaquopy probe Activity before importing mcpywrap.
+由临时 Chaquopy 探针 Activity 在导入共享核心前调用。
 The JSON request simulates a release descriptor authenticated by the host.
 Production apps must never trust a descriptor merely because it is on /sdcard.
 """

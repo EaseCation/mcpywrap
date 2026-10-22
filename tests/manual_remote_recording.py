@@ -8,8 +8,8 @@ import threading
 import time
 import uuid
 
-from mcpywrap.remote.service import GameService
-from mcpywrap.remote.http_server import GameHTTPServer
+from mcpywrap_core.remote.service import GameService
+from mcpywrap_core.remote.http_server import GameHTTPServer
 
 
 def main():

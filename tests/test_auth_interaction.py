@@ -7,13 +7,13 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.mcstudio import mcs_auth as auth, auth_interaction as ui, bridge_assets as assets
+from mcpywrap_core.cli import cli
+from mcpywrap_core.mcstudio import mcs_auth as auth, auth_interaction as ui, bridge_assets as assets
 
 
 class InteractionTests(unittest.TestCase):
     def setUp(self):
-        host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        host = patch('mcpywrap_core.engines.backend.describe', return_value={'backend': 'windows'})
         host.start()
         self.addCleanup(host.stop)
         self.temp = tempfile.TemporaryDirectory()
@@ -87,11 +87,11 @@ class InteractionTests(unittest.TestCase):
 
     def test_skill_cli_missing_mcs_returns_json_without_qt(self):
         self.recovery([auth.AuthError('请先打开并登录 MC Studio', 'studio_unavailable')])
-        with patch('mcpywrap.mcstudio.network.is_windows', return_value=True), \
-                patch('mcpywrap.mcstudio.network.discover_engines', return_value=Mock(require_engine=lambda: Mock())), \
-                patch('mcpywrap.mcstudio.network.require_resources'):
+        with patch('mcpywrap_core.mcstudio.network.is_windows', return_value=True), \
+                patch('mcpywrap_core.mcstudio.network.discover_engines', return_value=Mock(require_engine=lambda: Mock())), \
+                patch('mcpywrap_core.mcstudio.network.require_resources'):
             # Route directly to identity acquisition without a native engine fixture.
-            with patch('mcpywrap.mcstudio.network.unauthenticated_config', return_value={}):
+            with patch('mcpywrap_core.mcstudio.network.unauthenticated_config', return_value={}):
                 result = self.runner.invoke(cli, ['--non-interactive', 'connect', 'localhost', '--mcs-auth', '--detach', '--json'])
         data = json.loads(result.stdout)
         self.assertEqual(result.exit_code, 1)
@@ -150,7 +150,7 @@ class ConsentDialogTests(unittest.TestCase):
 
     def test_gui_checks_identity_on_ui_entry_not_in_worker(self):
         from types import SimpleNamespace
-        from mcpywrap.ui.project_ui import GameInstanceManager
+        from mcpywrap_core.ui.project_ui import GameInstanceManager
         identity = object()
         controller = Mock(session=None)
         view = SimpleNamespace(mcs_auth=True, controller=controller, is_busy=lambda: False, log=Mock())
@@ -161,7 +161,7 @@ class ConsentDialogTests(unittest.TestCase):
 
     def test_gui_missing_identity_does_not_launch_thread(self):
         from types import SimpleNamespace
-        from mcpywrap.ui.project_ui import GameInstanceManager
+        from mcpywrap_core.ui.project_ui import GameInstanceManager
         view = SimpleNamespace(mcs_auth=True, is_busy=lambda: False, controller=Mock(session=None), log=Mock())
         with patch.object(auth, 'acquire_identity', side_effect=auth.AuthError('请先打开并登录 MC Studio')):
             GameInstanceManager.start_game_thread(view, 'world')

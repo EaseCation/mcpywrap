@@ -6,11 +6,11 @@ import os
 import shutil
 import unittest
 
-from mcpywrap.runtime import groups, storage
-from mcpywrap.runtime.profiles import PlayerProfile
-from mcpywrap.mcstudio.sessions import session_path
-from mcpywrap.mcstudio.processes import identity
-from mcpywrap.engines.host import EngineError
+from mcpywrap_core.runtime import groups, storage
+from mcpywrap_core.runtime.profiles import PlayerProfile
+from mcpywrap_core.mcstudio.sessions import session_path
+from mcpywrap_core.mcstudio.processes import identity
+from mcpywrap_core.engines.host import EngineError
 
 
 class ProfileTests(unittest.TestCase):
@@ -106,7 +106,7 @@ class ProfileTests(unittest.TestCase):
             storage.write(session_path(self.root, data['session'])/'session.json', data)
         replacement = Mock()
         replacement.create_time.return_value = data['game']['created_at'] + 100
-        with patch('mcpywrap.mcstudio.processes.psutil.Process', return_value=replacement):
+        with patch('mcpywrap_core.mcstudio.processes.psutil.Process', return_value=replacement):
             with profile.lease():
                 pass
         replacement.terminate.assert_not_called()
@@ -119,7 +119,7 @@ class ProfileTests(unittest.TestCase):
             profile.prepare()
             data.update(state='failed', game=identity(os.getpid()))
             storage.write(session_path(self.root, data['session'])/'session.json', data)
-        with patch('mcpywrap.mcstudio.processes.psutil.Process', side_effect=psutil.AccessDenied), \
+        with patch('mcpywrap_core.mcstudio.processes.psutil.Process', side_effect=psutil.AccessDenied), \
                 self.assertRaises(EngineError) as error:
             with profile.lease():
                 self.fail('unreadable identity is not proof of exit')

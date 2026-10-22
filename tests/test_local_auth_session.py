@@ -8,9 +8,9 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
-from mcpywrap.mcstudio import sessions, session_worker
-from mcpywrap.mcstudio.discovery import Engine
-from mcpywrap.mcstudio.mcs_auth import AuthContext
+from mcpywrap_core.mcstudio import sessions, session_worker
+from mcpywrap_core.mcstudio.discovery import Engine
+from mcpywrap_core.mcstudio.mcs_auth import AuthContext
 
 
 def context():
@@ -42,9 +42,9 @@ class LocalAuthTests(unittest.TestCase):
             self.assertTrue(kwargs['capture_output'])
             self.assertNotIn('output_path', kwargs)
             return process
-        with patch('mcpywrap.runtime.windows.discover_engines', return_value=Mock(require_engine=lambda: engine)), \
-                patch('mcpywrap.runtime.windows.require_resources'), \
-                patch('mcpywrap.mcstudio.game.open_game', side_effect=launch), patch('mcpywrap.mcstudio.game.open_safaia') as gui:
+        with patch('mcpywrap_core.runtime.windows.discover_engines', return_value=Mock(require_engine=lambda: engine)), \
+                patch('mcpywrap_core.runtime.windows.require_resources'), \
+                patch('mcpywrap_core.mcstudio.game.open_game', side_effect=launch), patch('mcpywrap_core.mcstudio.game.open_safaia') as gui:
             result = launch_world(self.root, config, 'world', auth_context=identity)
             self.assertIs(result.process, process)
             gui.assert_not_called()
@@ -82,8 +82,8 @@ class LocalAuthTests(unittest.TestCase):
         process = Mock(pid=77, stdout=io.BytesIO(('LoginToken: '+identity.token).encode()))
         process.poll.side_effect = [None, 0]
         process.wait.return_value = 0
-        from mcpywrap.engines.windows import WindowsBackend
-        from mcpywrap.engines.backend import LaunchedGame
+        from mcpywrap_core.engines.windows import WindowsBackend
+        from mcpywrap_core.engines.backend import LaunchedGame
         def launch(data, receiver, auth_context):
             self.assertEqual(auth_context.token, identity.token)
             (directory/'auth.cppconfig').write_text(identity.token)

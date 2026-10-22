@@ -30,8 +30,8 @@
 
 ```sh
 mkdir -p "$HOME/mcpy-manual-project"
-python -m mcpywrap --local --project "$HOME/mcpy-manual-project" --non-interactive init --name manual-controls --type addon --json
-python -m mcpywrap --local --project "$HOME/mcpy-manual-project" --non-interactive mod --name ManualControls --json
+python -m mcpywrap_core --local --project "$HOME/mcpy-manual-project" --non-interactive init --name manual-controls --type addon --json
+python -m mcpywrap_core --local --project "$HOME/mcpy-manual-project" --non-interactive mod --name ManualControls --json
 
 # 先做双端探针，不操作 UI，不修改世界场景。
 python tests/manual/runtime_controls/run.py --project "$HOME/mcpy-manual-project" --launch --suite probe
@@ -45,11 +45,11 @@ python tests/manual/runtime_controls/run.py --project "$HOME/mcpy-manual-project
 若需保留游戏观察，可先自行启动，再传入 session：
 
 ```sh
-python -m mcpywrap --local --project "$HOME/mcpy-manual-project" --non-interactive run --new --no-gui --detach --json
+python -m mcpywrap_core --local --project "$HOME/mcpy-manual-project" --non-interactive run --new --no-gui --detach --json
 python tests/manual/runtime_controls/run.py --project "$HOME/mcpy-manual-project" --session SESSION_ID --suite ui
 python tests/manual/runtime_controls/run.py --project "$HOME/mcpy-manual-project" --session SESSION_ID --suite player --prepare-fixture
 # 附加模式不会关闭传入会话，由创建者在检查后停止。
-python -m mcpywrap --local --project "$HOME/mcpy-manual-project" stop --session SESSION_ID --json
+python -m mcpywrap_core --local --project "$HOME/mcpy-manual-project" stop --session SESSION_ID --json
 ```
 
 ## 用例与结果

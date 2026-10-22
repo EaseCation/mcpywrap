@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 
-from mcpywrap.utils.locks import directory_lock, lock_storage
+from mcpywrap_core.utils.locks import directory_lock, lock_storage
 
 
 class LockStorageTests(unittest.TestCase):
@@ -15,7 +15,7 @@ class LockStorageTests(unittest.TestCase):
             public, private = base/'public/resource', base/'private'
             child = '''
 import sys
-from mcpywrap.utils.locks import directory_lock, lock_storage, LockBusy
+from mcpywrap_core.utils.locks import directory_lock, lock_storage, LockBusy
 try:
     with lock_storage(sys.argv[2]), directory_lock(sys.argv[1]):
         pass

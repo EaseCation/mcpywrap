@@ -4,7 +4,7 @@
 
 ## 实现边界
 
-- `mcpywrap/timeline.py` 是唯一的时间计划生成器：省略 `at_ms` 时按上一步计划结束和 `delay_ms` 生成，显式时间也进入相同计划。它同时被工具 Python 导入和注入游戏 Python 2，不依赖 Win32 或游戏 SDK。
+- `core/mcpywrap_core/timeline.py` 是唯一的时间计划生成器：省略 `at_ms` 时按上一步计划结束和 `delay_ms` 生成，显式时间也进入相同计划。它同时被工具 Python 导入和注入游戏 Python 2，不依赖 Win32 或游戏 SDK。
 - `mcstudio/window.py` 的 `InputSender` 是唯一的 Windows `SendInput` 调用与输入释放实现。旧 key/mouse 和新编排共用它，旧命令的保持时长、修饰键提前量和返回格式不变。
 - `mcstudio/input_sequence.py` 只负责 Windows 事件计划验证、等待、目标检查和结果汇总。相同时间的相邻按钮/键盘事件批量提交，移动与滚轮保留校验边界。开始前完整核对进程身份，执行时检查已持有进程句柄是否存活、焦点、几何和鼠标目标。
 - `mcstudio/runtime_player_payload.py` 保留游戏内动作执行器：游戏 tick、快照、物品与目标断言不能与 Windows 调度混用。旧步骤先编译为时间表，移除人为的 100 ms 步骤间隔，实际延迟记录在步骤结果中。

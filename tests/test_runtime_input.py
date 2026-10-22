@@ -9,11 +9,11 @@ import unittest
 from unittest.mock import Mock, patch
 from click.testing import CliRunner
 
-from mcpywrap.cli import cli
-from mcpywrap.input_plan import normalize_input_plan, InputPlanError, input_key_plan, INPUT_ACTIONS
-from mcpywrap.mcstudio.runtime_input_payload import GameInputController
-from mcpywrap.mcstudio.runtime_player_payload import PlayerController
-from mcpywrap.mcstudio.runtime_ui_payload import UIController, UIError
+from mcpywrap_core.cli import cli
+from mcpywrap_core.input_plan import normalize_input_plan, InputPlanError, input_key_plan, INPUT_ACTIONS
+from mcpywrap_core.mcstudio.runtime_input_payload import GameInputController
+from mcpywrap_core.mcstudio.runtime_player_payload import PlayerController
+from mcpywrap_core.mcstudio.runtime_ui_payload import UIController, UIError
 from test_runtime_player import PlayerAPI, Native, GUI
 from test_runtime_ui import API, ROOT
 
@@ -306,7 +306,7 @@ class UnifiedInputTests(unittest.TestCase):
         self.assertEqual([(c, d) for _, c, d in self.inputs], [(17, True), (87, True), (87, False), (17, False)])
 
     def test_native_launcher_clock_is_used_without_platform_fallback(self):
-        from mcpywrap.mcstudio import runtime_key_timeline_payload as clocks
+        from mcpywrap_core.mcstudio import runtime_key_timeline_payload as clocks
         import sys
         native = types.ModuleType('_mcpy_launcher')
         native.monotonic = lambda: 123.
@@ -332,14 +332,14 @@ class UnifiedInputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             file = Path(directory)/'input.json'
             file.write_text(json.dumps(plan([{'action': 'key', 'keys': ['CTRL', 'W'], 'duration_ms': 500}])))
-            with patch('mcpywrap.mcstudio.unified_input.execute', return_value={'ok': True}) as execute:
+            with patch('mcpywrap_core.mcstudio.unified_input.execute', return_value={'ok': True}) as execute:
                 runner = CliRunner()
                 for args in (['run', '--file', str(file)], ['key', 'CTRL+W', '--duration-ms', '500']):
                     result = runner.invoke(cli, ['--local', 'runtime', 'input']+args+['--session', 'a'*32, '--request-id', 'b'*32, '--json'])
                     self.assertEqual(result.exit_code, 0, result.output)
                 self.assertEqual(execute.call_args_list[0].args, execute.call_args_list[1].args)
-            from mcpywrap.mcstudio.runtime_ui import execute as game_execute
-            with patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value={
+            from mcpywrap_core.mcstudio.runtime_ui import execute as game_execute
+            with patch('mcpywrap_core.mcstudio.runtime_debug.control_request', return_value={
                     'state': 'completed', 'side': 'client', 'request_id': 'wire',
                     'value': {'ok': True, 'operation_id': 'b'*32, 'request_id': 'b'*32, 'state': 'pending'}}):
                 result = game_execute(Path('.'), 'a'*32, 'run', {'plan': input_key_plan('W'), 'request_id': 'b'*32}, family='input')

@@ -1,7 +1,7 @@
-import importlib
 import io
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -53,14 +53,16 @@ class DistributionLayoutTests(unittest.TestCase):
                         else:
                             check_release.check_native_payload(archive, 'window_capture')
 
-    def test_old_and_new_imports_share_module_class_and_state(self):
-        for name in ('api', 'dependencies', 'command_context', 'runtime.deployment', 'builders.project_builder'):
-            legacy = importlib.import_module('mcpywrap.'+name)
-            core = importlib.import_module('mcpywrap_core.'+name)
-            self.assertIs(legacy, core)
-        from mcpywrap.api import Core as old
-        from mcpywrap_core.api import Core as new
-        self.assertIs(old, new)
+    def test_core_api_works_without_a_legacy_import_package(self):
+        # 新进程验证实际导入边界，避免已加载模块影响包发现。
+        code = '''
+import importlib.util
+from mcpywrap_core import __version__
+from mcpywrap_core.api import Core
+assert Core().describe()['version'] == __version__
+assert importlib.util.find_spec('mcpywrap') is None
+'''
+        subprocess.run([sys.executable, '-c', code], check=True)
 
     def test_partial_release_only_retries_identical_missing_files(self):
         import hashlib

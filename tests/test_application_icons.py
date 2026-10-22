@@ -15,7 +15,7 @@ try:
 except ImportError:
     QImage = None
 
-from mcpywrap.engines import android_icon, macos_icons, install
+from mcpywrap_core.engines import android_icon, macos_icons, install
 
 
 def strings(values):
@@ -164,7 +164,7 @@ class IconTests(unittest.TestCase):
             self.assertEqual(macos_icons.optional_runtime_application(app, self.game), app)
 
     def test_gui_identity_and_packaged_icon(self):
-        from mcpywrap.ui.application import create_application, application_icon
+        from mcpywrap_core.ui.application import create_application, application_icon
         app = create_application()
         self.assertEqual(app.applicationName(), 'mcpy')
         self.assertEqual(app.applicationDisplayName(), 'mcpy')

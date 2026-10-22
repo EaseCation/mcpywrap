@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from mcpywrap.mcstudio.game import _launch_message
+from mcpywrap_core.mcstudio.game import _launch_message
 
 
 class LaunchEncoding(unittest.TestCase):
@@ -27,7 +27,7 @@ class LaunchEncoding(unittest.TestCase):
                 with self.subTest(encoding=encoding, json=structured), tempfile.TemporaryDirectory() as tmp:
                     project = Path(tmp)/'中文项目'
                     project.mkdir()
-                    command = [sys.executable, '-m', 'mcpywrap', '--local', '--project', str(project),
+                    command = [sys.executable, '-m', 'mcpywrap_core', '--local', '--project', str(project),
                                '--non-interactive', 'init', '--name', 'encoding-test', '--type', 'addon']
                     if structured:
                         command.append('--json')

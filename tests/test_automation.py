@@ -14,18 +14,18 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.command_context import project_scope, project_dir
-from mcpywrap.dependencies import read_project, write_project
-from mcpywrap.mcstudio import sessions
-from mcpywrap.mcstudio.file_logs import FileLogServer
-from mcpywrap.mcstudio.log_protocol import LogDecoder
-from mcpywrap.mcstudio.processes import checked_process
+from mcpywrap_core.cli import cli
+from mcpywrap_core.command_context import project_scope, project_dir
+from mcpywrap_core.dependencies import read_project, write_project
+from mcpywrap_core.mcstudio import sessions
+from mcpywrap_core.mcstudio.file_logs import FileLogServer
+from mcpywrap_core.mcstudio.log_protocol import LogDecoder
+from mcpywrap_core.mcstudio.processes import checked_process
 
 
 class AutomationTests(unittest.TestCase):
     def setUp(self):
-        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host = patch('mcpywrap_core.engines.backend.describe', return_value={'backend': 'windows'})
         backend_host.start()
         self.addCleanup(backend_host.stop)
         self.temp = tempfile.TemporaryDirectory()
@@ -109,7 +109,7 @@ class AutomationTests(unittest.TestCase):
 
     def test_interrupt_is_130(self):
         self.initialize()
-        module = importlib.import_module('mcpywrap.commands.package_cmd')
+        module = importlib.import_module('mcpywrap_core.commands.package_cmd')
         with patch.object(module.AddonProjectBuilder, 'build', side_effect=KeyboardInterrupt):
             result, data = self.call('package')
         self.assertEqual(result.exit_code, 130)
@@ -125,17 +125,17 @@ class AutomationTests(unittest.TestCase):
 
     def test_mod_does_not_open_a_gui_even_with_legacy_flag(self):
         self.initialize()
-        with patch('mcpywrap.minecraft.template.mod_template.open_ui_crate_mod', side_effect=AssertionError('GUI')):
+        with patch('mcpywrap_core.minecraft.template.mod_template.open_ui_crate_mod', side_effect=AssertionError('GUI')):
             result, data = self.call('mod', '--gui')
         self.assertEqual(result.exit_code, 2)
         self.assertIn('mcpy ui', data['error'])
 
     def test_interactive_mod_uses_terminal_prompt(self):
         self.initialize()
-        command = importlib.import_module('mcpywrap.commands.mod_cmd')
+        command = importlib.import_module('mcpywrap_core.commands.mod_cmd')
         with patch.object(command, 'human_interaction', return_value=True), \
                 patch('click.prompt', return_value='TerminalMod') as prompt, \
-                patch('mcpywrap.minecraft.template.mod_template.open_ui_crate_mod', side_effect=AssertionError('GUI')):
+                patch('mcpywrap_core.minecraft.template.mod_template.open_ui_crate_mod', side_effect=AssertionError('GUI')):
             result, data = self.call('mod')
         self.assertEqual(result.exit_code, 0, result.output)
         prompt.assert_called_once()
@@ -145,7 +145,7 @@ class AutomationTests(unittest.TestCase):
         self.initialize()
         dependency = self.root / 'dependency'
         dependency.mkdir()
-        from mcpywrap.project_init import initialize_project
+        from mcpywrap_core.project_init import initialize_project
         initialize_project(dependency, 'shared', 'addon')
         result, data = self.call('add', '--path', '../dependency')
         self.assertEqual(result.exit_code, 0, result.output)
@@ -155,7 +155,7 @@ class AutomationTests(unittest.TestCase):
         self.assertTrue(dependency.is_dir())
 
     def test_map_sync_preserves_user_packages(self):
-        from mcpywrap.config import update_map_setuptools_config
+        from mcpywrap_core.config import update_map_setuptools_config
         (self.project / 'behavior_packs' / 'sample').mkdir(parents=True)
         write_project(self.project, {'tool': {'mcpywrap': {'project_type': 'map'},
                                             'setuptools': {'packages': ['custom', 'behavior_packs.old'],
@@ -167,7 +167,7 @@ class AutomationTests(unittest.TestCase):
         self.assertEqual(settings['package-dir']['custom'], 'src/custom')
 
     def test_sdk_explicit_selection_and_failure(self):
-        module = importlib.import_module('mcpywrap.commands.modsdk_cmd')
+        module = importlib.import_module('mcpywrap_core.commands.modsdk_cmd')
         with patch.object(module, 'get_available_versions', return_value=['1', '2']), patch.object(module, 'download_and_install_package', return_value=False) as install:
             result, data = self.call('modsdk', '--latest')
             self.assertEqual(result.exit_code, 1)
@@ -175,7 +175,7 @@ class AutomationTests(unittest.TestCase):
 
     def test_publish_uploads_only_fresh_artifacts(self):
         self.initialize()
-        module = importlib.import_module('mcpywrap.commands.publish_cmd')
+        module = importlib.import_module('mcpywrap_core.commands.publish_cmd')
         called = []
 
         def process(command, **kwargs):
@@ -197,7 +197,7 @@ class AutomationTests(unittest.TestCase):
     def test_missing_credentials_does_not_build_or_upload(self):
         import click
         self.initialize()
-        module = importlib.import_module('mcpywrap.commands.publish_cmd')
+        module = importlib.import_module('mcpywrap_core.commands.publish_cmd')
         with patch.object(module, 'check_credentials', side_effect=click.ClickException('凭据不可用')), patch.object(module.subprocess, 'run') as start:
             result, data = self.call('publish', '--yes')
         self.assertEqual(result.exit_code, 1)
@@ -212,7 +212,7 @@ class AutomationTests(unittest.TestCase):
 
     def test_qt_not_loaded_by_core_cli(self):
         proc = subprocess.run([sys.executable, '-B', '-c',
-                               'import sys; import mcpywrap.cli; assert not any(k.startswith("PySide6") for k in sys.modules)'],
+                               'import sys; import mcpywrap_core.cli; assert not any(k.startswith("PySide6") for k in sys.modules)'],
                               capture_output=True, text=True, timeout=30)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
@@ -268,7 +268,7 @@ class LogAndSessionTests(unittest.TestCase):
     def test_pid_reuse_refused(self):
         fake = Mock()
         fake.create_time.return_value = 2
-        with patch('mcpywrap.mcstudio.processes.psutil.Process', return_value=fake):
+        with patch('mcpywrap_core.mcstudio.processes.psutil.Process', return_value=fake):
             with self.assertRaisesRegex(ValueError, '身份不匹配'):
                 checked_process({'pid': 1, 'created_at': 1, 'executable': 'game.exe'})
             fake.terminate.assert_not_called()
@@ -294,9 +294,9 @@ class LogAndSessionTests(unittest.TestCase):
             self.assertEqual(len(list(Path(directory).rglob('stop'))), 1)
 
     def test_worker_listener_ready_before_game_and_failure_cleanup(self):
-        from mcpywrap.mcstudio import session_worker as worker
-        from mcpywrap.engines.windows import WindowsBackend
-        from mcpywrap.engines.backend import LaunchedGame
+        from mcpywrap_core.mcstudio import session_worker as worker
+        from mcpywrap_core.engines.windows import WindowsBackend
+        from mcpywrap_core.engines.backend import LaunchedGame
         with tempfile.TemporaryDirectory() as directory:
             session = uuid.uuid4().hex
             path = sessions.session_path(directory, session)

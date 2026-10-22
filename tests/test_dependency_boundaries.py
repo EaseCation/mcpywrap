@@ -9,21 +9,21 @@ from unittest.mock import patch, Mock
 from click.testing import CliRunner
 from watchdog.events import FileCreatedEvent, FileDeletedEvent, FileModifiedEvent, FileMovedEvent
 
-from mcpywrap.cli import cli
-from mcpywrap.dependencies import DependencyError, DependencyService, read_project, write_project
-from mcpywrap.builders.project_builder import AddonProjectBuilder, MapProjectBuilder
-from mcpywrap.builders.watcher import ProjectWatcher
-from mcpywrap.mcstudio.network import prepare_project
+from mcpywrap_core.cli import cli
+from mcpywrap_core.dependencies import DependencyError, DependencyService, read_project, write_project
+from mcpywrap_core.builders.project_builder import AddonProjectBuilder, MapProjectBuilder
+from mcpywrap_core.builders.watcher import ProjectWatcher
+from mcpywrap_core.mcstudio.network import prepare_project
 from test_local_dependencies import ProjectFixture, FakeDist, addon
 
 
-DIST = 'mcpywrap.builders.dependency_manager.metadata.distribution'
+DIST = 'mcpywrap_core.builders.dependency_manager.metadata.distribution'
 
 
 class Boundaries(ProjectFixture):
     def setUp(self):
         super().setUp()
-        host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        host = patch('mcpywrap_core.engines.backend.describe', return_value={'backend': 'windows'})
         host.start()
         self.addCleanup(host.stop)
 
@@ -63,8 +63,8 @@ class Boundaries(ProjectFixture):
 
     def test_init_package_wizard_reports_development_scope(self):
         (self.main / 'pyproject.toml').unlink()
-        with patch('mcpywrap.commands.init_cmd.non_interactive', return_value=False), patch(
-                'mcpywrap.dependencies.DependencyService.install_package'), patch(DIST, return_value=FakeDist()):
+        with patch('mcpywrap_core.commands.init_cmd.non_interactive', return_value=False), patch(
+                'mcpywrap_core.dependencies.DependencyService.install_package'), patch(DIST, return_value=FakeDist()):
             result = CliRunner().invoke(cli, ['--local', '--project', str(self.main), 'init'],
                                         input='main\n0.1.0\naddon\n./build\ny\n1\nexample>=1\nn\n')
         self.assertEqual(result.exit_code, 0, result.output)
@@ -79,7 +79,7 @@ class Boundaries(ProjectFixture):
         self.assertEqual(json.loads(result.stdout)['classification'], 'addon')
 
     def test_gui_worker_emits_development_warning(self):
-        from mcpywrap.ui.project_ui import DependencyInstallThread
+        from mcpywrap_core.ui.project_ui import DependencyInstallThread
         worker = DependencyInstallThread('example>=1', str(self.main))
         messages, outcomes = [], []
         worker.log_message.connect(lambda message, level: messages.append((message, level)))
@@ -157,12 +157,12 @@ class Boundaries(ProjectFixture):
 
     def test_run_edit_and_network_validate_before_start(self):
         from runtime_support import launch_world
-        edit = importlib.import_module('mcpywrap.commands.edit_cmd')
+        edit = importlib.import_module('mcpywrap_core.commands.edit_cmd')
         (self.main / 'behavior_pack/a.dll').touch()
-        with patch('mcpywrap.runtime.windows.discover_engines') as discover, \
-                patch('mcpywrap.runtime.windows.require_resources'), \
-                patch('mcpywrap.mcstudio.deployment_links.ManagedLinks.publish') as links, \
-                patch('mcpywrap.mcstudio.game.open_game') as start:
+        with patch('mcpywrap_core.runtime.windows.discover_engines') as discover, \
+                patch('mcpywrap_core.runtime.windows.require_resources'), \
+                patch('mcpywrap_core.mcstudio.deployment_links.ManagedLinks.publish') as links, \
+                patch('mcpywrap_core.mcstudio.game.open_game') as start:
             discover.return_value.require_engine.return_value = Mock(version='3.10')
             with self.assertRaisesRegex(DependencyError, '原生二进制'):
                 launch_world(self.main, self.main/'.runtime/test.cppconfig', 'test')
@@ -177,15 +177,15 @@ class Boundaries(ProjectFixture):
     def test_run_json_warns_for_host_dependency(self):
         self.packages('example>=1')
         from runtime_support import prepare_packs
-        from mcpywrap.mcstudio.discovery import Engine
+        from mcpywrap_core.mcstudio.discovery import Engine
         engine = Engine('game.exe', '3.10', str(self.root/'engine'), str(self.root), 'fixture')
         def worker(*args, **kwargs):
             prepare_packs('main', self.main, raise_errors=True)
             return {}
-        with patch(DIST, return_value=FakeDist()), patch('mcpywrap.mcstudio.sessions.start', side_effect=worker), \
-                patch('mcpywrap.runtime.windows.discover_engines') as discover, \
-                patch('mcpywrap.runtime.windows.require_resources'), \
-                patch('mcpywrap.mcstudio.sessions.handoff', return_value={'session': 'test'}):
+        with patch(DIST, return_value=FakeDist()), patch('mcpywrap_core.mcstudio.sessions.start', side_effect=worker), \
+                patch('mcpywrap_core.runtime.windows.discover_engines') as discover, \
+                patch('mcpywrap_core.runtime.windows.require_resources'), \
+                patch('mcpywrap_core.mcstudio.sessions.handoff', return_value={'session': 'test'}):
             discover.return_value.require_engine.return_value = engine
             result = self.call('run', '--detach', '--no-gui')
         self.assertEqual(result.exit_code, 0, result.output)
@@ -227,10 +227,10 @@ class Boundaries(ProjectFixture):
 
     def test_gui_development_warning_does_not_block_and_native_does(self):
         from PySide6.QtWidgets import QApplication
-        from mcpywrap.ui import project_ui as ui
+        from mcpywrap_core.ui import project_ui as ui
         self.packages('click>=8')
         app = QApplication.instance() or QApplication([])
-        with patch.object(ui, 'find_all_mcpywrap_packages', return_value=[]), patch('mcpywrap.engines.macos.MacOSBackend.instances', return_value=[]):
+        with patch.object(ui, 'find_all_mcpywrap_packages', return_value=[]), patch('mcpywrap_core.engines.macos.MacOSBackend.instances', return_value=[]):
             window = ui.GameInstanceManager(str(self.main))
         try:
             self.assertIn('仅开发环境', window.dependency_list.item(0).text())

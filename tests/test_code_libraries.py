@@ -6,10 +6,10 @@ import subprocess
 import tempfile
 import unittest
 
-from mcpywrap.code_libraries import sync_libraries, resolve_libraries, LOCK_FILE
-from mcpywrap.dependencies import DependencyError, read_project, write_project
-from mcpywrap.builders.project_builder import AddonProjectBuilder
-from mcpywrap.builders.watcher import ProjectWatcher
+from mcpywrap_core.code_libraries import sync_libraries, resolve_libraries, LOCK_FILE
+from mcpywrap_core.dependencies import DependencyError, read_project, write_project
+from mcpywrap_core.builders.project_builder import AddonProjectBuilder
+from mcpywrap_core.builders.watcher import ProjectWatcher
 from test_local_dependencies import addon
 
 
@@ -88,7 +88,7 @@ class CodeLibraries(unittest.TestCase):
         self.assertFalse((self.out / 'behavior_pack/MyMod/Library').exists())
 
     def test_windows_lock_and_installation_are_recalculated_from_pinned_source(self):
-        from mcpywrap.source_files import digest
+        from mcpywrap_core.source_files import digest
         sync_libraries(self.main)
         path = self.main / LOCK_FILE
         canonical = path.read_bytes()

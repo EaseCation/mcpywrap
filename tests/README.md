@@ -14,7 +14,7 @@ python -X utf8 -m unittest discover -s tests -v
 
 ```text
 python -m pip check
-python -c "from importlib.metadata import version; import mcpywrap.api,mcpywrap_core.api; assert version('mcpywrap') == version('mcpywrap-core'); assert mcpywrap.api is mcpywrap_core.api"
+python -c "import importlib.util; from importlib.metadata import version; from mcpywrap_core.api import Core; assert version('mcpywrap') == version('mcpywrap-core') == Core().describe()['version']; assert importlib.util.find_spec('mcpywrap') is None"
 python -m unittest discover -s tests -p 'test_core*.py' -v
 python -m unittest discover -s tests -p test_distribution_layout.py -v
 ```
@@ -28,7 +28,7 @@ python scripts/verify_distributions.py --legacy-wheel <旧版完整包wheel> --o
 python scripts/verify_core_release.py <核心wheel> --output <更新报告.json>
 ```
 
-前者创建临时虚拟环境，检查核心单独安装、旧版原地升级、完整依赖、卸载完整包后核心保留及重装后命令恢复，不修改全局工具环境。后者使用真实核心 wheel，在独立进程中验证激活、更新、回滚与工程输出一致；临时 `+upgradeprobe` 版本仅作测试夹具。嵌入验证入口为 `embedded_upgrade_probe.py`，其公共请求文件只模拟已认证的发布信息，不能作为生产信任来源。构建和发布规则见 [RELEASING.md](../RELEASING.md)。
+前者创建临时虚拟环境，检查核心单独安装、旧版原地升级后旧导入包被移除、完整依赖、卸载完整包后核心保留及重装后两条控制台命令恢复，不修改全局工具环境。Python 模块入口使用 `python -m mcpywrap_core`。后者使用真实核心 wheel，在独立进程中验证激活、更新、回滚与工程输出一致；临时 `+upgradeprobe` 版本仅作测试夹具。嵌入验证入口为 `embedded_upgrade_probe.py`，其公共请求文件只模拟已认证的发布信息，不能作为生产信任来源。构建和发布规则见 [RELEASING.md](../RELEASING.md)。
 
 uv 工具安装应设置独立的 `UV_TOOL_DIR` 和 `UV_TOOL_BIN_DIR`，同时提供同版本核心与完整包，核对命令入口和安装资源；测试环境变量只作用于测试进程。
 

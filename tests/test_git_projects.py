@@ -12,18 +12,18 @@ import unittest
 from unittest.mock import patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.dependencies import DependencyError, read_project, write_project
-from mcpywrap.git_cache import fetch_snapshot, cache_root
-from mcpywrap.git_projects import declarations, resolve_projects, LOCK_FILE
-from mcpywrap.project_dependencies import GitDependencyService
-from mcpywrap.builders.project_builder import AddonProjectBuilder
+from mcpywrap_core.cli import cli
+from mcpywrap_core.dependencies import DependencyError, read_project, write_project
+from mcpywrap_core.git_cache import fetch_snapshot, cache_root
+from mcpywrap_core.git_projects import declarations, resolve_projects, LOCK_FILE
+from mcpywrap_core.project_dependencies import GitDependencyService
+from mcpywrap_core.builders.project_builder import AddonProjectBuilder
 from test_local_dependencies import addon
 
 
 class GitProjects(unittest.TestCase):
     def test_sync_recalculates_old_lock_without_changing_pins_or_backups(self):
-        from mcpywrap.git_projects import sync_projects
+        from mcpywrap_core.git_projects import sync_projects
         repo, rev = self.repository('refresh', 'code')
         self.service.add(repo.as_uri(), ref=rev)
         path = self.main / LOCK_FILE
@@ -44,7 +44,7 @@ class GitProjects(unittest.TestCase):
                 self.assertFalse((self.main / '.mcpy/registration-backups').exists())
 
     def test_sync_rejects_modified_source_cache_and_registration(self):
-        from mcpywrap.git_projects import sync_projects
+        from mcpywrap_core.git_projects import sync_projects
         repo, rev = self.repository('corrupt', 'code')
         self.service.add(repo.as_uri())
         source, _ = fetch_snapshot(repo.as_uri(), rev)
@@ -61,7 +61,7 @@ class GitProjects(unittest.TestCase):
             file.write_bytes(original)
 
     def test_archive_and_lock_ignore_host_git_conversion_settings(self):
-        from mcpywrap.git_projects import sync_projects
+        from mcpywrap_core.git_projects import sync_projects
         repo, _ = self.repository('portable-archive', 'code')
         (repo / '.gitattributes').write_bytes(
             b'*.py text eol=crlf ident filter=host\n*.bin -text\n')
@@ -98,8 +98,8 @@ class GitProjects(unittest.TestCase):
         import hashlib
         import io
         import tarfile
-        from mcpywrap.git_projects import sync_projects
-        from mcpywrap.source_files import digest
+        from mcpywrap_core.git_projects import sync_projects
+        from mcpywrap_core.source_files import digest
         repo, rev = self.repository('windows-v2', 'code')
         old = self.root / 'windows-archive'
         old.mkdir()
@@ -112,7 +112,7 @@ class GitProjects(unittest.TestCase):
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(tar.extractfile(member).read())
         self.assertIn(b'\r\n', (old / 'src/__init__.py').read_bytes())
-        with patch('mcpywrap.git_projects.fetch_source', return_value=(old, rev)):
+        with patch('mcpywrap_core.git_projects.fetch_source', return_value=(old, rev)):
             self.service.add(repo.as_uri(), ref=rev)
         old_lock = (self.main / LOCK_FILE).read_bytes()
         # Simulate the previous shared cache, whose checksum is valid but whose
@@ -134,7 +134,7 @@ class GitProjects(unittest.TestCase):
         self.assertEqual(digest(container / 'content'), digest(old))
 
     def test_existing_windows_source_cache_remains_usable_offline(self):
-        from mcpywrap.source_files import windows_checkout_digest
+        from mcpywrap_core.source_files import windows_checkout_digest
         repo, _ = self.repository('old-source-cache', 'code')
         (repo/'src/B.py').write_bytes(b'B = 1\n')
         rev = self.commit(repo)
@@ -143,14 +143,14 @@ class GitProjects(unittest.TestCase):
         record = json.loads(metadata.read_text())
         record['sha256'] = windows_checkout_digest(source, crlf=False)
         metadata.write_text(json.dumps(record))
-        with patch('mcpywrap.git_cache._git', side_effect=AssertionError('network')):
+        with patch('mcpywrap_core.git_cache._git', side_effect=AssertionError('network')):
             fetched, commit = fetch_snapshot(repo.as_uri(), rev)
         self.assertEqual(commit, rev)
         self.assertEqual(fetched, source)
 
     def test_lock_bytes_are_independent_of_windows_path_order(self):
-        from mcpywrap.git_projects import sync_projects
-        from mcpywrap.source_files import digest
+        from mcpywrap_core.git_projects import sync_projects
+        from mcpywrap_core.source_files import digest
         repo, _ = self.repository('portable', 'code')
         (repo/'src/B.py').write_bytes(b'B = 1\n')
         (repo/'src/a.py').write_bytes(b'a = 2\n')
@@ -161,7 +161,7 @@ class GitProjects(unittest.TestCase):
         class WindowsOrderedPath(type(Path())):
             def __lt__(self, other):
                 return tuple(p.lower() for p in self.parts) < tuple(p.lower() for p in other.parts)
-        with patch('mcpywrap.source_files.Path', WindowsOrderedPath):
+        with patch('mcpywrap_core.source_files.Path', WindowsOrderedPath):
             sync_projects(self.main)
             resolve_projects(self.main)
         self.assertEqual(path.read_bytes(), before)
@@ -170,8 +170,8 @@ class GitProjects(unittest.TestCase):
         self.assertNotIn(b'\r\n', (registered/'behavior_pack/manifest.json').read_bytes())
 
     def test_old_windows_generated_files_are_rebuilt_without_backups(self):
-        from mcpywrap.git_projects import sync_projects
-        from mcpywrap.source_files import windows_checkout_digest
+        from mcpywrap_core.git_projects import sync_projects
+        from mcpywrap_core.source_files import windows_checkout_digest
         repo, _ = self.repository('old-generated', 'code')
         self.service.add(repo.as_uri())
         registered = resolve_projects(self.main)[0][1]
@@ -219,7 +219,7 @@ class GitProjects(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='mcpy-git-test-')
         self.root = Path(self.temp.name)
         def cleanup():
-            from mcpywrap.source_files import long_path
+            from mcpywrap_core.source_files import long_path
             self.temp.name = str(long_path(self.root))
             self.temp.cleanup()
         self.addCleanup(cleanup)
@@ -303,7 +303,7 @@ class GitProjects(unittest.TestCase):
         self.assertTrue(snapshot.is_relative_to(cache_root()))
         clone = self.root / 'clone'
         shutil.copytree(self.main, clone, ignore=shutil.ignore_patterns('.mcpy'))
-        with patch('mcpywrap.git_cache._git', side_effect=AssertionError('should not download')):
+        with patch('mcpywrap_core.git_cache._git', side_effect=AssertionError('should not download')):
             result = CliRunner().invoke(cli, ['--project', str(clone), '--non-interactive', 'sync', '--json'])
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual((self.main / LOCK_FILE).read_bytes(), (clone / LOCK_FILE).read_bytes())
@@ -314,7 +314,7 @@ class GitProjects(unittest.TestCase):
 
     def test_concurrent_cache_fetches_publish_one_complete_snapshot(self):
         repo, rev = self.repository('concurrent', 'code')
-        script = 'from mcpywrap.git_cache import fetch_snapshot; import sys; print(fetch_snapshot(sys.argv[1],sys.argv[2])[0])'
+        script = 'from mcpywrap_core.git_cache import fetch_snapshot; import sys; print(fetch_snapshot(sys.argv[1],sys.argv[2])[0])'
         def run():
             return subprocess.run([sys.executable, '-c', script, repo.as_uri(), rev], capture_output=True, text=True, timeout=45)
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
@@ -388,7 +388,7 @@ class GitProjects(unittest.TestCase):
         self.assertEqual(before, (self.main / 'pyproject.toml').read_bytes())
 
     def test_dev_checks_git_snapshot_before_writing(self):
-        from mcpywrap.builders.watcher import ProjectWatcher
+        from mcpywrap_core.builders.watcher import ProjectWatcher
         repo, rev = self.repository('watched-addon')
         self.service.add(repo.as_uri(), ref=rev)
         self.build()
@@ -408,7 +408,7 @@ class GitProjects(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
 
     def test_deep_source_paths_work_without_system_setting(self):
-        from mcpywrap.source_files import long_path
+        from mcpywrap_core.source_files import long_path
         repo, rev = self.repository('deep', 'code')
         relative = '/'.join(['long_directory_' + str(i) + '_' * 45 for i in range(4)]) + '/module.py'
         path = long_path(repo / 'src' / relative)
@@ -422,8 +422,8 @@ class GitProjects(unittest.TestCase):
         self.assertEqual((registered / 'behavior_pack/Mod/deep' / relative).read_text(), 'DEEP = True\n')
 
     def test_another_framework_needs_only_preset_data(self):
-        from mcpywrap.framework_presets import FRAMEWORK_PRESETS
-        from mcpywrap.frameworks import add_framework
+        from mcpywrap_core.framework_presets import FRAMEWORK_PRESETS
+        from mcpywrap_core.frameworks import add_framework
         repo, rev = self.repository('tiny-framework', 'code')
         preset = {'title': 'Tiny framework', 'version': '0.1', 'rev': rev,
                   'sources': {'local': repo.as_uri()}, 'default_source': 'local',
@@ -439,7 +439,7 @@ class GitProjects(unittest.TestCase):
     @unittest.skipUnless(os.name == 'nt', 'Qt is Windows-only')
     def test_gui_raw_git_project_uses_same_service(self):
         from PySide6.QtWidgets import QApplication
-        from mcpywrap.ui import project_ui as ui
+        from mcpywrap_core.ui import project_ui as ui
         import time
         repo, rev = self.repository('gui-code', 'code')
         app = QApplication.instance() or QApplication([])

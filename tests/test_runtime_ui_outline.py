@@ -3,8 +3,8 @@ import json
 import unittest
 from unittest.mock import Mock
 
-from mcpywrap.mcstudio.runtime_ui_outline import prepare_ui_outline, render_ui_outline
-from mcpywrap.mcstudio.runtime_ui_payload import UIController, UIError
+from mcpywrap_core.mcstudio.runtime_ui_outline import prepare_ui_outline, render_ui_outline
+from mcpywrap_core.mcstudio.runtime_ui_payload import UIController, UIError
 from test_runtime_ui import API, GUI, ROOT
 
 

@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.mcstudio.session_capabilities import inspect_session
+from mcpywrap_core.cli import cli
+from mcpywrap_core.mcstudio.session_capabilities import inspect_session
 
 
 class SessionCapabilitiesTests(unittest.TestCase):
@@ -19,10 +19,10 @@ class SessionCapabilitiesTests(unittest.TestCase):
 
     def inspect(self):
         (self.root/'control.json').write_text(json.dumps(self.control))
-        with patch('mcpywrap.mcstudio.sessions.read', return_value=self.data), \
-                patch('mcpywrap.mcstudio.sessions.session_path', return_value=self.root), \
-                patch('mcpywrap.mcstudio.session_capabilities.checked_process', return_value=True), \
-                patch('mcpywrap.mcstudio.runtime_debug.control_request', side_effect=AssertionError('execute')):
+        with patch('mcpywrap_core.mcstudio.sessions.read', return_value=self.data), \
+                patch('mcpywrap_core.mcstudio.sessions.session_path', return_value=self.root), \
+                patch('mcpywrap_core.mcstudio.session_capabilities.checked_process', return_value=True), \
+                patch('mcpywrap_core.mcstudio.runtime_debug.control_request', side_effect=AssertionError('execute')):
             return inspect_session(self.root, 'a'*32)
 
     def test_both_backends_share_schema_without_exposing_transport_or_token(self):
@@ -82,8 +82,8 @@ class SessionCapabilitiesTests(unittest.TestCase):
         for args in (['capabilities'], ['py-result', 'b'*32],
                      ['py', '--code', 'side_effect()', '--no-wait'],
                      ['py', '--code', 'side_effect()', '--wait-until', 'True']):
-            with patch('mcpywrap.mcstudio.sessions.read', side_effect=AssertionError('local read')), \
-                    patch('mcpywrap.remote.client.Client.request', side_effect=AssertionError('remote send')):
+            with patch('mcpywrap_core.mcstudio.sessions.read', side_effect=AssertionError('local read')), \
+                    patch('mcpywrap_core.remote.client.Client.request', side_effect=AssertionError('remote send')):
                 result = CliRunner().invoke(cli, ['--project', str(self.root), '--remote', 'http://localhost:1',
                     '--non-interactive', 'runtime', *args, '--session', 'a'*32, '--json'])
             self.assertEqual(result.exit_code, 2, result.output)

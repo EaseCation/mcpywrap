@@ -11,9 +11,9 @@ import unittest
 from unittest.mock import patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.dependencies import read_project, write_project
-from mcpywrap.project_scripts import ScriptError, before, configuration, operation
+from mcpywrap_core.cli import cli
+from mcpywrap_core.dependencies import read_project, write_project
+from mcpywrap_core.project_scripts import ScriptError, before, configuration, operation
 from test_runtime_deployment import fixture
 
 
@@ -194,7 +194,7 @@ class ScriptTests(unittest.TestCase):
 
     def test_recursive_write_command_is_rejected(self):
         root=str(Path(__file__).resolve().parents[1])
-        self.configure("import sys\nsys.path.insert(0,%r)\nfrom mcpywrap.cli import cli\ncli.main(['build','--json'])\n" % root)
+        self.configure("import sys\nsys.path.insert(0,%r)\nfrom mcpywrap_core.cli import cli\ncli.main(['build','--json'])\n" % root)
         result=self.invoke('script','run','assets','--json')
         self.assertNotEqual(result.exit_code,0)
         log=Path(json.loads(result.stdout)['script_log']).read_text(encoding='utf-8')
@@ -218,7 +218,7 @@ class ScriptTests(unittest.TestCase):
 
     def test_removed_hooks_after_start_reservation_are_rejected(self):
         from unittest.mock import Mock
-        from mcpywrap.project_scripts import snapshot_digest, startup_hooks
+        from mcpywrap_core.project_scripts import snapshot_digest, startup_hooks
         data = {'project': str(self.project), 'script_config_digest': snapshot_digest(self.project)}
         config = read_project(self.project)
         del config['tool']['mcpywrap']['scripts']
@@ -229,8 +229,8 @@ class ScriptTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 'script_config_changed')
 
     def test_adding_hooks_after_start_reservation_does_not_execute_them(self):
-        from mcpywrap.mcstudio import sessions
-        from mcpywrap.project_scripts import startup_hooks
+        from mcpywrap_core.mcstudio import sessions
+        from mcpywrap_core.project_scripts import startup_hooks
         from unittest.mock import Mock
         config = read_project(self.project)
         del config['tool']['mcpywrap']['scripts']
@@ -258,7 +258,7 @@ class ScriptTests(unittest.TestCase):
     def test_worker_rejects_descendant_that_exits_parent_before_first_observation(self):
         import io
         from types import SimpleNamespace
-        from mcpywrap import _script_worker as worker
+        from mcpywrap_core import _script_worker as worker
         marker = self.project/'unobserved-child.pid'
         script = ("import subprocess,sys\nfrom pathlib import Path\n"
                   "p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'])\n"
@@ -282,7 +282,7 @@ class ScriptTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'Windows job membership')
     def test_job_does_not_count_exited_or_unrelated_processes(self):
-        from mcpywrap import _script_worker as worker
+        from mcpywrap_core import _script_worker as worker
         job = worker.WindowsJob()
         self.addCleanup(job.close)
         child = subprocess.Popen([sys.executable, '-c', 'pass'],
@@ -299,7 +299,7 @@ class ScriptTests(unittest.TestCase):
     def test_job_ownership_ignores_stale_process_tree_observations(self):
         import io
         from types import SimpleNamespace
-        from mcpywrap import _script_worker as worker
+        from mcpywrap_core import _script_worker as worker
         unrelated = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(60)'])
         result = self.project/'worker-stale-tree.json'
         spec = dict(command=[sys.executable, '-c', 'pass'], timeout=15,
@@ -317,13 +317,13 @@ class ScriptTests(unittest.TestCase):
             unrelated.wait(timeout=10)
 
     def test_low_level_builder_and_refresh_do_not_execute_hooks(self):
-        from mcpywrap.runtime.deployment import Deployment
+        from mcpywrap_core.runtime.deployment import Deployment
         d=Deployment(self.project)
         with d.lock(): d.prepare();d.commit()
         self.assertFalse((self.project/'behavior_pack/result.json').exists())
 
     def test_lock_covers_consumption_and_no_change_can_reuse_deployment(self):
-        from mcpywrap.runtime.deployment import Deployment
+        from mcpywrap_core.runtime.deployment import Deployment
         ids=[]
         for _ in range(2):
             with before(self.project,'before_run'):
@@ -335,8 +335,8 @@ class ScriptTests(unittest.TestCase):
         self.assertEqual(ids[0],ids[1])
 
     def test_hook_generation_cannot_replace_a_deployment_with_other_readers(self):
-        from mcpywrap.runtime.deployment import Deployment, inventory
-        from mcpywrap.engines.host import EngineError
+        from mcpywrap_core.runtime.deployment import Deployment, inventory
+        from mcpywrap_core.engines.host import EngineError
         deployment = Deployment(self.project)
         with deployment.lock():
             deployment.prepare()
@@ -344,7 +344,7 @@ class ScriptTests(unittest.TestCase):
         previous = inventory(deployment.target)
         previous_record = deployment.record_path.read_bytes()
         with before(self.project, 'before_run'):
-            with patch('mcpywrap.runtime.deployment.readers', return_value=[{'session': 'a'*32}]):
+            with patch('mcpywrap_core.runtime.deployment.readers', return_value=[{'session': 'a'*32}]):
                 with deployment.lock(), self.assertRaises(EngineError) as caught:
                     deployment.prepare()
         self.assertEqual(caught.exception.code, 'deployment_in_use')
@@ -353,7 +353,7 @@ class ScriptTests(unittest.TestCase):
         self.assertEqual(deployment.record_path.read_bytes(), previous_record)
 
     def test_only_root_hooks_run_and_removed_dependency_files_disappear(self):
-        from mcpywrap.runtime.deployment import Deployment
+        from mcpywrap_core.runtime.deployment import Deployment
         dependency = fixture(Path(self.tmp.name), 'dependency')
         (dependency/'behavior_pack/dependency.json').write_text('{}', encoding='utf-8')
         child = read_project(dependency)
@@ -388,18 +388,18 @@ class ScriptTests(unittest.TestCase):
         self.configure("from pathlib import Path\np=Path('count');p.write_text(p.read_text()+'x' if p.exists() else 'x')\n")
         from types import SimpleNamespace
         from unittest.mock import Mock
-        with patch('mcpywrap.commands.dev_cmd.ProjectWatcher') as watcher, patch('mcpywrap.commands.dev_cmd.time', SimpleNamespace(sleep=Mock(side_effect=KeyboardInterrupt))):
+        with patch('mcpywrap_core.commands.dev_cmd.ProjectWatcher') as watcher, patch('mcpywrap_core.commands.dev_cmd.time', SimpleNamespace(sleep=Mock(side_effect=KeyboardInterrupt))):
             watcher.return_value.setup_from_config.return_value = 0
             result = self.invoke('dev')
         self.assertEqual(result.exit_code, 130, result.output)
-        from mcpywrap.builders.project_builder import AddonProjectBuilder
+        from mcpywrap_core.builders.project_builder import AddonProjectBuilder
         self.assertTrue(AddonProjectBuilder(self.project, self.project/'build').build()[0])
         self.assertEqual((self.project/'count').read_text(), 'x')
 
     def test_native_startup_generates_before_deployment_and_failure_never_launches(self):
-        from mcpywrap.runtime.native import launch_world
-        from mcpywrap.runtime.storage import write
-        from mcpywrap.mcstudio.sessions import session_path
+        from mcpywrap_core.runtime.native import launch_world
+        from mcpywrap_core.runtime.storage import write
+        from mcpywrap_core.mcstudio.sessions import session_path
         sid = 'a'*32
         directory = self.project/'.runtime/native'
         data = dict(project=str(self.project), session=sid, level_id='world', state='starting',
@@ -415,16 +415,16 @@ class ScriptTests(unittest.TestCase):
         data.update(state='failed', phase='preparing')
         write(session_path(self.project,sid)/'session.json',data)
         self.configure('raise SystemExit(7)\n')
-        with patch('mcpywrap.runtime.native.Deployment.prepare') as prepare:
+        with patch('mcpywrap_core.runtime.native.Deployment.prepare') as prepare:
             with self.assertRaises(ScriptError):
                 launch_world(data, lambda _: self.fail('failure launched game'))
         prepare.assert_not_called()
 
     def test_windows_startup_uses_same_script_service(self):
         from types import SimpleNamespace
-        from mcpywrap.runtime.windows import launch
-        from mcpywrap.runtime.storage import write
-        from mcpywrap.mcstudio.sessions import session_path
+        from mcpywrap_core.runtime.windows import launch
+        from mcpywrap_core.runtime.storage import write
+        from mcpywrap_core.mcstudio.sessions import session_path
         sid='b'*32
         data=dict(project=str(self.project),session=sid,state='starting',mode='local',
                   level_id='world',game=None,worker=None,config_path=str(self.project/'.runtime/world.cppconfig'),
@@ -433,10 +433,10 @@ class ScriptTests(unittest.TestCase):
         def open_game(*args,**kwargs):
             self.assertTrue((self.project/'.mcpy/runtime/assembled/behavior_pack/result.json').is_file())
             raise RuntimeError('mock launch reached')
-        with patch('mcpywrap.runtime.windows.instances.world_path',return_value=self.project/'.test-world'), \
-             patch('mcpywrap.runtime.windows.require_resources'), \
-             patch('mcpywrap.mcstudio.mcs.get_mcs_game_engine_netease_data_path',return_value=str(self.project/'.test-global')), \
-             patch('mcpywrap.mcstudio.game.open_game',side_effect=open_game):
+        with patch('mcpywrap_core.runtime.windows.instances.world_path',return_value=self.project/'.test-world'), \
+             patch('mcpywrap_core.runtime.windows.require_resources'), \
+             patch('mcpywrap_core.mcstudio.mcs.get_mcs_game_engine_netease_data_path',return_value=str(self.project/'.test-global')), \
+             patch('mcpywrap_core.mcstudio.game.open_game',side_effect=open_game):
             with self.assertRaisesRegex(RuntimeError,'mock launch reached'):
                 launch(data,SimpleNamespace(port=12345))
 
@@ -459,7 +459,7 @@ class ScriptTests(unittest.TestCase):
 
     def test_calling_process_killed_supervisor_reclaims_child(self):
         self.configure("import os,time\nfrom pathlib import Path\nPath('child.pid').write_text(str(os.getpid()))\ntime.sleep(60)\n")
-        code="import sys\nfrom mcpywrap.project_scripts import operation\nwith operation(sys.argv[1],task='assets'): pass\n"
+        code="import sys\nfrom mcpywrap_core.project_scripts import operation\nwith operation(sys.argv[1],task='assets'): pass\n"
         env=dict(os.environ,PYTHONPATH=str(Path(__file__).resolve().parents[1]),PYTHONDONTWRITEBYTECODE='1')
         p=subprocess.Popen([sys.executable,'-c',code,str(self.project)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         self.addCleanup(lambda: p.kill() if p.poll() is None else None)
@@ -479,7 +479,7 @@ class ScriptTests(unittest.TestCase):
         self.assert_process_ended(int((self.project/'child.pid').read_text()))
         # Publishing a terminal record precedes closing stdout and exiting.
         # Confirm the supervisor has released its log before removing the fixture.
-        from mcpywrap.mcstudio.processes import observed_process
+        from mcpywrap_core.mcstudio.processes import observed_process
         supervisor = observed_process(state['supervisor'])
         if supervisor:
             supervisor.wait(timeout=max(.01, deadline-time.monotonic()))
@@ -487,7 +487,7 @@ class ScriptTests(unittest.TestCase):
     def test_real_cli_has_exactly_one_json_object(self):
         self.configure("import sys\nprint('child stdout');print('child stderr',file=sys.stderr)\n")
         env=dict(os.environ,PYTHONPATH=str(Path(__file__).resolve().parents[1]),PYTHONDONTWRITEBYTECODE='1')
-        result=subprocess.run([sys.executable,'-m','mcpywrap','--project',str(self.project),'script','run','--json','assets','--','--help'],
+        result=subprocess.run([sys.executable,'-m','mcpywrap_core','--project',str(self.project),'script','run','--json','assets','--','--help'],
                               env=env,capture_output=True,text=True,timeout=15)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertTrue(json.loads(result.stdout)['ok'])

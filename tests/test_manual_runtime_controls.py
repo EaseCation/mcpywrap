@@ -19,7 +19,7 @@ def response(data, code=0):
 
 class OptionalManualTests(unittest.TestCase):
     def command(self, *operation):
-        return [sys.executable, '-m', 'mcpywrap', '--local', '--project', '/fixture',
+        return [sys.executable, '-m', 'mcpywrap_core', '--local', '--project', '/fixture',
                 'runtime', *operation, '--session', 'a'*32, '--json']
 
     def test_queued_ui_result_is_queried_without_resending_click(self):

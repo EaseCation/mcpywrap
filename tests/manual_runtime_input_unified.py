@@ -23,7 +23,7 @@ class LiveInput:
         self.owned = False
         self.fixture = self.probe = False
         self.report = {'ok': False, 'optional_manual_test': True, 'cases': [], 'history': [], 'cleanup': []}
-        self.prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap', '--local', '--project',
+        self.prefix = [sys.executable, '-X', 'utf8', '-m', 'mcpywrap_core', '--local', '--project',
                        str(Path(args.project).resolve()), '--non-interactive']
 
     def call(self, *args, session=True, allow_failure=False, timeout=60):

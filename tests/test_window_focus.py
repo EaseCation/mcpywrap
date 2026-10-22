@@ -1,7 +1,7 @@
 """Foreground fallback retains exact target checks and always detaches queues."""
 import unittest
 from unittest.mock import Mock, patch
-from mcpywrap.mcstudio.window import GameWindow
+from mcpywrap_core.mcstudio.window import GameWindow
 
 
 class FocusTests(unittest.TestCase):
@@ -24,7 +24,7 @@ class FocusTests(unittest.TestCase):
             return attached[0]
         window.user.AttachThreadInput.side_effect=attach
         window.user.SetForegroundWindow.side_effect=focus
-        with patch('mcpywrap.mcstudio.window.time.sleep'):
+        with patch('mcpywrap_core.mcstudio.window.time.sleep'):
             window.foreground()
         self.assertEqual(foreground[0],123)
         self.assertFalse(attached[0])
@@ -40,7 +40,7 @@ class FocusTests(unittest.TestCase):
 
     def test_existing_foreground_does_not_attach(self):
         window=self.target();window.user.GetForegroundWindow.return_value=123
-        with patch('mcpywrap.mcstudio.window.time.sleep'):window.foreground()
+        with patch('mcpywrap_core.mcstudio.window.time.sleep'):window.foreground()
         window.user.AttachThreadInput.assert_not_called()
 
     def test_unconfirmed_target_still_rejected(self):

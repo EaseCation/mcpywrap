@@ -13,10 +13,10 @@ from pathlib import Path
 from unittest.mock import patch, Mock
 from click.testing import CliRunner
 
-from mcpywrap.cli import cli
-from mcpywrap.mcstudio.hot_reload import reload_code, target_from_file, reload_session
-from mcpywrap.mcstudio.runtime_debug import SafaiaChannel, RuntimeControlServer, frame, recv_frame, recv_exact, script_request, control_request
-from mcpywrap.runtime.targets import changed_reload_targets
+from mcpywrap_core.cli import cli
+from mcpywrap_core.mcstudio.hot_reload import reload_code, target_from_file, reload_session
+from mcpywrap_core.mcstudio.runtime_debug import SafaiaChannel, RuntimeControlServer, frame, recv_frame, recv_exact, script_request, control_request
+from mcpywrap_core.runtime.targets import changed_reload_targets
 
 
 class RuntimeDebugTests(unittest.TestCase):
@@ -35,11 +35,11 @@ class RuntimeDebugTests(unittest.TestCase):
         self.assertEqual(channel.client.sendall.call_count, 1)
 
     def test_discovery_queries_only_selected_process(self):
-        from mcpywrap.mcstudio.runtime_debug import owned_udp_ports, owned_udp_endpoints
+        from mcpywrap_core.mcstudio.runtime_debug import owned_udp_ports, owned_udp_endpoints
         sockets = [Mock(laddr=Mock(ip='127.0.0.1', port=26613)),
                    Mock(laddr=Mock(ip='127.0.0.1', port=19132))]
-        with patch('mcpywrap.mcstudio.runtime_debug.psutil.Process') as process, \
-             patch('mcpywrap.mcstudio.runtime_debug.psutil.net_connections') as global_scan:
+        with patch('mcpywrap_core.mcstudio.runtime_debug.psutil.Process') as process, \
+             patch('mcpywrap_core.mcstudio.runtime_debug.psutil.net_connections') as global_scan:
             process.return_value.net_connections.return_value = sockets
             self.assertEqual(owned_udp_ports(123), {26613})
             self.assertEqual(owned_udp_endpoints(123), {('127.0.0.1', 26613)})
@@ -47,7 +47,7 @@ class RuntimeDebugTests(unittest.TestCase):
             global_scan.assert_not_called()
 
     def test_tcp_fallback_requires_both_endpoints_owned_by_selected_game(self):
-        from mcpywrap.mcstudio.runtime_debug import owns_tcp_connection
+        from mcpywrap_core.mcstudio.runtime_debug import owns_tcp_connection
         Address = namedtuple('Address', 'ip port')
         client = Mock()
         client.getpeername.return_value = ('127.0.0.1', 40001)
@@ -60,17 +60,17 @@ class RuntimeDebugTests(unittest.TestCase):
         ]
         for local, remote, expected in candidates:
             with self.subTest(local=local, remote=remote), \
-                    patch('mcpywrap.mcstudio.runtime_debug.psutil.Process') as process, \
-                    patch('mcpywrap.mcstudio.runtime_debug.time.sleep'):
+                    patch('mcpywrap_core.mcstudio.runtime_debug.psutil.Process') as process, \
+                    patch('mcpywrap_core.mcstudio.runtime_debug.time.sleep'):
                 process.return_value.net_connections.return_value = [Mock(laddr=local, raddr=remote)]
                 self.assertEqual(owns_tcp_connection(123, client), expected)
                 process.assert_called_once_with(123)
 
     def test_missing_udp_claim_accepts_only_verified_tcp_peer(self):
         channel = SafaiaChannel(lambda _: None)
-        with patch('mcpywrap.mcstudio.runtime_debug.owned_udp_ports', return_value={26614}), \
-                patch('mcpywrap.mcstudio.runtime_debug.owned_udp_endpoints', return_value=set()), \
-                patch('mcpywrap.mcstudio.runtime_debug.owns_tcp_connection', return_value=True) as owned:
+        with patch('mcpywrap_core.mcstudio.runtime_debug.owned_udp_ports', return_value={26614}), \
+                patch('mcpywrap_core.mcstudio.runtime_debug.owned_udp_endpoints', return_value=set()), \
+                patch('mcpywrap_core.mcstudio.runtime_debug.owns_tcp_connection', return_value=True) as owned:
             channel.start(123)
             try:
                 with socket.create_connection(('127.0.0.1', channel.port), timeout=2) as client:
@@ -82,7 +82,7 @@ class RuntimeDebugTests(unittest.TestCase):
                 channel.close()
 
     def test_server_reload_cli_routes_selected_side(self):
-        with patch('mcpywrap.mcstudio.hot_reload.reload_session', return_value={'state':'completed'}) as call:
+        with patch('mcpywrap_core.mcstudio.hot_reload.reload_session', return_value={'state':'completed'}) as call:
             result=CliRunner().invoke(cli,['--local','runtime','reload','python','--session','a'*32,
                                           '--module','Demo.server','--side','server','--json'])
         self.assertEqual(result.exit_code,0,result.output)
@@ -91,17 +91,17 @@ class RuntimeDebugTests(unittest.TestCase):
         self.assertNotEqual(bad.exit_code,0)
 
     def test_reload_transport_preserves_server_side(self):
-        with patch('mcpywrap.engines.windows.WindowsBackend.deploy'), patch('mcpywrap.mcstudio.sessions.read',return_value={'state':'running','mode':'local','game':{'executable':'engine/game.exe'}}), \
-             patch('mcpywrap.mcstudio.runtime_debug.control_request',return_value={'state':'completed','side':'server','value':{'ok':True}}) as request:
+        with patch('mcpywrap_core.engines.windows.WindowsBackend.deploy'), patch('mcpywrap_core.mcstudio.sessions.read',return_value={'state':'running','mode':'local','game':{'executable':'engine/game.exe'}}), \
+             patch('mcpywrap_core.mcstudio.runtime_debug.control_request',return_value={'state':'completed','side':'server','value':{'ok':True}}) as request:
             reload_session('.', 'a'*32, 'python', 'Demo.server', source=b'VALUE=2', side='server')
         self.assertEqual(request.call_args.kwargs['side'],'server')
 
     def test_wrong_or_missing_execution_side_is_unknown_not_success(self):
         for response in ({'state': 'completed', 'side': 'client'},
                          {'state': 'completed'}, {'state': 'failed', 'side': 'client'}):
-            with self.subTest(response=response), patch('mcpywrap.engines.windows.WindowsBackend.deploy'), \
-                 patch('mcpywrap.mcstudio.sessions.read', return_value={'mode': 'local', 'state': 'running'}), \
-                 patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value=dict(response)) as request:
+            with self.subTest(response=response), patch('mcpywrap_core.engines.windows.WindowsBackend.deploy'), \
+                 patch('mcpywrap_core.mcstudio.sessions.read', return_value={'mode': 'local', 'state': 'running'}), \
+                 patch('mcpywrap_core.mcstudio.runtime_debug.control_request', return_value=dict(response)) as request:
                 result = reload_session('.', 'a'*32, 'python', 'Demo.server', source=b'VALUE=2', side='server')
             self.assertEqual(result['state'], 'unknown')
             self.assertEqual(result['code'], 'reload_side_mismatch')
@@ -117,10 +117,10 @@ class RuntimeDebugTests(unittest.TestCase):
                     settings['python_reload_sides'] = sides
                 (directory/'control.json').write_text(json.dumps(settings), encoding='utf-8')
                 with self.subTest(sides=sides), \
-                     patch('mcpywrap.mcstudio.sessions.session_path', return_value=directory), \
-                     patch('mcpywrap.mcstudio.sessions.read', return_value={'state': 'running', 'worker': {'pid': 1}}), \
-                     patch('mcpywrap.mcstudio.processes.checked_process', return_value=True), \
-                     patch('mcpywrap.mcstudio.runtime_debug.socket.create_connection') as connect:
+                     patch('mcpywrap_core.mcstudio.sessions.session_path', return_value=directory), \
+                     patch('mcpywrap_core.mcstudio.sessions.read', return_value={'state': 'running', 'worker': {'pid': 1}}), \
+                     patch('mcpywrap_core.mcstudio.processes.checked_process', return_value=True), \
+                     patch('mcpywrap_core.mcstudio.runtime_debug.socket.create_connection') as connect:
                     with self.assertRaisesRegex(ValueError, '未发送执行请求'):
                         control_request('.', 'a'*32, 'reload', kind='python', target='Demo.server',
                                         side='server', source=base64.b64encode(b'VALUE=2').decode())
@@ -140,9 +140,9 @@ class RuntimeDebugTests(unittest.TestCase):
                     settings['python_reload_sides'] = ['client', 'server']
                 (directory/'control.json').write_text(json.dumps(settings), encoding='utf-8')
                 with self.subTest(advertised=advertised, side=side), \
-                     patch('mcpywrap.mcstudio.sessions.session_path', return_value=directory), \
-                     patch('mcpywrap.mcstudio.sessions.read', return_value={'state': 'running', 'worker': {'pid': 1}}), \
-                     patch('mcpywrap.mcstudio.processes.checked_process', return_value=True):
+                     patch('mcpywrap_core.mcstudio.sessions.session_path', return_value=directory), \
+                     patch('mcpywrap_core.mcstudio.sessions.read', return_value={'state': 'running', 'worker': {'pid': 1}}), \
+                     patch('mcpywrap_core.mcstudio.processes.checked_process', return_value=True):
                     result = control_request('.', 'a'*32, 'reload', kind='python', target='Demo.logic',
                                              side=side, source=base64.b64encode(b'VALUE=2').decode())
                 self.assertEqual(result['state'], 'completed')
@@ -174,7 +174,7 @@ class RuntimeDebugTests(unittest.TestCase):
             self.assertIn('  '+name+' ', runtime_help)
 
     def test_runtime_watch_uses_shared_service_and_always_stops(self):
-        with patch('mcpywrap.mcstudio.hot_reload.SessionWatcher') as watch:
+        with patch('mcpywrap_core.mcstudio.hot_reload.SessionWatcher') as watch:
             watch.return_value.thread.is_alive.return_value = False
             result = CliRunner().invoke(cli, ['--local', 'runtime', 'watch', '--session', 'a'*32])
         self.assertEqual(result.exit_code, 0, result.output)
@@ -203,8 +203,8 @@ class RuntimeDebugTests(unittest.TestCase):
     def test_handshake_split_result_and_raw_log(self):
         logs = []
         channel = SafaiaChannel(logs.append)
-        with patch('mcpywrap.mcstudio.runtime_debug.owned_udp_ports', return_value={26613}), \
-                patch('mcpywrap.mcstudio.runtime_debug.owned_udp_endpoints', return_value=set()):
+        with patch('mcpywrap_core.mcstudio.runtime_debug.owned_udp_ports', return_value={26613}), \
+                patch('mcpywrap_core.mcstudio.runtime_debug.owned_udp_endpoints', return_value=set()):
             channel.start(123)
             client = self.connect(channel)
             def game():
@@ -224,8 +224,8 @@ class RuntimeDebugTests(unittest.TestCase):
 
     def test_timeout_does_not_consume_late_result(self):
         channel = SafaiaChannel(lambda _: None)
-        with patch('mcpywrap.mcstudio.runtime_debug.owned_udp_ports', return_value={26613}), \
-                patch('mcpywrap.mcstudio.runtime_debug.owned_udp_endpoints', return_value=set()):
+        with patch('mcpywrap_core.mcstudio.runtime_debug.owned_udp_ports', return_value={26613}), \
+                patch('mcpywrap_core.mcstudio.runtime_debug.owned_udp_endpoints', return_value=set()):
             channel.start(123)
             client = self.connect(channel)
             first = channel.execute('1', timeout=.05)

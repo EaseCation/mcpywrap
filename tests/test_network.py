@@ -14,15 +14,15 @@ from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
 
-from mcpywrap.cli import cli
-from mcpywrap.dependencies import DependencyError
-from mcpywrap.mcstudio import network as n, sessions, session_worker
-from mcpywrap.mcstudio.discovery import Engine, discovery_options
+from mcpywrap_core.cli import cli
+from mcpywrap_core.dependencies import DependencyError
+from mcpywrap_core.mcstudio import network as n, sessions, session_worker
+from mcpywrap_core.mcstudio.discovery import Engine, discovery_options
 
 
 class NetworkTests(unittest.TestCase):
     def setUp(self):
-        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host = patch('mcpywrap_core.engines.backend.describe', return_value={'backend': 'windows'})
         backend_host.start()
         self.addCleanup(backend_host.stop)
         self.temp = tempfile.TemporaryDirectory()
@@ -118,7 +118,7 @@ class NetworkTests(unittest.TestCase):
 
     def test_cli_connect_ignores_project_and_requires_host(self):
         self.config('invalid = [')
-        with patch('mcpywrap.mcstudio.network.run_network', return_value={}) as launch:
+        with patch('mcpywrap_core.mcstudio.network.run_network', return_value={}) as launch:
             result = self.call('connect', 'localhost', '--port', '20000')
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertEqual(launch.call_args.args[0], n.ServerTarget('localhost', 20000))
@@ -129,9 +129,9 @@ class NetworkTests(unittest.TestCase):
         self.assertEqual(discovery_options(self.project, environ={}, read_project_config=False), {})
 
     def test_network_options_and_invalid_config_never_start_world(self):
-        run = importlib.import_module('mcpywrap.commands.run_cmd')
+        run = importlib.import_module('mcpywrap_core.commands.run_cmd')
         self.config()
-        with patch('mcpywrap.runtime.windows.launch') as local, patch.object(n, 'run_network') as launch:
+        with patch('mcpywrap_core.runtime.windows.launch') as local, patch.object(n, 'run_network') as launch:
             for args in (('run', '--new'), ('run', '1234')):
                 self.assertEqual(self.call(*args).exit_code, 2)
             self.config('[tool.mcpywrap.server]\nport=123\n')
@@ -144,12 +144,12 @@ class NetworkTests(unittest.TestCase):
 
     def test_gui_and_stale_worker_guard(self):
         self.config()
-        ui = importlib.import_module('mcpywrap.commands.ui_cmd')
+        ui = importlib.import_module('mcpywrap_core.commands.ui_cmd')
         with patch.object(ui, 'non_interactive', return_value=False):
             result = self.runner.invoke(cli, ['--project', str(self.project), 'ui'])
             self.assertNotEqual(result.exit_code, 0)
             self.assertIn('mcpy run', result.stderr)
-        from mcpywrap.runtime.windows import launch
+        from mcpywrap_core.runtime.windows import launch
         with self.assertRaisesRegex(ValueError, '服务器目标'):
             launch({'project': str(self.project)}, None)
 

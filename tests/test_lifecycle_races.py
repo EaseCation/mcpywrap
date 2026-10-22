@@ -10,14 +10,14 @@ import threading
 import unittest
 
 from test_runtime_deployment import fixture
-from mcpywrap.dependencies import read_project, write_project
-from mcpywrap.engines.host import EngineError
-from mcpywrap.mcstudio import sessions
-from mcpywrap.runtime import occupancy, storage, windows, instances
-from mcpywrap.runtime.deployment import Deployment, inventory
-from mcpywrap.builders.project_builder import AddonProjectBuilder
-from mcpywrap.mcstudio.processes import identity
-from mcpywrap.utils.locks import directory_lock, LockBusy
+from mcpywrap_core.dependencies import read_project, write_project
+from mcpywrap_core.engines.host import EngineError
+from mcpywrap_core.mcstudio import sessions
+from mcpywrap_core.runtime import occupancy, storage, windows, instances
+from mcpywrap_core.runtime.deployment import Deployment, inventory
+from mcpywrap_core.builders.project_builder import AddonProjectBuilder
+from mcpywrap_core.mcstudio.processes import identity
+from mcpywrap_core.utils.locks import directory_lock, LockBusy
 
 
 class LifecycleRaces(unittest.TestCase):
@@ -51,7 +51,7 @@ class LifecycleRaces(unittest.TestCase):
         self.assertFalse((directory/'stop').exists())
 
     def test_macos_ignores_reused_pid_in_a_failed_old_session(self):
-        from mcpywrap.engines import macos
+        from mcpywrap_core.engines import macos
         sid = '9'*32
         old = identity(os.getpid())
         storage.write(sessions.session_path(self.project, sid)/'session.json',
@@ -59,12 +59,12 @@ class LifecycleRaces(unittest.TestCase):
                            level_id='world', game=old, worker=None))
         replacement = Mock()
         replacement.create_time.return_value = old['created_at'] + 10
-        with patch('mcpywrap.mcstudio.processes.psutil.Process', return_value=replacement):
+        with patch('mcpywrap_core.mcstudio.processes.psutil.Process', return_value=replacement):
             self.assertIsNone(macos.active_session(self.project, 'world'))
         replacement.terminate.assert_not_called()
 
     def test_macos_reuse_waits_for_pending_worker_before_handoff(self):
-        from mcpywrap.engines import macos
+        from mcpywrap_core.engines import macos
         pending = {'session': 'a'*32, 'state': 'starting', 'game': None}
         ready = dict(pending, state='running', game={'pid': 10})
         item = {'level_id': 'world', 'state': 'ready'}
@@ -72,7 +72,7 @@ class LifecycleRaces(unittest.TestCase):
                 patch.object(macos, 'active_session', return_value=pending), \
                 patch.object(sessions, 'wait_started', return_value=ready) as wait, \
                 patch.object(sessions, 'handoff', return_value={'session': ready['session']}) as handoff, \
-                patch('mcpywrap.runtime.deployment.matches_source', return_value=True):
+                patch('mcpywrap_core.runtime.deployment.matches_source', return_value=True):
             result = macos.run(self.project, instance_prefix='world', detach=True)
         self.assertTrue(result['already_running'])
         wait.assert_called_once_with(self.project, ready['session'])
@@ -98,9 +98,9 @@ class LifecycleRaces(unittest.TestCase):
 
         with patch.object(instances, 'world_path', return_value=self.root/'worlds/world'), \
                 patch.object(windows, 'require_resources'), \
-                patch('mcpywrap.mcstudio.mcs.get_mcs_game_engine_netease_data_path', return_value=str(self.root/'engine')), \
+                patch('mcpywrap_core.mcstudio.mcs.get_mcs_game_engine_netease_data_path', return_value=str(self.root/'engine')), \
                 patch.object(Deployment, 'publish_config', cancel_after_config), \
-                patch('mcpywrap.mcstudio.game.open_game', side_effect=AssertionError('cancelled request launched game')) as launch:
+                patch('mcpywrap_core.mcstudio.game.open_game', side_effect=AssertionError('cancelled request launched game')) as launch:
             with self.assertRaises(EngineError) as error:
                 windows.launch(data, SimpleNamespace(port=12345))
         self.assertEqual(error.exception.code, 'cancelled')
@@ -109,7 +109,7 @@ class LifecycleRaces(unittest.TestCase):
         self.assertFalse(Path(data['config_path']).exists())
 
     def test_native_cancellation_uses_the_same_launch_boundary(self):
-        from mcpywrap.runtime.native import launch_world
+        from mcpywrap_core.runtime.native import launch_world
         sid = '7'*32
         directory = self.project/'.runtime/native'
         data = dict(project=str(self.project), session=sid, level_id='world', state='starting',
@@ -132,7 +132,7 @@ class LifecycleRaces(unittest.TestCase):
 
     def test_process_exit_releases_an_actually_held_os_lock(self):
         lock = self.root/'process-lock'
-        code = ('import sys,time\nfrom mcpywrap.utils.locks import directory_lock\n'
+        code = ('import sys,time\nfrom mcpywrap_core.utils.locks import directory_lock\n'
                 'with directory_lock(sys.argv[1]):\n print("ready",flush=True)\n time.sleep(120)')
         process = subprocess.Popen([sys.executable, '-u', '-c', code, str(lock)],
                                    cwd=Path(__file__).resolve().parent.parent,
@@ -151,7 +151,7 @@ class LifecycleRaces(unittest.TestCase):
             pass
 
     def test_two_callers_cannot_reserve_the_same_world_concurrently(self):
-        from mcpywrap.mcstudio.discovery import Engine
+        from mcpywrap_core.mcstudio.discovery import Engine
         ready, release = threading.Event(), threading.Event()
         results, errors = [], []
         item = dict(level_id='world', name='world', creation_time=1, state='ready',
@@ -252,7 +252,7 @@ class LifecycleRaces(unittest.TestCase):
     def test_incremental_rollback_preserves_a_later_external_file_edit(self):
         deployment = self.publish()
         (self.project/'behavior_pack/main.py').write_text('VALUE=2\n')
-        with deployment.lock(), patch('mcpywrap.runtime.deployment.readers', return_value=[{'session': 'reader'}]):
+        with deployment.lock(), patch('mcpywrap_core.runtime.deployment.readers', return_value=[{'session': 'reader'}]):
             deployment.prepare(allowed_sessions=('reader',))
             file = deployment.target/'behavior_pack/main.py'
             file.write_text('EXTERNAL_EDIT=True\n')
@@ -265,7 +265,7 @@ class LifecycleRaces(unittest.TestCase):
     def test_incremental_rollback_preserves_an_external_empty_directory(self):
         deployment = self.publish()
         (self.project/'behavior_pack/new-empty-directory').mkdir()
-        with deployment.lock(), patch('mcpywrap.runtime.deployment.readers', return_value=[{'session': 'reader'}]):
+        with deployment.lock(), patch('mcpywrap_core.runtime.deployment.readers', return_value=[{'session': 'reader'}]):
             deployment.prepare(allowed_sessions=('reader',))
             external = deployment.target/'external-empty-directory'
             external.mkdir()
@@ -281,7 +281,7 @@ class LifecycleRaces(unittest.TestCase):
         source.unlink()
         source.mkdir()
         (source/'nested.py').write_text('VALUE=2\n')
-        with deployment.lock(), patch('mcpywrap.runtime.deployment.readers', return_value=[{'session': 'reader'}]):
+        with deployment.lock(), patch('mcpywrap_core.runtime.deployment.readers', return_value=[{'session': 'reader'}]):
             with self.assertRaises(EngineError) as error:
                 deployment.prepare(allowed_sessions=('reader',))
         self.assertEqual(error.exception.code, 'restart_required')

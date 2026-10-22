@@ -17,13 +17,13 @@ from unittest.mock import Mock, patch
 import zipfile
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.mcstudio import recordings as jobs, sessions, window
-from mcpywrap.mcstudio import recording_worker
-from mcpywrap.recording_io import transfer, unpack
-from mcpywrap.remote import service as api
-from mcpywrap.remote.client import Client
-from mcpywrap.remote.http_server import GameHTTPServer
+from mcpywrap_core.cli import cli
+from mcpywrap_core.mcstudio import recordings as jobs, sessions, window
+from mcpywrap_core.mcstudio import recording_worker
+from mcpywrap_core.recording_io import transfer, unpack
+from mcpywrap_core.remote import service as api
+from mcpywrap_core.remote.client import Client
+from mcpywrap_core.remote.http_server import GameHTTPServer
 
 
 class RecordingFixture(unittest.TestCase):

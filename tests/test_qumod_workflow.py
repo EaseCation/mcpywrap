@@ -13,12 +13,12 @@ import unittest
 from unittest.mock import patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.dependencies import DependencyDeclaration, DependencyError, DependencyService, read_project, write_project
-from mcpywrap.git_projects import LOCK_FILE, declarations, resolve_projects
-from mcpywrap.code_libraries import digest
-from mcpywrap.frameworks import add_framework, framework_preview
-from mcpywrap.framework_presets import FRAMEWORK_PRESETS
+from mcpywrap_core.cli import cli
+from mcpywrap_core.dependencies import DependencyDeclaration, DependencyError, DependencyService, read_project, write_project
+from mcpywrap_core.git_projects import LOCK_FILE, declarations, resolve_projects
+from mcpywrap_core.code_libraries import digest
+from mcpywrap_core.frameworks import add_framework, framework_preview
+from mcpywrap_core.framework_presets import FRAMEWORK_PRESETS
 
 def add_qumod(root, script_dir=None):
     return add_framework(root, "qumod", script_dir)
@@ -122,13 +122,13 @@ class QuModWorkflow(QuModFixture):
 
     def test_failure_keeps_configuration_entrypoint_and_lock(self):
         before = (self.main / 'pyproject.toml').read_bytes()
-        with patch('mcpywrap.project_dependencies.git_projects.prepare_graph', side_effect=DependencyError('network failed')):
+        with patch('mcpywrap_core.project_dependencies.git_projects.prepare_graph', side_effect=DependencyError('network failed')):
             with self.assertRaisesRegex(DependencyError, 'network failed'):
                 add_qumod(self.main, 'Demo')
         self.assertEqual(before, (self.main / 'pyproject.toml').read_bytes())
         self.assertFalse((self.main / LOCK_FILE).exists())
         self.assertFalse((self.main / 'behavior_pack/Demo').exists())
-        with patch('mcpywrap.project_dependencies.write_project', side_effect=OSError('disk full')):
+        with patch('mcpywrap_core.project_dependencies.write_project', side_effect=OSError('disk full')):
             with self.assertRaises(OSError):
                 add_qumod(self.main, 'Demo')
         self.assertEqual(before, (self.main / 'pyproject.toml').read_bytes())
@@ -136,14 +136,14 @@ class QuModWorkflow(QuModFixture):
         self.assertFalse((self.main / 'behavior_pack/Demo').exists())
 
     def test_concurrent_config_edit_not_clobbered(self):
-        from mcpywrap.git_projects import prepare_graph as prepare_sync
+        from mcpywrap_core.git_projects import prepare_graph as prepare_sync
         def download(root, config):
             locked = prepare_sync(root, config)
             current = read_project(root)
             current['project']['description'] = 'user edit'
             write_project(root, current)
             return locked
-        with patch('mcpywrap.project_dependencies.git_projects.prepare_graph', side_effect=download):
+        with patch('mcpywrap_core.project_dependencies.git_projects.prepare_graph', side_effect=download):
             with self.assertRaisesRegex(DependencyError, '已改变'):
                 add_qumod(self.main, 'Demo')
         self.assertEqual(read_project(self.main)['project']['description'], 'user edit')
@@ -151,7 +151,7 @@ class QuModWorkflow(QuModFixture):
 
     def test_manual_copy_conflict_precedes_network(self):
         (self.main / 'behavior_pack/Demo/QuModLibs').mkdir(parents=True)
-        with patch('mcpywrap.project_dependencies.git_projects.prepare_graph') as network:
+        with patch('mcpywrap_core.project_dependencies.git_projects.prepare_graph') as network:
             with self.assertRaisesRegex(DependencyError, '手工'):
                 add_qumod(self.main, 'Demo')
             network.assert_not_called()
@@ -185,7 +185,7 @@ class QuModWorkflow(QuModFixture):
 class QuModGUI(QuModFixture):
     def test_shortcut_cancel_does_not_register_dependency(self):
         from PySide6.QtWidgets import QApplication
-        from mcpywrap.ui import project_ui as ui
+        from mcpywrap_core.ui import project_ui as ui
         app = QApplication.instance() or QApplication([])
         for name in ('A', 'B'):
             folder = self.main / 'behavior_pack' / name
@@ -206,7 +206,7 @@ class QuModGUI(QuModFixture):
 
     def test_background_add_list_sync_and_remove(self):
         from PySide6.QtWidgets import QApplication, QMessageBox
-        from mcpywrap.ui import project_ui as ui
+        from mcpywrap_core.ui import project_ui as ui
         app = QApplication.instance() or QApplication([])
         with patch.object(ui, 'find_all_mcpywrap_packages', return_value=[]):
             window = ui.GameInstanceManager(str(self.main))
@@ -236,12 +236,12 @@ class QuModGUI(QuModFixture):
             app.processEvents()
 
     def test_worker_failure_reports_error_and_keeps_files(self):
-        from mcpywrap.ui.project_ui import DependencyTaskThread
+        from mcpywrap_core.ui.project_ui import DependencyTaskThread
         before = (self.main / 'pyproject.toml').read_bytes()
         worker = DependencyTaskThread(str(self.main), 'framework', 'Demo', preset='qumod')
         messages = []
         worker.result.connect(lambda ok, text: messages.append((ok, text)))
-        with patch('mcpywrap.project_dependencies.git_projects.prepare_graph', side_effect=DependencyError('offline')):
+        with patch('mcpywrap_core.project_dependencies.git_projects.prepare_graph', side_effect=DependencyError('offline')):
             worker.run()
         self.assertFalse(messages[0][0])
         self.assertIn('offline', messages[0][1])

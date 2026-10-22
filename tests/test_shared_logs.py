@@ -11,12 +11,12 @@ from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import QCoreApplication, QEvent, QSettings
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
-from mcpywrap.mcstudio import sessions
-from mcpywrap.mcstudio.log_colorizer import LogColorizer
-from mcpywrap.ui.log_view import LogBuffer, LogView
-from mcpywrap.ui.log_window import SessionLogWindow
-from mcpywrap.ui.session_controller import SessionController
-from mcpywrap.ui.session_views import SessionControls
+from mcpywrap_core.mcstudio import sessions
+from mcpywrap_core.mcstudio.log_colorizer import LogColorizer
+from mcpywrap_core.ui.log_view import LogBuffer, LogView
+from mcpywrap_core.ui.log_window import SessionLogWindow
+from mcpywrap_core.ui.session_controller import SessionController
+from mcpywrap_core.ui.session_views import SessionControls
 
 
 class SharedLogsTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class SharedLogsTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.project = Path(self.temp.name).resolve()
-        settings = patch('mcpywrap.ui.log_window.QSettings', side_effect=lambda *args:
+        settings = patch('mcpywrap_core.ui.log_window.QSettings', side_effect=lambda *args:
                          QSettings(str(self.project/'window.ini'), QSettings.Format.IniFormat))
         settings.start(); self.addCleanup(settings.stop)
         self.backend = Mock(label='Fixture', capabilities=('watch',))
@@ -167,7 +167,7 @@ class SharedLogsTests(unittest.TestCase):
         self.log_file('a'*32, ''); self.controller.attach({'session': 'a'*32})
         embedded = SessionControls(self.controller); self.windows.append(embedded)
         floating = SessionLogWindow(self.controller); self.windows.append(floating)
-        with patch('mcpywrap.mcstudio.hot_reload.SessionWatcher') as watcher:
+        with patch('mcpywrap_core.mcstudio.hot_reload.SessionWatcher') as watcher:
             floating.controls.side.setCurrentText('server')
             self.assertEqual(embedded.side.currentText(), 'server')
             floating.controls.watch.setChecked(True)

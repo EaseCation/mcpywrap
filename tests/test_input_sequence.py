@@ -7,9 +7,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.timeline import compile_timeline
-from mcpywrap.mcstudio import input_sequence as seq, window
+from mcpywrap_core.cli import cli
+from mcpywrap_core.timeline import compile_timeline
+from mcpywrap_core.mcstudio import input_sequence as seq, window
 
 
 class TimelineTests(unittest.TestCase):

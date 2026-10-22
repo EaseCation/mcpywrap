@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from mcpywrap.engines import install as installer
-from mcpywrap.engines.host import EngineError
+from mcpywrap_core.engines import install as installer
+from mcpywrap_core.engines.host import EngineError
 import test_engine_install
 
 

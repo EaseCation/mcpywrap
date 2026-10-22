@@ -10,17 +10,17 @@ import unittest
 from unittest.mock import Mock, patch
 
 from click.testing import CliRunner
-from mcpywrap.cli import cli
-from mcpywrap.remote import service as api
-from mcpywrap.remote.client import Client
-from mcpywrap.remote.http_server import GameHTTPServer
-from mcpywrap.mcstudio import sessions, window
-from mcpywrap.mcstudio.discovery import Engine
+from mcpywrap_core.cli import cli
+from mcpywrap_core.remote import service as api
+from mcpywrap_core.remote.client import Client
+from mcpywrap_core.remote.http_server import GameHTTPServer
+from mcpywrap_core.mcstudio import sessions, window
+from mcpywrap_core.mcstudio.discovery import Engine
 
 
 class RemoteTests(unittest.TestCase):
     def setUp(self):
-        backend_host = patch('mcpywrap.engines.backend.describe', return_value={'backend': 'windows'})
+        backend_host = patch('mcpywrap_core.engines.backend.describe', return_value={'backend': 'windows'})
         backend_host.start()
         self.addCleanup(backend_host.stop)
         self.temp = tempfile.TemporaryDirectory()
@@ -195,7 +195,7 @@ class RemoteTests(unittest.TestCase):
         self.assertEqual(self.start.call_count, 1)
 
     def test_local_switch_and_endpoint_precedence(self):
-        from mcpywrap.mcstudio import diagnostics
+        from mcpywrap_core.mcstudio import diagnostics
         (self.local/'pyproject.toml').write_text('[tool.mcpywrap]\nremote_url="http://invalid.invalid:1"\n')
         with patch.dict(os.environ, {'MCPY_REMOTE': self.url}):
             result = self.runner.invoke(cli, ['--project', str(self.local), 'doctor', '--capabilities', '--json'])
@@ -362,7 +362,7 @@ class RemoteTests(unittest.TestCase):
         self.stop.assert_not_called()
 
     def test_unavailable_and_redirect_never_fall_back(self):
-        with patch('mcpywrap.remote.client.Client.request', side_effect=api.RemoteError('offline', 'remote_unavailable')):
+        with patch('mcpywrap_core.remote.client.Client.request', side_effect=api.RemoteError('offline', 'remote_unavailable')):
             result = self.call('connect', 'server.local', '--detach')
         self.assertEqual(result.exit_code, 1)
         self.start.assert_not_called()
@@ -376,8 +376,8 @@ class RemoteTests(unittest.TestCase):
     @unittest.skipUnless(os.name == 'nt', 'Windows interactive service command')
     def test_serve_ctrl_c_always_closes_service(self):
         with patch.dict(os.environ, {'MCPY_REMOTE_TOKEN': 'test-token'}), \
-                patch('mcpywrap.remote.service.GameService') as service, \
-                patch('mcpywrap.remote.http_server.GameHTTPServer') as server:
+                patch('mcpywrap_core.remote.service.GameService') as service, \
+                patch('mcpywrap_core.remote.http_server.GameHTTPServer') as server:
             http = server.return_value.__enter__.return_value
             http.token = None
             http.serve_forever.side_effect = KeyboardInterrupt
@@ -390,7 +390,7 @@ class RemoteTests(unittest.TestCase):
     @unittest.skipUnless(os.name == 'nt', 'Windows interactive service command')
     def test_serve_requires_token_by_default(self):
         with patch.dict(os.environ, {'MCPY_REMOTE_TOKEN': ''}), \
-                patch('mcpywrap.remote.service.GameService') as service:
+                patch('mcpywrap_core.remote.service.GameService') as service:
             result = self.runner.invoke(cli, ['--local', 'serve'])
         self.assertEqual(result.exit_code, 1, result.output)
         self.assertIn('MCPY_REMOTE_TOKEN', result.output + result.stderr)
@@ -401,8 +401,8 @@ class RemoteTests(unittest.TestCase):
         for token in ('', 'existing-token'):
             with self.subTest(token=token), \
                     patch.dict(os.environ, {'MCPY_REMOTE_TOKEN': token}), \
-                    patch('mcpywrap.remote.service.GameService') as service, \
-                    patch('mcpywrap.remote.http_server.GameHTTPServer') as server:
+                    patch('mcpywrap_core.remote.service.GameService') as service, \
+                    patch('mcpywrap_core.remote.http_server.GameHTTPServer') as server:
                 http = server.return_value.__enter__.return_value
                 http.token = None
                 http.serve_forever.side_effect = KeyboardInterrupt
@@ -415,7 +415,7 @@ class RemoteTests(unittest.TestCase):
 
     def test_python_execution_requires_owned_network_session_and_client_side(self):
         self.create()
-        with patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value={
+        with patch('mcpywrap_core.mcstudio.runtime_debug.control_request', return_value={
                 'state': 'completed', 'side': 'client', 'stdout': 'hello\n', 'value': 2}) as run:
             response = self.call('runtime', 'py', '--session', 'a'*32, '--code', '1+1')
         self.assertEqual(response.exit_code, 0, response.output)
@@ -429,7 +429,7 @@ class RemoteTests(unittest.TestCase):
         self.create()
         source = self.local/'probe.py'
         source.write_text('print("remote probe")\n', encoding='utf-8')
-        with patch('mcpywrap.mcstudio.runtime_debug.control_request', return_value={
+        with patch('mcpywrap_core.mcstudio.runtime_debug.control_request', return_value={
                 'state': 'completed', 'side': 'client', 'stdout': 'remote probe\n', 'value': None}) as run:
             response = self.call('runtime', 'py', '--session', 'a'*32, '--file', str(source))
         self.assertEqual(response.exit_code, 0, response.output)

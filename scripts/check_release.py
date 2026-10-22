@@ -47,12 +47,12 @@ def check(outdir, require_native=False):
                 assert not any(n.endswith('/entry_points.txt') for n in files), 'Core must not own desktop console scripts'
                 assert all('extra ==' in r or r.split('>')[0] in ('click', 'packaging', 'tomli', 'tomli-w') for r in requirements)
             else:
-                assert all(n.startswith(('mcpywrap/', 'mcpywrap_assets/')) for n in owned)
+                assert all(n.startswith('mcpywrap_assets/') for n in owned)
                 assert 'mcpywrap-core=='+version in requirements
                 assert any(r.startswith('PySide6-Essentials') for r in requirements)
                 entries = archive.read(prefix+'.dist-info/entry_points.txt').decode()
                 assert 'mcpy = mcpywrap_core.__main__:main' in entries
-                assert not any(n.startswith('mcpywrap/commands/') for n in files)
+                assert not any(n.startswith('mcpywrap/') for n in files), 'Legacy import package must not be shipped'
                 if require_native:
                     for folder in ('bridge_payload','window_capture'):
                         check_native_payload(archive, folder)
@@ -66,6 +66,7 @@ def check(outdir, require_native=False):
                 assert set(code) <= paths
             else:
                 assert 'core/mcpywrap_core/_version.py' in paths
+                assert not any(p.startswith('desktop/mcpywrap/') for p in paths)
                 assert not any(p.startswith('core/mcpywrap_core/commands/') for p in paths)
     assert not namespaces['core'] & namespaces['desktop'], 'The two wheels overlap file ownership'
     print(version+': two distributions, one exact version, no overlapping modules/scripts')

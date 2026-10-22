@@ -11,14 +11,14 @@ from unittest.mock import Mock, patch
 from click.testing import CliRunner
 from test_runtime_deployment import directory_link, fixture
 
-from mcpywrap.cli import cli
-from mcpywrap.engines.host import EngineError
-from mcpywrap.mcstudio.deployment_links import ManagedLinks
-from mcpywrap.runtime import instances, storage
-from mcpywrap.runtime.deployment import Deployment, inventory
-from mcpywrap.runtime.deployment_inspection import inspect
-from mcpywrap.runtime.deployment_service import execute, preview
-from mcpywrap.utils.link_snapshot import capture, restore, validate
+from mcpywrap_core.cli import cli
+from mcpywrap_core.engines.host import EngineError
+from mcpywrap_core.mcstudio.deployment_links import ManagedLinks
+from mcpywrap_core.runtime import instances, storage
+from mcpywrap_core.runtime.deployment import Deployment, inventory
+from mcpywrap_core.runtime.deployment_inspection import inspect
+from mcpywrap_core.runtime.deployment_service import execute, preview
+from mcpywrap_core.utils.link_snapshot import capture, restore, validate
 
 
 class RecoveryTests(unittest.TestCase):
@@ -43,7 +43,7 @@ class RecoveryTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "nt", "Windows namespace targets")
     def test_symlink_snapshot_namespace_preserves_identity_and_raw_restore_target(self):
-        from mcpywrap.runtime.occupancy import path_key
+        from mcpywrap_core.runtime.occupancy import path_key
 
         path = self.engine / "behavior_packs/old-link"
         for prefix in ("\\\\?\\", "\\??\\"):
@@ -131,14 +131,14 @@ class RecoveryTests(unittest.TestCase):
         ]
         with (
             patch(
-                "mcpywrap.runtime.deployment_service.global_root",
+                "mcpywrap_core.runtime.deployment_service.global_root",
                 return_value=self.engine,
             ),
             patch(
-                "mcpywrap.engines.backend.describe", return_value={"backend": "windows"}
+                "mcpywrap_core.engines.backend.describe", return_value={"backend": "windows"}
             ),
             patch(
-                "mcpywrap.runtime.windows.discover_engines",
+                "mcpywrap_core.runtime.windows.discover_engines",
                 side_effect=AssertionError("must not launch"),
             ),
         ):
@@ -160,14 +160,14 @@ class RecoveryTests(unittest.TestCase):
         self.assertFalse((child / ".mcpy/runtime/assembled").exists())
 
     def test_resolved_historical_conflict_is_not_presented_as_current(self):
-        from mcpywrap.mcstudio.deployment_links import unlink
-        from mcpywrap.runtime.deployment_service import startup_problem
+        from mcpywrap_core.mcstudio.deployment_links import unlink
+        from mcpywrap_core.runtime.deployment_service import startup_problem
 
         child, _sid = self.historical_failure()
         for kind in ("behavior", "resource"):
             unlink(self.engine / (kind + "_packs") / ("old_" + kind))
         with patch(
-            "mcpywrap.runtime.deployment_service.global_root", return_value=self.engine
+            "mcpywrap_core.runtime.deployment_service.global_root", return_value=self.engine
         ):
             self.assertIsNone(startup_problem(child))
 
@@ -175,7 +175,7 @@ class RecoveryTests(unittest.TestCase):
         child, sid = self.historical_failure()
         (child / ".runtime/sessions" / sid / "session.json").unlink()
         with patch(
-            "mcpywrap.engines.backend.describe", return_value={"backend": "windows"}
+            "mcpywrap_core.engines.backend.describe", return_value={"backend": "windows"}
         ):
             result = CliRunner().invoke(
                 cli,
@@ -195,7 +195,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertIn("run world", value["hint"])
 
     def test_initialized_world_with_failed_last_launch_still_has_guidance(self):
-        from mcpywrap.runtime.deployment_service import startup_problem
+        from mcpywrap_core.runtime.deployment_service import startup_problem
 
         child, sid = self.historical_failure()
         meta = storage.read(instances.record_path(child, "world"))
@@ -203,7 +203,7 @@ class RecoveryTests(unittest.TestCase):
         storage.write(instances.record_path(child, "world"), meta)
         self.assertEqual(instances.list_instances(child)[0]["state"], "ready")
         with patch(
-            "mcpywrap.runtime.deployment_service.global_root", return_value=self.engine
+            "mcpywrap_core.runtime.deployment_service.global_root", return_value=self.engine
         ):
             value = startup_problem(child)
         self.assertEqual(value["code"], "pack_conflict")
@@ -241,7 +241,7 @@ class RecoveryTests(unittest.TestCase):
         self.legacy()
         with (
             patch(
-                "mcpywrap.runtime.deployment_service.global_root",
+                "mcpywrap_core.runtime.deployment_service.global_root",
                 return_value=self.engine,
             ),
             patch.object(instances, "world_path", return_value=self.root / "world"),
@@ -330,8 +330,8 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(error.exception.code, "pack_conflict")
 
     def test_map_preview_uses_exact_runtime_layout_and_installed_dependencies(self):
-        from mcpywrap.dependencies import write_project
-        from mcpywrap.runtime.deployment_inspection import desired_packs, project_packs
+        from mcpywrap_core.dependencies import write_project
+        from mcpywrap_core.runtime.deployment_inspection import desired_packs, project_packs
 
         source = fixture(self.root, "map-source")
         world = self.root / "map"
@@ -362,7 +362,7 @@ class RecoveryTests(unittest.TestCase):
     def test_second_link_failure_restores_first_and_metadata(self):
         child, sid = self.split()
         plan = preview(child, "migrate", self.project, sid, root=self.engine)
-        from mcpywrap.mcstudio.symlinks import _create_directory_link
+        from mcpywrap_core.mcstudio.symlinks import _create_directory_link
 
         def fail(source, target):
             if "resource_packs" in str(target):
@@ -371,7 +371,7 @@ class RecoveryTests(unittest.TestCase):
 
         with (
             patch(
-                "mcpywrap.mcstudio.deployment_links._create_directory_link",
+                "mcpywrap_core.mcstudio.deployment_links._create_directory_link",
                 side_effect=fail,
             ),
             self.assertRaisesRegex(OSError, "injected"),
@@ -514,7 +514,7 @@ class RecoveryTests(unittest.TestCase):
     def test_missing_owned_link_is_rebuilt_without_changing_source(self):
         self.publish()
         links = storage.read(self.manager.path)["links"]
-        from mcpywrap.mcstudio.deployment_links import unlink
+        from mcpywrap_core.mcstudio.deployment_links import unlink
 
         key = next(iter(links))
         unlink(self.engine / key)
@@ -608,7 +608,7 @@ class RecoveryTests(unittest.TestCase):
         dep, _ = self.publish(transaction="pending")
         links = storage.read(self.manager.path)["links"]
         key = next(iter(links))
-        from mcpywrap.mcstudio.deployment_links import unlink
+        from mcpywrap_core.mcstudio.deployment_links import unlink
 
         unlink(self.engine / key)
         directory_link(self.project, self.engine / key)
@@ -633,7 +633,7 @@ class RecoveryTests(unittest.TestCase):
         link = self.root / "link"
         directory_link(source, link)
         state = capture(link)
-        from mcpywrap.mcstudio.deployment_links import unlink
+        from mcpywrap_core.mcstudio.deployment_links import unlink
 
         unlink(link)
         source.rmdir()
@@ -645,7 +645,7 @@ class RecoveryTests(unittest.TestCase):
         self.legacy()
         runner = CliRunner()
         with patch(
-            "mcpywrap.runtime.deployment_service.global_root", return_value=self.engine
+            "mcpywrap_core.runtime.deployment_service.global_root", return_value=self.engine
         ):
             result = runner.invoke(
                 cli,
@@ -720,7 +720,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertFalse(pending.exists())
 
     def test_explicit_foreign_retirement_observes_foreign_session(self):
-        from mcpywrap.mcstudio.processes import identity
+        from mcpywrap_core.mcstudio.processes import identity
 
         other = fixture(self.root, "foreign")
         self.publish(other)
@@ -780,7 +780,7 @@ class RecoveryTests(unittest.TestCase):
     def test_retire_rechecks_snapshot_after_acquiring_global_lock(self):
         from contextlib import contextmanager
 
-        from mcpywrap.mcstudio.deployment_links import unlink
+        from mcpywrap_core.mcstudio.deployment_links import unlink
 
         link = self.engine / "behavior_packs/manual"
         link.parent.mkdir(parents=True)
@@ -814,7 +814,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(link.resolve(), other / "behavior_pack")
 
     def test_group_migration_binds_recipe_and_rewrites_recovery_target(self):
-        from mcpywrap.runtime import groups
+        from mcpywrap_core.runtime import groups
 
         child, sid = self.split()
         backend = Mock(id="windows")
@@ -855,7 +855,7 @@ class RecoveryTests(unittest.TestCase):
         )
 
     def test_launch_journal_uses_canonical_global_root(self):
-        from mcpywrap.mcstudio.deployment_links import unlink
+        from mcpywrap_core.mcstudio.deployment_links import unlink
 
         self.engine.mkdir()
         alias = self.root / "engine-alias"
@@ -877,7 +877,7 @@ class DiagnosticTests(unittest.TestCase):
         from contextlib import redirect_stderr
         from io import StringIO
 
-        from mcpywrap.mcstudio import session_worker
+        from mcpywrap_core.mcstudio import session_worker
 
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)
@@ -912,7 +912,7 @@ class DiagnosticTests(unittest.TestCase):
             )
             output = StringIO()
             with (
-                patch("mcpywrap.engines.backend.get_backend", return_value=backend),
+                patch("mcpywrap_core.engines.backend.get_backend", return_value=backend),
                 patch.object(session_worker, "FileLogServer"),
                 redirect_stderr(output),
             ):
@@ -924,7 +924,7 @@ class DiagnosticTests(unittest.TestCase):
             self.assertEqual(value["actions"][0]["argv"][0], "mcpy")
 
     def test_details_and_actions_survive_round_trip_and_redaction(self):
-        from mcpywrap.runtime.diagnostics import diagnostic, exception
+        from mcpywrap_core.runtime.diagnostics import diagnostic, exception
 
         source = EngineError(
             "secret token",

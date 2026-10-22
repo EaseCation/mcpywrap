@@ -5,12 +5,12 @@ from unittest.mock import Mock, patch
 import unittest
 import os
 
-from mcpywrap.runtime import groups, storage
-from mcpywrap.mcstudio import sessions
-from mcpywrap.engines.host import EngineError
-from mcpywrap.mcstudio.network import ServerTarget
+from mcpywrap_core.runtime import groups, storage
+from mcpywrap_core.mcstudio import sessions
+from mcpywrap_core.engines.host import EngineError
+from mcpywrap_core.mcstudio.network import ServerTarget
 from click.testing import CliRunner
-from mcpywrap.cli import cli
+from mcpywrap_core.cli import cli
 
 
 class GroupTests(unittest.TestCase):
@@ -43,7 +43,7 @@ class GroupTests(unittest.TestCase):
         record = self.record()
         data = {'state': 'running', 'world_ready': False}
         with patch.object(sessions, 'read', return_value=data), \
-                patch('mcpywrap.mcstudio.runtime_debug.control_request') as control:
+                patch('mcpywrap_core.mcstudio.runtime_debug.control_request') as control:
             self.assertIsNone(groups._observe(record, record['members'][0]))
         control.assert_not_called()
 
@@ -60,7 +60,7 @@ class GroupTests(unittest.TestCase):
         values = [{'player': 'a', 'player_names': {'a': 'Alpha'}, 'host_network_id': '42'},
                   {'player': 'b', 'player_names': {'b': 'Beta'}, 'host_network_id': '42'}]
         with patch.object(groups, '_observe', side_effect=values), patch(
-                'mcpywrap.mcstudio.runtime_debug.control_request',
+                'mcpywrap_core.mcstudio.runtime_debug.control_request',
                 return_value={'state': 'completed', 'value': {'server-a': 'Alpha', 'server-b': 'Beta'}}) as control:
             groups.verify(record, timeout=1)
         self.assertEqual(control.call_args.kwargs['side'], 'server')
@@ -142,7 +142,7 @@ class GroupTests(unittest.TestCase):
     def test_cancelled_group_cannot_publish_reload(self):
         record = self.record()
         groups.path(self.root, record['group']).with_name('stop').touch()
-        with patch('mcpywrap.runtime.deployment.refresh') as deploy:
+        with patch('mcpywrap_core.runtime.deployment.refresh') as deploy:
             with self.assertRaises(EngineError) as error:
                 groups.reload(self.root, record['group'], 'python', 'Probe', b'VALUE=1')
         self.assertEqual(error.exception.code, 'cancelled')
@@ -167,7 +167,7 @@ class GroupTests(unittest.TestCase):
 
     def test_observer_interruption_does_not_stop_any_members(self):
         record = self.record()
-        from mcpywrap.engines.tui import watch_group
+        from mcpywrap_core.engines.tui import watch_group
         with patch.object(groups, 'status', side_effect=KeyboardInterrupt), patch.object(sessions, 'stop') as stop:
             with self.assertRaises(KeyboardInterrupt):
                 watch_group(self.root, dict(group=record['group'], owned_sessions=[]))
@@ -218,7 +218,7 @@ class GroupTests(unittest.TestCase):
         with patch.object(groups,'_ready'), patch.object(groups,'_prepare_local'), \
                 patch.object(groups.occupancy,'live',return_value=False), \
                 patch.object(groups,'_connect_member') as guest, \
-                patch('mcpywrap.runtime.deployment.refresh') as deploy:
+                patch('mcpywrap_core.runtime.deployment.refresh') as deploy:
             result=groups.start_local(self.root,self.backend,{})
         self.assertTrue(result['ok'])
         guest.assert_called_once()
@@ -227,7 +227,7 @@ class GroupTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == 'nt', 'Windows engine path aliases')
     def test_equivalent_engine_directory_reuses_the_running_world(self):
-        from mcpywrap.runtime import windows
+        from mcpywrap_core.runtime import windows
         engine_path=str(self.root/'engine')
         current={'session':'1'*32,'state':'running','mode':'local','level_id':'world',
                  'launch':{'engine':{'download_dir':engine_path.upper()}}}
@@ -247,7 +247,7 @@ class GroupTests(unittest.TestCase):
         values = [{'player':'1','player_names':{'1':'A','2':'B'},'host_network_id':'42'},
                   {'player':'2','player_names':{'1':'A','2':'B'},'host_network_id':'99'}]
         with patch.object(groups, '_observe', side_effect=values), \
-                patch('mcpywrap.mcstudio.runtime_debug.control_request') as request:
+                patch('mcpywrap_core.mcstudio.runtime_debug.control_request') as request:
             self.assertFalse(groups._verify_once(record))
         self.assertEqual(record['join_state'], 'wrong_world')
         request.assert_not_called()
@@ -271,17 +271,17 @@ class GroupTests(unittest.TestCase):
     def test_windows_guest_launches_menu_without_writing_cppconfig(self):
         from contextlib import nullcontext
         from dataclasses import asdict
-        from mcpywrap.engines.windows import WindowsBackend
-        from mcpywrap.mcstudio.discovery import Engine
+        from mcpywrap_core.engines.windows import WindowsBackend
+        from mcpywrap_core.mcstudio.discovery import Engine
         record = self.record()
         data = {'project':str(self.root),'session':record['members'][1]['session'],
                 'mode':'network','group':record['group'],'role':'guest',
                 'network':{'join':'manual','target':None,'local_host':record['members'][0]['session'],
                            'engine':asdict(Engine('game','3.10','engine','download','test'))}}
-        with patch('mcpywrap.runtime.profiles.PlayerProfile') as profiles, \
+        with patch('mcpywrap_core.runtime.profiles.PlayerProfile') as profiles, \
                 patch.object(groups, 'is_local_guest', return_value=True), \
-                patch('mcpywrap.mcstudio.game.open_game') as open_game, \
-                patch('mcpywrap.mcstudio.network.launch_network') as connect:
+                patch('mcpywrap_core.mcstudio.game.open_game') as open_game, \
+                patch('mcpywrap_core.mcstudio.network.launch_network') as connect:
             profiles.return_value.lease.return_value = nullcontext()
             profiles.return_value.windows_environment.return_value = {'APPDATA':'private'}
             launched=WindowsBackend().launch(data, Mock(port=12345))
@@ -377,7 +377,7 @@ class GroupTests(unittest.TestCase):
 
     def test_external_reload_is_refused_before_deployment(self):
         record = self.record('network')
-        with patch('mcpywrap.runtime.deployment.refresh') as deploy:
+        with patch('mcpywrap_core.runtime.deployment.refresh') as deploy:
             with self.assertRaises(EngineError):
                 groups.reload(self.root, record['group'], 'python', 'Mod.logic', b'x=1')
         deploy.assert_not_called()
@@ -388,18 +388,18 @@ class GroupTests(unittest.TestCase):
         with patch.object(sessions, 'read', return_value=ready), \
                 patch.object(groups.occupancy, 'live', return_value=True), \
                 patch.object(groups, '_verify_once', return_value=False), \
-                patch('mcpywrap.runtime.deployment.refresh') as deploy:
+                patch('mcpywrap_core.runtime.deployment.refresh') as deploy:
             with self.assertRaises(EngineError) as error:
                 groups.reload(self.root, record['group'], 'python', 'Demo.logic', b'VALUE = 2')
         self.assertEqual(error.exception.code, 'group_not_ready')
         deploy.assert_not_called()
 
     def test_host_session_cannot_bypass_group_reload_coordination(self):
-        from mcpywrap.mcstudio.hot_reload import reload_session
+        from mcpywrap_core.mcstudio.hot_reload import reload_session
         record=self.record()
         host=record['members'][0]['session']
         with patch.object(sessions,'read',return_value={'state':'running','mode':'local','session':host}), \
-                patch('mcpywrap.runtime.deployment.refresh') as deploy:
+                patch('mcpywrap_core.runtime.deployment.refresh') as deploy:
             with self.assertRaises(EngineError) as error:
                 reload_session(self.root,host,'python','Probe',b'VALUE=1')
         self.assertEqual(error.exception.code,'group_required')
@@ -425,7 +425,7 @@ class GroupTests(unittest.TestCase):
 
     def test_remote_dual_client_does_not_call_or_fall_back(self):
         runner = CliRunner()
-        with patch('mcpywrap.remote.client.Client') as remote, patch.object(groups, 'start_network') as local:
+        with patch('mcpywrap_core.remote.client.Client') as remote, patch.object(groups, 'start_network') as local:
             result = runner.invoke(cli, ['--remote', 'http://127.0.0.1:18765', '--project', str(self.root),
                                          'connect', 'localhost', '--clients', '2', '--detach', '--json'])
         self.assertNotEqual(result.exit_code, 0)
