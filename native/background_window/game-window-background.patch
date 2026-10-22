@@ -1,0 +1,58 @@
+diff --git a/src/window_glfw.cpp b/src/window_glfw.cpp
+index 7e0a85b..ca8e524 100644
+--- a/src/window_glfw.cpp
++++ b/src/window_glfw.cpp
+@@ -8,12 +8,27 @@
+ #include <sstream>
+
+ #include <math.h>
++#include <cstdlib>
++#include <cstring>
++
++namespace {
++bool backgroundWindow() {
++    const char* value = std::getenv("MCPY_GAME_BACKGROUND");
++    return value && std::strcmp(value, "1") == 0;
++}
++void backgroundWindowHints() {
++    if (!backgroundWindow()) return;
++    glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
++    glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
++}
++}
+
+ GLFWGameWindow::GLFWGameWindow(const std::string& title, int width, int height, GraphicsApi api) : GameWindow(title, width, height, api), width(width), height(height), windowedWidth(width), windowedHeight(height) {
+ #ifdef GAMEWINDOW_X11_LOCK
+     std::lock_guard<std::recursive_mutex> lock(x11_sync);
+ #endif
+     glfwDefaultWindowHints();
++    backgroundWindowHints();
+     if(api == GraphicsApi::OPENGL_ES2) {
+         glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+         glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API);
+@@ -29,6 +44,7 @@ GLFWGameWindow::GLFWGameWindow(const std::string& title, int width, int height,
+     if(window == nullptr && api == GraphicsApi::OPENGL_ES2) {
+         // Failed to get es3 request es2
+         glfwDefaultWindowHints();
++        backgroundWindowHints();
+         glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+         glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API);
+         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+@@ -172,6 +188,8 @@ bool GLFWGameWindow::getCursorDisabled() {
+ }
+
+ void GLFWGameWindow::setCursorDisabled(bool disabled) {
++    // A background test must never grab, hide or recenter the user's cursor.
++    if (backgroundWindow()) disabled = false;
+ #ifdef GAMEWINDOW_X11_LOCK
+     std::lock_guard<std::recursive_mutex> lock(x11_sync);
+ #endif
+@@ -199,7 +217,7 @@ void GLFWGameWindow::setFullscreen(bool fullscreen) {
+ #ifdef GAMEWINDOW_X11_LOCK
+     std::lock_guard<std::recursive_mutex> lock(x11_sync);
+ #endif
+-    requestFullscreen = fullscreen;
++    requestFullscreen = fullscreen && !backgroundWindow();
+ }
+
+ void GLFWGameWindow::setClipboardText(std::string const& text) {

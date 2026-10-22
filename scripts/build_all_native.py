@@ -10,7 +10,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output-root', type=Path,
-                        help='Build into BRIDGE and CAPTURE subdirectories here; default is package payload directories')
+                        help='Build into BRIDGE, CAPTURE and ACTIVATION subdirectories here; default is package payload directories')
     args = parser.parse_args()
     if os.name != 'nt':
         parser.error('Native components can only be built on Windows')
@@ -33,19 +33,22 @@ def main():
         output_root = args.output_root.resolve()
         bridge_output = output_root / 'bridge'
         capture_output = output_root / 'capture'
+        activation_output = output_root / 'activation'
     else:
         bridge_output = root / 'desktop/mcpywrap_assets/bridge_payload'
         capture_output = root / 'desktop/mcpywrap_assets/window_capture'
+        activation_output = root / 'desktop/mcpywrap_assets/window_activation'
 
     with tempfile.TemporaryDirectory(prefix='mcpy-native-') as temporary:
         for arch, script, output in (
             ('x86', 'build_mcs_auth_bridge.py', bridge_output),
             ('x64', 'build_window_capture.py', capture_output),
+            ('x64', 'build_window_activation.py', activation_output),
         ):
             python_command = subprocess.list2cmdline([
                 sys.executable, str(root / 'scripts' / script), '--cc', 'cl', '--output', str(output),
             ])
-            batch = Path(temporary) / f'build-{arch}.cmd'
+            batch = Path(temporary) / f'build-{script}.cmd'
             batch.write_text('\n'.join([
                 '@echo off',
                 f'call "{devcmd}" -arch={arch} -host_arch=x64',

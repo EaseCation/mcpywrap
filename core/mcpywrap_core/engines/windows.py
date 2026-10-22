@@ -74,7 +74,7 @@ class WindowsBackend(GameBackend):
     def prepare_guest(self, host):
         return None
 
-    def start_guest(self, host, *, project_dir, session_id, group, role, player):
+    def start_guest(self, host, *, project_dir, session_id, group, role, player, background=False):
         from ..mcstudio import sessions
         from ..mcstudio.discovery import require_resources, Engine
         from ..runtime.deployment import Deployment
@@ -91,7 +91,7 @@ class WindowsBackend(GameBackend):
             version = record.get('fingerprint') if isinstance(record, dict) else None
             if not version:
                 raise EngineError('无法确认主机加载的版本，请重启联调组。', 'deployment_unavailable')
-        data = sessions.start(project_dir, session_id=session_id, group=group, role=role,
+        data = sessions.start(project_dir, session_id=session_id, group=group, role=role, background=background,
                               network={'target': None, 'engine': engine, 'player': player,
                                        'local_host': host['session'], 'join': 'manual',
                                        'deployment_fingerprint': version})
@@ -132,12 +132,14 @@ class WindowsBackend(GameBackend):
                     raise ValueError('本地主机已退出或联调成员已变更，取消客机启动')
                 process = open_game(None, engine=engine, logging_ip='127.0.0.1',
                                     logging_port=receiver.port, wait=False, use_system_color=False,
-                                    capture_output=True, environment=environment)
+                                    capture_output=True, environment=environment,
+                                    background=data.get('background', False))
             else:
                 from ..mcstudio.network import launch_network, ServerTarget
                 process = launch_network(engine, ServerTarget(**data['network']['target']),
                                          directory/'runtime.cppconfig', receiver.port, auth_context,
-                                         player=data['network'].get('player'), environment=environment)
+                                         player=data['network'].get('player'), environment=environment,
+                                         background=data.get('background', False))
             return LaunchedGame(process, guard=guard)
         except BaseException:
             guard.close()

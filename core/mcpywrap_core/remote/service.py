@@ -186,10 +186,12 @@ class GameService:
         return overrides
 
     def create(self, data):
-        fields(data, ('request_id', 'host', 'port', 'mcs_auth', 'engine_version'))
+        fields(data, ('request_id', 'host', 'port', 'mcs_auth', 'engine_version', 'background'))
         request_id = identifier(data.get('request_id'))
         if type(data.get('mcs_auth', False)) is not bool:
             raise RemoteError('mcs_auth 必须是布尔值', 'invalid_request')
+        if type(data.get('background', True)) is not bool:
+            raise RemoteError('background 必须是布尔值', 'invalid_request')
         target = ServerTarget(data.get('host'), data.get('port', 19132), 'mcs' if data.get('mcs_auth') else 'none')
         overrides = self.overrides(data)
         request_path = self.requests/(request_id+'.json')
@@ -218,6 +220,7 @@ class GameService:
                 raise RemoteError('服务正在停止', 'service_stopping', 503)
             result = sessions.start(self.root, auth_context=auth, session_id=request_id,
                                     origin='remote', request_id=request_id,
+                                    background=data.get('background', True),
                                     network={'target': asdict(target), 'engine': asdict(engine)})
             if self.closing.is_set():
                 sessions.stop(self.root, request_id)

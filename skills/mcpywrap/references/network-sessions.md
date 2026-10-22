@@ -9,7 +9,7 @@ mcpy --local --project <已有会话目录> --non-interactive connect <游戏服
 mcpy --remote <Windows服务HTTP地址> --project <调用端目录> --non-interactive connect <游戏服务器> --port 19132 --detach --json
 ```
 
-connect 只用项目目录存放/定位会话，不要求 init，也不读取 server 目标等项目配置。远端必须 --detach；本机为 AI 调用也使用 detach。首次跨机使用先读[远程执行端](remote-testing.md)。
+connect 只用项目目录存放/定位会话，不要求 init，也不读取 server 目标等项目配置。远端必须 --detach；本机为 AI 调用也使用 detach。窗口策略与 run 相同：非交互、JSON 或 detach 默认后台，可用 `--background / --foreground` 覆盖，双客户端和重启保留策略；能力要求及输入限制见[本地会话](local-development.md#启动与找回)。首次跨机使用先读[远程执行端](remote-testing.md)。
 
 项目长期固定目标时才配置：
 

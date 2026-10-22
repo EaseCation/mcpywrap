@@ -28,6 +28,7 @@ var/
 /desktop/mcpywrap_assets/bridge_payload/
 /desktop/mcpywrap_assets/window_capture/*.exe
 /desktop/mcpywrap_assets/window_capture/manifest.json
+/desktop/mcpywrap_assets/window_activation/
 *.pfx
 *.p12
 .venv/

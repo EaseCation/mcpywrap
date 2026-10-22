@@ -704,6 +704,9 @@ class GameWindow:
 
 
 def operate(project, session, action, parameters=None, cancel=None):
+    if action in ('key', 'mouse', 'input-sequence'):
+        from ..runtime.window_policy import require_foreground_input
+        require_foreground_input(project, session)
     if action == 'input-sequence':
         from .input_sequence import validate_events
         validate_events(**(parameters or {}))
@@ -732,10 +735,12 @@ def operate(project, session, action, parameters=None, cancel=None):
 
 
 def _operate(project, session, action, parameters=None, cancel=None):
+    from . import sessions
+    background = sessions.read(project, session).get('background', False)
     window = GameWindow(session_game(project, session), cancel=cancel)
     try:
         if action == 'screenshot':
-            if (parameters or {}).get('background_only', False):
+            if background or (parameters or {}).get('background_only', False):
                 content, width, height = window.screenshot_background()
                 capture = {'capture': 'background-window', 'capture_fallback': False}
             else:

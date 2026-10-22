@@ -11,7 +11,7 @@ mcpy --local --project <项目> --non-interactive screenshot --session <sid> --b
 
 Windows 和 macOS 使用相同命令。远程将 --local 替换成 --remote <Windows HTTP endpoint>，返回的 image 是调用端路径。截图为游戏内容区物理像素，不含系统标题栏；组内操作明确选择成员 session。
 
-不占用前台的任务保留 --background-only。Windows 默认截图可能从 WGC 后台捕获回退可见窗口；后台捕获失败时不能移除该参数、激活游戏或用前台截图冒充后台结果。
+不占用前台的任务保留 --background-only。后台启动的会话会强制仅后台捕获。普通前台会话的 Windows 默认截图可能从 WGC 后台捕获回退可见窗口；后台捕获失败时不能移除该参数、激活游戏或用前台截图冒充后台结果。
 
 macOS 需要目标实例的运行包支持 `screenshot_protocol=1`，用 `runtime capabilities --session <sid> --json` 的 screenshot 状态检查。旧包返回 capability_missing；更新 CLI 或 Skill 不会升级实例绑定，按[平台页](macos-local.md)选择支持该协议的运行包和新实例。
 

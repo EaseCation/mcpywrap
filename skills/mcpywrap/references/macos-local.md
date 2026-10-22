@@ -48,6 +48,7 @@ mcpy --local --non-interactive engine install --catalog https://github.com/EaseC
 | 双外服客户端 | 需要独立开发身份协议的原生包；已做候选实验不代表公开 0.4.5 已具备，按实际能力拒绝或使用已明确选择的构建 |
 | MCS 身份 / MCEditor | macOS 不支持；MCS 网络身份可由 Windows 服务提供，编辑器必须 Windows 本机 |
 | 游戏截图 | 需要实例运行包 screenshot_protocol=1；按需获取游戏帧，见[画面采集](capture.md#截图) |
+| 后台窗口 | 需要 background_window_protocol=1；旧包明确拒绝，允许聚焦时显式 --foreground；运行包构建补丁见仓库 native/background_window |
 | 录屏/视频提帧/原始设备输入 | macOS 本地不支持；远程可针对 Windows 会话使用 |
 
 网络使用与结果判断见[网络会话](network-sessions.md)。3.10.100.299889 曾在本机允许无认证的 Nemisys/SynapseAPI/Nukkit 测试栈验证进服，不能推及公开服务器。当前网络运行包对外 HTTP 资源包下载未完成验收；需要这类分发时不能宣称完整支持。

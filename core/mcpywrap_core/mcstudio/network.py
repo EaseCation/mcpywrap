@@ -99,7 +99,8 @@ def unauthenticated_config(engine, target, player=None):
     return config
 
 
-def launch_network(engine, target, config_path, logging_port, auth_context=None, player=None, environment=None):
+def launch_network(engine, target, config_path, logging_port, auth_context=None, player=None, environment=None,
+                   background=False):
     """由会话 worker 调用；监听、日志脱敏和进程回收由 worker 统一负责。"""
     require_resources(engine)
     config = unauthenticated_config(engine, target, player)
@@ -114,7 +115,7 @@ def launch_network(engine, target, config_path, logging_port, auth_context=None,
     config_path.write_text(json.dumps(config, ensure_ascii=False), encoding='utf-8')
     return open_game(str(config_path), engine=engine, logging_ip='127.0.0.1',
                      logging_port=logging_port, wait=False, use_system_color=False,
-                     capture_output=True, environment=environment)
+                     capture_output=True, environment=environment, background=background)
 
 
 def prepare_network(target, project_dir=None, engine_overrides=None, interactive=None):
@@ -132,7 +133,7 @@ def prepare_network(target, project_dir=None, engine_overrides=None, interactive
 
 
 def run_network(target, *, project_dir=None, packs=(), engine_overrides=None, detach=False,
-                session_id=None, group=None, role=None, player=None):
+                session_id=None, group=None, role=None, player=None, background=False):
     """预检后创建普通游戏会话；临时 connect 只用项目目录存会话，不读取其配置。"""
     from ..command_context import project_dir as current_project, json_output
     from . import sessions
@@ -143,7 +144,7 @@ def run_network(target, *, project_dir=None, packs=(), engine_overrides=None, de
     click.echo(f'本次仅连接服务器，工具未装配本地 Addon（已解析 {len(packs)} 个）。')
     root = Path(project_dir or current_project()).resolve()
     data = sessions.start(root, auth_context=identity,
-                          session_id=session_id, group=group, role=role,
+                          session_id=session_id, group=group, role=role, background=background,
                           network={'target': asdict(target), 'engine': asdict(engine),
                                    'player': player})
     result = sessions.handoff(data)

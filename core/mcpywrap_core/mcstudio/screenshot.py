@@ -32,6 +32,7 @@ def supported(data):
 
 def capture(project, session, background_only=False):
     data = sessions.read(project, session)
+    background_only = background_only or data.get('background', False)
     if data.get('backend', 'windows') == 'windows':
         from .window import operate
         return operate(project, session, 'screenshot', {'background_only': True} if background_only else None)

@@ -652,6 +652,7 @@ def execute(
         world_config=None,
         detach=True,
         no_gui=True,
+        background=data.get("background", False),
         migration=migration,
     )
 

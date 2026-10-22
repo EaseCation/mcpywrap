@@ -192,6 +192,9 @@ def routed_command(name, parameters):
         if p.get('mcs_auth'):
             client.require('mcs-auth')
         data = {k: p[k] for k in ('host', 'port', 'mcs_auth', 'engine_version') if p.get(k) is not None}
+        from ..runtime.window_policy import resolve_background
+        data['background'] = resolve_background(p.get('background'), no_gui=p.get('no_gui', False),
+                                                detach=p.get('detach', False))
         data['request_id'] = p.get('request_id') or uuid.uuid4().hex
         result = client.request('POST', '/sessions', data)
         return True, result

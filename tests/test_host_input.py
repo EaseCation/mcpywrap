@@ -50,6 +50,7 @@ class WindowsUnifiedTests(unittest.TestCase):
             return count
         self.target.user.SendInput.side_effect = send
         self.stack = contextlib.ExitStack()
+        self.stack.enter_context(patch('mcpywrap_core.mcstudio.sessions.read', return_value={'background': False}))
         self.stack.enter_context(patch('mcpywrap_core.mcstudio.host_input.os.name', 'nt'))
         self.stack.enter_context(patch('mcpywrap_core.mcstudio.window.session_game', return_value=self.target.game))
         self.stack.enter_context(patch('mcpywrap_core.mcstudio.window.GameWindow', return_value=self.target))

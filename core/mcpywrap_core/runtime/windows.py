@@ -19,7 +19,7 @@ from ..utils.locks import directory_lock
 
 def run(project, *, new=False, listing=False, delete=None, force=False, clean_all=False,
         instance_prefix=None, no_gui=False, detach=False, mcs_auth=False, overrides=None,
-        auth_context=None, world_config=None, migration=None):
+        auth_context=None, world_config=None, migration=None, background=False):
     project = Path(project).resolve()
     config = read_project(project)
     if listing:
@@ -38,7 +38,8 @@ def run(project, *, new=False, listing=False, delete=None, force=False, clean_al
         if new or instance_prefix or world_config is not None:
             raise click.UsageError('网络模式不支持 --new 或世界实例 ID')
         return run_network(replace(target, auth='mcs') if mcs_auth else target, project_dir=project,
-                           packs=prepare_project(project, config), engine_overrides=overrides, detach=detach)
+                           packs=prepare_project(project, config), engine_overrides=overrides, detach=detach,
+                           background=background)
     from ..command_context import json_output
     if json_output() and not detach:
         raise click.UsageError('run --json 需要 --detach')
@@ -95,7 +96,7 @@ def run(project, *, new=False, listing=False, delete=None, force=False, clean_al
         instances.attempt(project, item, session, world_config)
         settings = storage.read(instances.record_path(project, item['level_id']), {}).get('creation_settings')
         data = sessions.start(project, item['config_path'], item['level_id'], overrides,
-                              auth_context=auth_context, session_id=session,
+                              auth_context=auth_context, session_id=session, background=background,
                               launch={'engine': asdict(engine), 'world_settings': settings, **({'migration': migration} if migration else {})})
     result = sessions.handoff(data)
     if detach:
@@ -169,7 +170,8 @@ def launch(data, receiver, auth_context=None):
             sessions.require_launch_requested(project, data['session'])
             deployment.spawning()
             process = open_game(str(launch_path), logging_port=receiver.port, wait=False,
-                                engine=engine, capture_output=True, use_system_color=False)
+                                engine=engine, capture_output=True, use_system_color=False,
+                                background=data.get('background', False))
             if not process:
                 raise EngineError('引擎未创建游戏进程。', 'launch_failed')
             deployment.spawned(process)

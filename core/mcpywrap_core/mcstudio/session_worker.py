@@ -133,6 +133,9 @@ def run(project, session):
             except subprocess.TimeoutExpired:
                 data['error'] += '；游戏尚未确认退出，进程保留，请查询状态并重试 stop'
     finally:
+        activation_guard = getattr(process, '_mcpy_activation_guard', None) if process else None
+        if activation_guard:
+            activation_guard.close()
         if group_monitor:
             group_monitor.close()
         if deployment and (not process or process.poll() is not None):

@@ -75,11 +75,12 @@ def pinned_runtime(item):
     return {'runtime': str(app), 'application': str(application), 'game': str(game), 'profile': plan['profile'], 'runtime_id': plan['runtime_id'],
             'compat_report': compatibility, 'cppconfig_protocol': meta.get('cppconfig_protocol'),
             'network_connect_protocol': meta.get('network_connect_protocol'),
-            'developer_identity_protocol': meta.get('developer_identity_protocol')}
+            'developer_identity_protocol': meta.get('developer_identity_protocol'),
+            'background_window_protocol': meta.get('background_window_protocol')}
 
 
 def run(project, *, new=False, listing=False, delete=None, clean_all=False, force=False,
-        instance_prefix=None, detach=False, mcs_auth=False, overrides=None, world_config=None):
+        instance_prefix=None, detach=False, mcs_auth=False, overrides=None, world_config=None, background=False):
     require_macos()
     from ..dependencies import read_project
     from ..command_context import json_output, human_interaction
@@ -103,7 +104,8 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                 raise click.UsageError('网络模式不支持 --new 或本地世界实例 ID')
             packs = prepare_project(project, config)
             from .macos_network import connect
-            return connect(target, project_dir=project, packs=packs, engine_overrides=overrides, detach=detach)
+            return connect(target, project_dir=project, packs=packs, engine_overrides=overrides, detach=detach,
+                           background=background)
     if config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
         raise EngineError('macOS 首版支持 Addon 测试，Map 项目尚未接入。', 'unsupported_feature',
                           '地图项目请在 Windows 本机运行。')
@@ -149,6 +151,8 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
             state = ensure_runtime()
         with directory_lock(install.home()/'install-lock'):
             state = pinned_runtime({'installation': state})
+            from ..runtime.window_policy import require_native_background
+            require_native_background(state, background)
             version = state['profile']['apk']['version']
             requested = overrides.get('engine_version') or config.get('tool', {}).get('mcpywrap', {}).get('macos', {}).get('engine_version')
             if requested and requested != version:
@@ -181,7 +185,7 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                 from ..runtime.storage import read
                 plan['prepare_world']['settings'] = read(records.record_path(project, item['level_id']), {}).get('creation_settings')
             data = sessions.start(project, str(config_path), item['level_id'],
-                                  backend='macos-arm64', launch=plan)
+                                  backend='macos-arm64', launch=plan, background=background)
     result = sessions.handoff(data)
     if detach: return result
     sessions.show_configuration(result)
@@ -213,6 +217,10 @@ def launch_session(data):
     if plan.get('compat_report'):
         command += ['--compat-report', plan['compat_report']]
     metadata = install.read_json(app/'Contents/Resources/runtime.json')
+    from ..runtime.window_policy import require_native_background
+    require_native_background(metadata, data.get('background', False))
+    if data.get('background', False):
+        command.append('--background')
     if metadata.get('addon_link_protocol') == 1:
         command.append('--link-source-addons')
     process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,

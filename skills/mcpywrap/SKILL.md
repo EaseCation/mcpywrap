@@ -12,7 +12,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 - 使用公开 CLI。示例中的 `mcpy` 指本机已确认的可执行命令；需要安装、升级或不确定执行位置时才读[安装与路由](references/setup.md)。
 - 全局参数在子命令前：`mcpy --local --project <已有绝对目录> --non-interactive <命令>`。远程操作明确换成 `--remote <Windows服务HTTP地址>`，失败不回退本机；项目目录仍属于调用端。
 - 有限命令加 `--json`；检查退出码和 `ok/error/code/hint`。`dev`、`runtime watch`、`serve` 是持续命令，不加 JSON。脚本尾参置于 `--` 之后。
-- AI 启动本地游戏用 `run --no-gui --detach --json`，不操作 Qt/TUI；游戏仍需要图形会话和 GPU。保存返回的 session/group、项目及远程 endpoint，后续不换目标。
+- AI 启动本地游戏用 `run --no-gui --detach --json`，默认请求不聚焦的后台窗口，不操作 Qt/TUI；游戏仍需要图形会话和 GPU。macOS 旧包缺少后台协议时需升级运行包，不擅自改用 `--foreground`。保存返回的 session/group、项目及远程 endpoint，后续不换目标。
 - **业务代码禁止依赖 `mcpy.*`。** `mcpy.input/ui/player/api` 仅由 runtime install 临时注入调试会话，不是 ModSDK 或可分发依赖。宿主生成脚本用工具 Python 3，游戏代码仍受内置 Python/目标 ModSDK 约束。
 - `running`、请求 `completed/triggered` 不等于玩法效果已验证。只结束自己创建或用户指定的会话；unknown 不盲目重发，busy 不清锁或杀无关进程。
 

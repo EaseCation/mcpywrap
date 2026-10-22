@@ -29,4 +29,4 @@ include = ["mcpywrap_assets"]
 namespaces = false
 
 [tool.setuptools.package-data]
-mcpywrap_assets = ["bridge_payload/*.exe", "bridge_payload/*.dll", "bridge_payload/*.cer", "bridge_payload/*.json", "window_capture/*.exe", "window_capture/*.json"]
+mcpywrap_assets = ["bridge_payload/*.exe", "bridge_payload/*.dll", "bridge_payload/*.cer", "bridge_payload/*.json", "window_capture/*.exe", "window_capture/*.json", "window_activation/*.dll", "window_activation/*.json"]

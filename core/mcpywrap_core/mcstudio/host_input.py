@@ -24,6 +24,8 @@ class WindowsInputAdapter:
 
     def ready(self):
         input_require(os.name == 'nt', 'not_supported', '该执行端没有 Windows SendInput')
+        from ..runtime.window_policy import require_foreground_input
+        require_foreground_input(self.manager.project, self.manager.session)
         from .window import session_game
         session_game(self.manager.project, self.manager.session)
 
@@ -47,6 +49,8 @@ class WindowsInputAdapter:
         return {'keys': keys}
 
     def prepare(self, op):
+        from ..runtime.window_policy import require_foreground_input
+        require_foreground_input(self.manager.project, self.manager.session)
         from .window import GameWindow, session_game, desktop_input_lock, InputSender, MODIFIERS
         reservation = self.manager.game('_reserve', {'operation': op['operation_id'], 'signature': op['_signature']})
         if reservation.get('code') != 'not_installed':
