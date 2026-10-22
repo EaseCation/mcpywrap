@@ -314,6 +314,7 @@ class LifecycleAudit(unittest.TestCase):
                     launch={'engine': dict(executable='game', version='test', engine_dir='engine',
                                            download_dir='download', source='test')})
         with patch.object(instances, 'world_path', return_value=self.root/'worlds/world'), \
+                patch('mcpywrap_core.runtime.deployment_service.global_root', return_value=self.root/'engine'), \
                 patch.object(windows, 'require_resources'):
             with self.assertRaises(EngineError) as error:
                 windows.launch(data, SimpleNamespace(port=12345))

@@ -1,4 +1,4 @@
-"""Apply the three background-window patches to an initialized runtime source tree."""
+"""Apply background-window and safe-stop patches to an initialized runtime source tree."""
 import argparse
 from pathlib import Path
 import subprocess
@@ -9,6 +9,7 @@ def apply(manifest):
     patches = Path(__file__).resolve().parent
     targets = [(root/'game-window', patches/'game-window-background.patch'),
                (root/'mcpelauncher-client', patches/'client-background.patch'),
+               (root/'libc-shim', patches/'libc-shim-background.patch'),
                (root, patches/'manifest-background.patch')]
     pending = []
     for repo, patch in targets:

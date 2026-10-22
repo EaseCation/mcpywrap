@@ -33,6 +33,11 @@ class DeploymentCliTests(unittest.TestCase):
         )
         stack.enter_context(
             patch(
+                "mcpywrap_core.engines.host.describe", return_value={"backend": "windows"}
+            )
+        )
+        stack.enter_context(
+            patch(
                 "mcpywrap_core.engines.backend.describe", return_value={"backend": "windows"}
             )
         )

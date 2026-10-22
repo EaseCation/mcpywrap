@@ -28,10 +28,10 @@ mcpy --local engine check-updates --json
 
 此命令只发现网易 pe/pe_old 的真实版本和 URL，不下载；compatibility=not_checked 不能当作可运行。首次安装已会查询 pe，无需为了普通启动先检查更新。
 
-CLI 0.5.1 默认使用运行包 0.4.5，包含原生游戏截图。全新安装直接 run 即可自动准备；已有安装保留所选来源，升级资源时明确指定：
+CLI 0.6.1 默认使用运行包 0.4.6，包含原生游戏截图和后台窗口协议。全新安装直接 run 即可自动准备；已有安装保留所选来源，升级资源时明确指定：
 
 ```text
-mcpy --local --non-interactive engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.5/catalog.json --json
+mcpy --local --non-interactive engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.6/catalog.json --json
 ```
 
 此 catalog 仍按其来源规则发现 APK，不等于固定旧 APK。旧版本若不在官方频道无法下载时，报告缺失，不猜 URL。更新 CLI/Skill 或重新 runtime install 都不能替换原生包。
