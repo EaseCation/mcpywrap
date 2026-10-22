@@ -12,6 +12,8 @@ Launcher 在私有临时目录建立 Unix socket，并在实例 data 目录原�
 
 `submit/result/cancel/release` 按 request_id 管理请求。相同 ID 与内容幂等，不同内容拒绝；排队请求可取消，已执行的游戏代码不能强行回滚。Python 未就绪时排队，进入世界后保留同一客户端命名空间。外层 worker 继续管理用户可见结果、并发和 Safaia 服务端通道。
 
+macOS 服务端请求必须等本次会话 `world_ready=true`；此前返回 `unavailable` 并明确未发送代码，不占用未知请求槽。客户端启动命令仍走 Launcher 自身的就绪队列。已发送而结果未知的 Safaia 请求继续阻止后续执行，不通过清除 pending 或重发代码绕过。
+
 JSON UI 定义重载由独立的 `json_ui_reload_protocol=1` 声明。重载后业务界面与回调由 Mod 原有逻辑重新注册；协议不替代资源部署与会话占用检查。
 
 ## 单帧截图

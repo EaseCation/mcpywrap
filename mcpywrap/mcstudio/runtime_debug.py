@@ -256,7 +256,7 @@ class SafaiaChannel:
             raise ValueError('执行侧必须为 client 或 server')
         if not isinstance(code, str) or not code.strip() or len(code.encode('utf-8')) > MAX_CODE:
             raise ValueError('代码必须是非空 UTF-8 文本且不超过 32 KiB')
-        # Safaia connects before the Windows game Python systems initialize.
+        # Safaia connects before the game Python systems initialize.
         # Sending then can lose the result and permanently occupy this channel.
         if self.ready is not None and not self.ready():
             return {'state': 'unavailable', 'side': side,

@@ -393,7 +393,12 @@ else:
 
     def debug_channel(self, data, write_log):
         from ..mcstudio.launcher_python import LauncherPythonChannel
-        return LauncherPythonChannel(super().debug_channel(data, write_log), data['launch']['data'])
+        from ..mcstudio.runtime_debug import SafaiaChannel
+        # Safaia connects before server Python can accept commands. Client
+        # startup requests still use the launcher's independent ready queue.
+        data['world_ready'] = False
+        safaia = SafaiaChannel(write_log, ready=lambda: data.get('world_ready') is True)
+        return LauncherPythonChannel(safaia, data['launch']['data'])
 
     def refresh(self, data, channel):
         if getattr(self, 'preferences', None):
