@@ -23,6 +23,7 @@ int main(){
   window.setCursorDisabled(true);
   assert(glfwGetInputMode(created,GLFW_CURSOR)==GLFW_CURSOR_NORMAL);
   window.setFullscreen(true);
+  window.pollEvents();
   assert(!window.getFullscreen());
   assert(glfwGetWindowMonitor(created)==nullptr);
   std::cout<<"ES3 failure -> ES2: no focus, no cursor lock, no fullscreen: PASS\n";
