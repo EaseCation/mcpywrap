@@ -93,7 +93,9 @@ class AddonProjectBuilder:
                 staged_addon = AddonsPack(self.project_name, stage)
                 for kind in ('behavior', 'resource'):
                     setattr(staged_addon, kind + '_pack_dir', str(stage / Path(getattr(self.target_addon, kind + '_pack_dir')).name))
-                assemble_addon(self.packs, staged_addon)
+                from ..operations.input_snapshot import stable_inputs
+                with stable_inputs(self.dependency_manager):
+                    assemble_addon(self.packs, staged_addon)
                 if target.exists():
                     _replace_with_retry(target, backup)
                 try:

@@ -28,7 +28,7 @@ mcpy --local --project <项目> --non-interactive runtime capabilities --session
 | 启动响应丢失 | 同一项目 status --list 找回，不立刻再次 --new |
 | 明确删除世界 | `run --delete <前缀> --force --json`；仅用户要求删除时使用，不作为修启动的方法 |
 
-restart 会产生新 session，世界 ID 和窗口策略保留；需要 MCS 身份的会话按提示重新 run 并提供本次身份。旧 session 可查历史，不能继续向它发送输入。实例是世界，session 是一次进程运行，group 是联调成员关系。
+单会话 restart 返回 `previous_session` 与 `session_changed=true`，后续命令立即改用返回的新 `session`。restart 会产生新 session，世界 ID 和窗口策略保留；需要 MCS 身份的会话按提示重新 run 并提供本次身份。旧 session 可查历史，不能继续向它发送输入。实例是世界，session 是一次进程运行，group 是联调成员关系。
 
 ## 持续日志
 
@@ -81,3 +81,6 @@ python <skill>/scripts/smoke.py --command <本机mcpy命令> --project <项目> 
 ```
 
 smoke 会 package、创建新世界、等待就绪、各执行一次探针并清理本次创建的会话。只打包省略 --game；无业务标记/探针的结果不能当作业务验收。含预处理的项目 package 与 run 各执行自己的 hook，这是两个操作，不保证生成器只执行一次。
+
+
+日志定位可用 `logs --session <sid> --filter '[组件前缀]' --summary --json`。过滤为区分大小写的字面匹配，先过滤后取 tail；统计只覆盖所报告的扫描范围，不解释业务错误。持续跟随可用 `--follow --filter`，不可加 `--summary`。桌面本地快照筛选最多读取最近 512 KiB（持续跟随首次历史读取为 256 KiB），`scan_truncated=true` 表示不是全量。

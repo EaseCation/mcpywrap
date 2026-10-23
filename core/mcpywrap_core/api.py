@@ -1,11 +1,13 @@
 """Versioned engineering API. All frontends call the same operation functions."""
 from pathlib import Path
+import click
 
 from . import __version__
 from .host import HOST_API, HostServices, host_scope, current_host
 
 CORE_API = 1
-OPERATIONS = ('resolve', 'build', 'package', 'sync')
+from .operations.project import OPTIONS
+OPERATIONS = ('resolve', 'build', 'package', 'sync', *OPTIONS)
 
 
 class Core:
@@ -20,16 +22,28 @@ class Core:
         """Execute or raise the original structured error; never invoke another core."""
         if operation not in OPERATIONS:
             raise ValueError('未知工程操作：' + str(operation))
-        allowed = {'resolve': set(), 'build': {'merge'}, 'package': {'merge'},
+        allowed = OPTIONS[operation] if operation in OPTIONS else {'resolve': set(), 'build': {'merge'}, 'package': {'merge'},
                    'sync': {'install', 'migrate_windows_lock'}}[operation]
-        if set(options) - allowed or any(type(value) is not bool for value in options.values()):
+        if set(options) - allowed or (operation not in OPTIONS and any(type(value) is not bool for value in options.values())):
             raise ValueError('无效的工程操作参数')
+        if operation in OPTIONS:
+            for name,value in options.items():
+                valid = (type(value) is bool if name=='effective' else
+                         isinstance(value,(list,tuple)) and all(isinstance(item,str) for item in value) if name=='args' else
+                         value is None or isinstance(value,str))
+                if not valid: raise ValueError('无效的工程操作参数：'+name)
+            if operation=='script.run' and not options.get('name'):
+                raise ValueError('运行项目脚本需要 name')
         project = Path(project).expanduser().resolve()
-        if not project.is_dir() or not (project/'pyproject.toml').is_file():
+        if not project.is_dir() or (operation != 'init' and not (project/'pyproject.toml').is_file()):
             raise ValueError('未找到项目 pyproject.toml：' + str(project))
         from .command_context import project_scope
         with host_scope(self.host), project_scope(project) as context:
-            if operation == 'resolve':
+            if operation in OPTIONS:
+                from .operations.project import execute
+                context.non_interactive = True
+                result = execute(operation, project, options)
+            elif operation == 'resolve':
                 from .dependencies import DependencyService
                 manager = DependencyService(project).resolve()
                 result = {'project': str(project), 'dependencies': [
@@ -60,10 +74,10 @@ class Core:
             if request.get('operation') == 'describe':
                 return {'ok': True, 'result': self.describe()}
             options = request.get('options', {})
-            if not isinstance(options, dict) or not isinstance(request.get('project'), str):
+            if not isinstance(options, dict) or not all(isinstance(key,str) for key in options) or not isinstance(request.get('project'), str):
                 raise ValueError('无效的工程请求')
             result = self.execute(request.get('operation'), request['project'], **options)
             return {'ok': True, 'result': result, 'core': self.describe()}
-        except (ValueError, OSError) as error:
-            return {'ok': False, 'error': str(error), 'code': getattr(error, 'code', 'operation_failed'),
+        except (ValueError, OSError, click.ClickException) as error:
+            return {'ok': False, 'error': error.format_message() if isinstance(error,click.ClickException) else str(error), 'code': getattr(error, 'code', 'operation_failed'),
                     'hint': getattr(error, 'hint', None), 'details': getattr(error, 'details', {})}

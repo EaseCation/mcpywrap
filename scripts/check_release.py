@@ -28,6 +28,8 @@ def check(outdir, require_native=False):
     code = {p.relative_to(ROOT/'core').as_posix(): p.read_bytes()
             for directory in ('mcpywrap_core', 'mcpywrap_host')
             for p in (ROOT/'core'/directory).rglob('*.py') if '__pycache__' not in p.parts}
+    skill = {p.relative_to(ROOT/'skills/mcpywrap').as_posix():p.read_bytes()
+             for p in (ROOT/'skills/mcpywrap').rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix!='.pyc'}
     namespaces = {}
     for group, name in (('core', 'mcpywrap_core'), ('desktop', 'mcpywrap')):
         prefix = name+'-'+version
@@ -45,6 +47,8 @@ def check(outdir, require_native=False):
                 for path, content in code.items():
                     assert archive.read(path) == content, 'Stale/missing source: '+path
                 assert not any(n.endswith(('.exe','.dll','.so','.pyd','.dylib','.pth')) for n in files)
+                bundled = {n.removeprefix('mcpywrap_core/skill/'):archive.read(n) for n in owned if n.startswith('mcpywrap_core/skill/')}
+                assert bundled == skill, 'Missing, stale or unexpected bundled skill files'
                 assert not any(n.endswith('/entry_points.txt') for n in files), 'Core must not own desktop console scripts'
                 assert all('extra ==' in r or r.split('>')[0] in ('click', 'packaging', 'tomli', 'tomli-w') for r in requirements)
             else:
@@ -65,6 +69,9 @@ def check(outdir, require_native=False):
             assert 'pyproject.toml' in paths
             if group == 'core':
                 assert set(code) <= paths
+                for path,content in skill.items():
+                    source=archive.extractfile(prefix+'/mcpywrap_core/skill/'+path)
+                    assert source is not None and source.read()==content, 'Stale/missing sdist skill: '+path
             else:
                 assert 'core/mcpywrap_core/_version.py' in paths
                 assert not any(p.startswith('desktop/mcpywrap/') for p in paths)

@@ -10,9 +10,10 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 ## 调用约定
 
 - 使用公开 CLI。示例中的 `mcpy` 指本机已确认的可执行命令；需要安装、升级或不确定执行位置时才读[安装与路由](references/setup.md)。
-- 全局参数在子命令前：`mcpy --local --project <已有绝对目录> --non-interactive <命令>`。远程操作明确换成 `--remote <Windows服务HTTP地址>`，失败不回退本机；项目目录仍属于调用端。
+- 全局参数在子命令前；桌面本地示例：`mcpy --local --project <已有绝对目录> --non-interactive <命令>`。远程操作明确换成 `--remote <Windows服务HTTP地址>`，失败不回退本机；项目目录仍属于调用端。
 - 有限命令加 `--json`；检查退出码和 `ok/error/code/hint`。`dev`、`runtime watch`、`serve` 是持续命令，不加 JSON。脚本尾参置于 `--` 之后。
 - AI 启动本地游戏用 `run --no-gui --detach --json`，默认请求不聚焦的后台窗口，不操作 Qt/TUI；游戏仍需要图形会话和 GPU。macOS 旧包缺少后台协议时需升级运行包，不擅自改用 `--foreground`。保存返回的 session/group、项目及远程 endpoint，后续不换目标。
+- mcpy 负责工程、会话和诊断取证，不解释 ModSDK 业务规则，也不根据日志推断模组健康；API/事件/UI 语义查对应版本的 ModSDK 文档，可使用独立文档 MCP。
 - **业务代码禁止依赖 `mcpy.*`。** `mcpy.input/ui/player/api` 仅由 runtime install 临时注入调试会话，不是 ModSDK 或可分发依赖。宿主生成脚本用工具 Python 3，游戏代码仍受内置 Python/目标 ModSDK 约束。
 - `running`、请求 `completed/triggered` 不等于玩法效果已验证。只结束自己创建或用户指定的会话；unknown 不盲目重发，busy 不清锁或杀无关进程。
 
@@ -31,6 +32,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 | 两名玩家、多世界、组查询/重试/停止/热更 | [双客户端联调](references/dual-clients.md) | 普通输入绑定选中的成员，再读输入页 |
 | 连接外部服务器、可选 MCS 身份 | [网络会话](references/network-sessions.md) | 只有跨机执行才读 Windows 服务部署 |
 | 配置/使用 Windows HTTP 远程服务 | [远程执行端](references/remote-testing.md) | 不支持远程世界实例、双客户端或资源部署 |
+| 已配对 Android 宿主或明确准备手机开发环境 | [本机 App 接入](references/application-host.md) | 普通桌面项目无需阅读；绑定工作区按宿主能力执行 |
 | 已有会话执行 Python、模块/资源热更、runtime watch | [运行时调试](references/runtime-debug.md) | 组操作转双客户端页；不必重读启动教程 |
 | 移动/攻击/操作 UI、观察节点 | [统一输入](references/runtime-input.md) | 能力/参数按目标会话查询，不猜旧协议 |
 | 截图、录制视频、下载、逐帧检查 | [画面采集](references/capture.md) | 需要操作玩家时才读输入协议 |

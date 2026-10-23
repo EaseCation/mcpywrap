@@ -86,6 +86,16 @@ def require_project():
         raise click.ClickException('未找到 pyproject.toml；请先执行 mcpy init --type addon 或 --type map')
 
 
+def restart_handoff(result, previous):
+    if not isinstance(result,dict) or not previous: return result
+    current=result.get('session')
+    if current and current!=previous:
+        result=dict(result,previous_session=previous,session_changed=True)
+        message='会话已更换；后续日志、截图和调试请使用 --session '+current+'。旧会话记录仍保留。'
+        result['hint']=((result.get('hint') or '')+' '+message).strip()
+    return result
+
+
 class OperationCommand(click.Command):
     def __init__(self, *args, local_only=False, **kwargs):
         self.local_only = local_only
@@ -94,10 +104,25 @@ class OperationCommand(click.Command):
                                         help='输出单个 JSON 结果'))
 
     def invoke(self, ctx):
+        try:
+            result=self._invoke_operation(ctx)
+        except (ValueError,OSError) as error:
+            if ctx.info_name=='restart' and getattr(error,'details',None):
+                error.details=restart_handoff(error.details,ctx.params.get('session'))
+                if error.details.get('session_changed'):
+                    error.hint=((getattr(error,'hint',None) or '')+' '+error.details['hint']).strip()
+            raise
+        return restart_handoff(result,ctx.params.get('session')) if ctx.info_name=='restart' else result
+
+    def _invoke_operation(self, ctx):
         ctx.params.pop('json_output', None)
         if os.environ.get('_MCPY_SCRIPT_CHAIN') and ctx.info_name in ('run', 'build', 'package', 'dev', 'restart', 'edit', 'sync', 'add', 'remove'):
             from .project_scripts import reject_recursion
             reject_recursion()
+        from .mobile_host.routing import route
+        routed, result = route(ctx)
+        if routed:
+            return result
         if self.local_only or (ctx.parent and ctx.parent.info_name == 'engine'):
             return super().invoke(ctx)
         from .remote.client import routed_command

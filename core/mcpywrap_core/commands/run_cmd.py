@@ -2,6 +2,7 @@
 import click
 from ..command_context import OperationCommand, project_dir as current_project, non_interactive, require_project
 from ..config import config_exists
+from ..mobile_host.options import HostOption
 from ..mcstudio.discovery import engine_options
 from ..mcstudio.runtime_cppconfig import creation_settings, RULE_LABELS
 from ..runtime.window_policy import window_options, resolve_background
@@ -69,8 +70,9 @@ def take_world_options(arguments, cppconfig=None):
 @click.option('--clean-all', is_flag=True, help='清空所有游戏实例')
 @click.option('--clients', type=click.IntRange(1, 2), default=1, show_default=True,
               help='本机玩家客户端数量；本地双客户端需在客户端 2 手动点击目标局域网卡片加入')
+@click.option('--launch-timeout', cls=HostOption, type=click.IntRange(5,120), default=None, help='App 宿主进程/画中画确认等待秒数；不含世界加载')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, clients=1, background=None, **engine_overrides):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, clients=1, background=None, launch_timeout=None, **engine_overrides):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例。
@@ -80,6 +82,7 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
     不装配本地 Mod，不保证服务器接受连接。网络模式前台采集日志，
     Ctrl+C 结束本次网络游戏；--detach 返回可查询、操作和停止的会话。
     """
+    if launch_timeout is not None: raise click.UsageError('当前执行目标不支持 --launch-timeout')
     base_dir = str(current_project())
     from ..command_context import json_output
     if clients == 2 and json_output() and not detach:

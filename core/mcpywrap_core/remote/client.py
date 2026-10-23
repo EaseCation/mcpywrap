@@ -164,6 +164,7 @@ def routed_command(name, parameters):
     if not endpoint:
         return False, None
     p = dict(parameters)
+    if p.get('launch_timeout') is not None: raise click.UsageError('此 Windows 服务不支持 --launch-timeout')
     if name == 'logs' and (p.get('follow') or p.get('source') == 'all' or p.get('output_format', 'text') != 'text' or p.get('tail') == 0):
         raise click.UsageError('增量日志流仅支持 --local，不会回退本机；远端仍可查询日志快照。')
     if p.get('group') or p.get('clients', 1) != 1:
@@ -217,9 +218,19 @@ def routed_command(name, parameters):
     if name == 'status':
         return True, client.request('GET', path)
     if name == 'logs':
-        result = client.request('GET', path+'/logs?'+urlencode({'source': p['source'], 'tail': p['tail']}))
+        if p.get('source') in ('client','server') or p.get('since_ms') is not None or p.get('until_ms') is not None:
+            raise click.UsageError('此 Windows 服务未提供可靠端侧/时间戳筛选')
+        selected=p.get('contains') is not None or p.get('summary')
+        result = client.request('GET', path+'/logs?'+urlencode({'source': p['source'], 'tail': 10000 if selected else p['tail']}))
+        if selected:
+            from ..mcstudio.log_query import select
+            result.update(select(result['text'],contains=p.get('contains'),tail=p['tail'],summary=p.get('summary',False)))
+            result['scan_scope']='remote_last_10000_lines'
         if not json_output():
-            click.echo(result['text'], nl=False)
+            if selected:
+                from ..mcstudio.log_query import show_snapshot
+                show_snapshot(result,p.get('summary',False))
+            else: click.echo(result['text'],nl=False)
             return True, None
         return True, result
     if name == 'stop':

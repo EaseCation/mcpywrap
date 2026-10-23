@@ -7,7 +7,7 @@ from .command_context import OperationGroup, configure_context
 
 COMMANDS = {
     name: (name + '_cmd', name + '_cmd') for name in
-    ('modsdk', 'init', 'add', 'remove', 'build', 'dev', 'package', 'publish',
+    ('host', 'skill', 'modsdk', 'init', 'add', 'remove', 'build', 'dev', 'package', 'publish',
      'mod', 'run', 'connect', 'edit', 'ui', 'doctor', 'engine', 'sync', 'serve', 'record', 'script', 'deployment')
 }
 COMMANDS.update({name: ('session_cmd', name + '_cmd') for name in ('status', 'logs', 'stop', 'restart')})

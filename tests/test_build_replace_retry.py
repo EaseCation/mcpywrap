@@ -50,6 +50,18 @@ class BuildRecovery(unittest.TestCase):
         self.target.mkdir()
         (self.target / 'known-good.txt').write_text('previous build', encoding='utf-8')
 
+    def test_source_change_during_assembly_does_not_replace_previous_build(self):
+        from mcpywrap_core.builders.assembly import assemble_addon
+        def change_source(packs, staged):
+            assemble_addon(packs, staged)
+            (self.source / 'behavior_pack/marker.py').write_text('CHANGED = True')
+        with patch('mcpywrap_core.builders.project_builder.assemble_addon', side_effect=change_source):
+            ok, error = AddonProjectBuilder(self.source, self.target).build()
+        self.assertFalse(ok)
+        self.assertIn('源码发生变化', error)
+        self.assertEqual((self.target / 'known-good.txt').read_text(), 'previous build')
+        self.assertFalse(list(self.source.glob('.mcpy-build-*')))
+
     def test_install_failure_restores_old_build(self):
         replace = os.replace
         def fail_install(src, dst):

@@ -71,3 +71,8 @@ mcpy --local --project <项目> --non-interactive run --engine-version 3.10.0.42
 | engine_version | MCPY_ENGINE_VERSION |
 
 覆盖优先级：CLI > 环境变量 > 项目配置；项目相对路径按项目根解析，CLI/env 相对路径按调用目录解析。团队通常只提交版本，本机路径放 env。macOS 的固定运行包/引擎绑定按[平台页](macos-local.md)，不能套用 Windows EXE 规则。远程这些路径由 Windows serve 配置，调用端不直接覆盖 EXE/下载目录。
+
+
+## 已绑定其他执行宿主的工作区
+
+只有当前工作区明确绑定 Android 本机宿主时，才按[本机 App 接入](application-host.md)选择执行方式。`mcpy host status --binding-only --json` 只检查本地绑定，不访问网络；存在其他工作区的绑定不改变当前桌面项目。标准 bootstrap 只在当前工作区已绑定时访问对应宿主，宿主不可达不会回退本地。手机专用权限和恢复步骤不适用于普通 Windows/macOS 项目。

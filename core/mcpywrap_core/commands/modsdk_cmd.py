@@ -6,14 +6,18 @@ from ..minecraft.netease_modsdk import get_available_versions, download_and_inst
 
 @click.command(cls=OperationCommand)
 @click.option('--list', 'list_versions', is_flag=True)
+@click.option('--offline', is_flag=True, help='仅查询缓存的版本目录')
+@click.option('--refresh', is_flag=True, help='联网刷新版本目录，整体最多等待 12 秒')
 @click.option('--version', help='安装指定版本')
 @click.option('--latest', is_flag=True, help='显式选择最新版本')
 @click.option('--inspect', 'inspect_only', is_flag=True, help='只读检查目标 Python 与已安装补全库，无网络')
 @click.option('--python', 'python_path', type=click.Path(dir_okay=False), help='开发环境 Python 可执行文件绝对路径，不解析虚拟环境链接')
 @click.option('--expected-environment', help='安装前后核验 --inspect 返回的环境 identity')
-def modsdk_cmd(list_versions, version, latest, inspect_only, python_path, expected_environment):
+def modsdk_cmd(list_versions, version, latest, inspect_only, python_path, expected_environment, offline=False, refresh=False):
     """管理开发环境 ModSDK 补全库；--python 定向安装，不安装到游戏。"""
     from ..minecraft.modsdk_environment import inspect_environment, install_environment
+    if offline and refresh: raise click.UsageError('--offline 与 --refresh 不能同时使用')
+    if (offline or refresh) and not list_versions: raise click.UsageError('--offline/--refresh 只用于 --list')
     if inspect_only:
         if list_versions or version or latest or expected_environment:
             raise click.UsageError('--inspect 不能与安装/版本列表选项同时使用')
@@ -27,11 +31,15 @@ def modsdk_cmd(list_versions, version, latest, inspect_only, python_path, expect
         raise click.UsageError('--list、--version、--latest 不能同时使用')
     if not any((list_versions, version, latest)) and non_interactive():
         raise click.UsageError('请指定 --list、--version 或 --latest')
+    if list_versions:
+        from ..minecraft.modsdk_versions import catalog
+        result = catalog(offline=offline,refresh=refresh)
+        if not result['versions']:
+            return dict(result, ok=False, code='sdk_catalog_unavailable', error='没有可用的 SDK 版本目录')
+        return result
     versions = get_available_versions()
     if not versions:
         raise click.ClickException('无法获取 ModSDK 版本，请检查网络')
-    if list_versions:
-        return {'versions': versions}
     if not version:
         version = versions[-1] if latest else click.prompt('SDK 版本', type=click.Choice(versions), default=versions[-1])
     if python_path:

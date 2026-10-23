@@ -39,6 +39,15 @@ class CoreApiTests(unittest.TestCase):
         with zipfile.ZipFile(artifact) as archive:
             self.assertEqual(entries, {name: archive.read(name) for name in archive.namelist()})
 
+    def test_initialization_preserves_host_declared_metadata_only(self):
+        root=self.root/'host-project';root.mkdir()
+        metadata=root/'.host-project.json';metadata.write_text('{"id":"stable"}')
+        host=Core(HostServices(python_executable=None,allow_processes=False,project_metadata_files=('.host-project.json',)))
+        host.execute('init',root,name='host-project',project_type='addon')
+        self.assertEqual(metadata.read_text(),'{"id":"stable"}')
+        unrelated=self.root/'unrelated';unrelated.mkdir();(unrelated/'business.txt').write_text('keep')
+        with self.assertRaisesRegex(ValueError,'非空目录'):host.execute('init',unrelated,name='unrelated',project_type='addon')
+
     def test_local_sync_works_without_a_python_executable(self):
         result = self.core.execute('sync', self.project)
         self.assertTrue(result['sources_synced'])
@@ -58,6 +67,14 @@ class CoreApiTests(unittest.TestCase):
         for request in ({'core_api': 2}, {'core_api': 1, 'operation': 'build', 'project': str(self.project),
                                         'options': {'merge': 'yes'}}):
             self.assertFalse(self.core.request(request)['ok'])
+        self.assertFalse((self.project/'build').exists())
+
+    def test_project_operation_validation_keeps_the_structured_error_envelope(self):
+        for operation,options in [('mod',{}),('mod',{'name':['invalid']}),('script.run',{}),
+                                  ('script.run',{'name':'build','args':'not-a-list'}),('script.list',{'effective':'yes'})]:
+            with self.subTest(operation=operation,options=options):
+                result=self.core.request({'core_api':1,'operation':operation,'project':str(self.project),'options':options})
+                self.assertFalse(result['ok']);self.assertIn('error',result);self.assertIn('code',result)
         self.assertFalse((self.project/'build').exists())
 
     def test_offline_operations_do_not_import_desktop_extras(self):

@@ -103,14 +103,9 @@ def fetch_snapshot(url, ref):
             stage = Path(temporary)
             repo, package = stage / 'repo', stage / 'snapshot'
             content = package / 'content'
-            _git('init', '--bare', repo)
-            # Archive applies checkout conversions too. Preserve blob bytes,
-            # including binary/intentional CRLF files, on every host.
-            (repo / 'info').mkdir(exist_ok=True)
-            (repo / 'info' / 'attributes').write_bytes(
-                b'* -text -eol -filter -ident -working-tree-encoding\n')
-            _git('-C', repo, 'fetch', '--depth=1', '--no-tags', url, ref)
-            commit = _git('-C', repo, 'rev-parse', 'FETCH_HEAD^{commit}').decode().strip()
+            from .host import current_host
+            provider = current_host().git_source_provider
+            commit, archive_bytes = provider(url, ref) if provider else fetch_archive(url, ref, repo)
             if not re.fullmatch('[0-9a-f]{40}', commit) or (re.fullmatch('[0-9a-f]{40}', ref) and commit != ref):
                 raise DependencyError('Git返回的提交不符合声明')
             final = snapshots / commit
@@ -118,7 +113,7 @@ def fetch_snapshot(url, ref):
                 return _verified(final, url, commit), commit
             content.mkdir(parents=True)
             seen = set()
-            with tarfile.open(fileobj=io.BytesIO(_git('-C', repo, 'archive', '--format=tar', commit))) as archive:
+            with tarfile.open(fileobj=io.BytesIO(archive_bytes)) as archive:
                 for member in archive:
                     name = _relative(member.name.rstrip('/'), 'Git归档路径')
                     if any(p in ('.mcpy', '.git') for p in Path(name).parts):
@@ -138,6 +133,17 @@ def fetch_snapshot(url, ref):
             (package / 'source.json').write_text(json.dumps({'git': url, 'rev': commit, 'sha256': digest(content)}, indent=2), encoding='utf-8')
             os.replace(package, final)
             return final / 'content', commit
+
+
+def fetch_archive(url, ref, repo):
+    """Tool-only acquisition. Verification, extraction and registration stay in the core caller."""
+    repo = Path(repo)
+    _git('init', '--bare', repo)
+    (repo / 'info').mkdir(exist_ok=True)
+    (repo / 'info' / 'attributes').write_bytes(b'* -text -eol -filter -ident -working-tree-encoding\n')
+    _git('-C', repo, 'fetch', '--depth=1', '--no-tags', url, ref)
+    commit = _git('-C', repo, 'rev-parse', 'FETCH_HEAD^{commit}').decode().strip()
+    return commit, _git('-C', repo, 'archive', '--format=tar', commit)
 
 
 def read_snapshot(url, commit, expected=None):

@@ -6,6 +6,10 @@ from ..command_context import OperationCommand, project_dir
 
 
 def output_path(value):
+    if value is None:
+        import datetime
+        import uuid
+        value = project_dir() / 'captures' / ('game-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S')+'-'+uuid.uuid4().hex[:8]+'.png')
     path = Path(value).expanduser().resolve()
     if path.suffix.lower() != '.png' or path.exists():
         raise ValueError('输出必须是尚不存在的 .png 文件')
@@ -27,7 +31,7 @@ class KeyCommand(OperationCommand):
 
 @click.command(cls=OperationCommand)
 @click.option('--session', required=True)
-@click.option('--output', required=True, help='本机 PNG 路径，不覆盖已有文件')
+@click.option('--output', help='本机 PNG 路径，默认保存到作品 captures/，不覆盖已有文件')
 @click.option('--background-only', is_flag=True, help='仅后台捕获；失败不激活游戏或回退到前台')
 def screenshot_cmd(session, output, background_only=False):
     """保存游戏 PNG；macOS 由 Launcher 按需读帧，远程模式下载 Windows 截图。"""

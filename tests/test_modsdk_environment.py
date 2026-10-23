@@ -49,7 +49,7 @@ class ModsdkEnvironmentTests(unittest.TestCase):
         cls.pythons = []
         for name in ('环境 A', 'environment B'):
             path = cls.root / name
-            venv.create(path, with_pip=False)
+            venv.create(path, with_pip=False, symlinks=os.name != 'nt')
             cls.pythons.append(str(path / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')))
 
     @classmethod

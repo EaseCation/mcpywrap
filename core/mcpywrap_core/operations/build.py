@@ -6,7 +6,7 @@ from ..config import ensure_map_setuptools_sync, get_mcpywrap_config
 from ..builders.project_builder import AddonProjectBuilder, MapProjectBuilder
 
 
-def build_project(source, merge=False):
+def build_project(source, merge=False, *, preparation_event='before_build'):
     source = Path(source).resolve()
     ensure_map_setuptools_sync(interactive=False)
     target = get_mcpywrap_config().get('target_dir')
@@ -18,10 +18,16 @@ def build_project(source, merge=False):
     plan = PreparationPlan(source)
     if configured(source):
         validate_build(source, target, resolved=plan.manager)
-    with before(source, 'before_build', plan=plan) as scripts:
+    with before(source, preparation_event, plan=plan) as scripts:
         if not build(str(source), target, force_merge=merge, raise_errors=True, resolved=plan.manager, report=False):
             raise ValueError('构建失败')
-    return {'output': target, **({'scripts': scripts} if scripts else {})}
+    sources = {}
+    if plan.manager is not None:
+        root = plan.manager.root_node.addon_pack
+        sources = {kind: str(Path(directory).relative_to(source))
+                   for kind in ('behavior', 'resource')
+                   if (directory := getattr(root, kind + '_pack_dir', None))}
+    return {'output': target, 'source_packs': sources, **({'scripts': scripts} if scripts else {})}
 
 
 def build(source_dir, target_dir, force_merge: bool = False, raise_errors=False, *, resolved=None, report=True):

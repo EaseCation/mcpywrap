@@ -10,17 +10,11 @@ import time
 import psutil
 
 
-def identity(pid):
-    p = psutil.Process(pid)
-    return {'pid': pid, 'created_at': p.create_time(), 'executable': p.exe()}
-
-
-def alive(record):
-    try:
-        p = psutil.Process(record['pid'])
-        return abs(p.create_time() - record['created_at']) < .01 and p.status() != psutil.STATUS_ZOMBIE
-    except psutil.NoSuchProcess:
-        return False
+# Also works when this supervisor is executed directly by absolute filename.
+try:
+    from ._process_identity import identity, alive, proc_members
+except ImportError:
+    from _process_identity import identity, alive, proc_members
 
 
 def save(path, data):
@@ -149,6 +143,8 @@ class WindowsJob:
 
 
 def members(process, known):
+    if any('start_ticks' in record for record in known.values()):
+        return proc_members(process.pid, known)
     try:
         for p in psutil.Process(process.pid).children(recursive=True):
             known[p.pid] = identity(p.pid)
@@ -229,7 +225,14 @@ def main():
         try:
             child = identity(process.pid)
         except psutil.ZombieProcess:
-            child = {'pid': process.pid, 'created_at': psutil.Process(process.pid).create_time(), 'executable': command[0]}
+            try:
+                child = {'pid': process.pid, 'created_at': psutil.Process(process.pid).create_time(), 'executable': command[0]}
+            except psutil.AccessDenied:
+                try:
+                    from ._process_identity import proc_stat
+                except ImportError:
+                    from _process_identity import proc_stat
+                child = {'pid': process.pid, 'start_ticks': proc_stat(process.pid)['start_ticks'], 'executable': command[0]}
         state.update(child=child, group=process.pid if os.name != 'nt' else None, state='running')
         known[process.pid] = child
         save(path, state)

@@ -67,6 +67,14 @@ class ScriptTests(unittest.TestCase):
         self.assertIn('中文'*100,log)
         self.assertIn('error-channel',log)
 
+    def test_core_run_prepares_before_assembly_without_build_hooks(self):
+        from mcpywrap_core.api import Core
+        self.configure("import os\nfrom pathlib import Path\nassert os.environ['MCPY_EVENT'] == 'before_run'\np=Path('count');p.write_text(p.read_text()+'x' if p.exists() else 'x')\nPath('behavior_pack/run_generated.py').write_text('READY = True')\n")
+        result=Core().execute('prepare_run',self.project)
+        self.assertEqual((self.project/'count').read_text(),'x')
+        self.assertEqual((Path(result['output'])/'behavior_pack/run_generated.py').read_text(),'READY = True')
+        self.assertEqual(result['source_packs']['behavior'],'behavior_pack')
+
     def test_package_runs_only_its_hook_once_and_consumes_result(self):
         self.configure("from pathlib import Path\np=Path('count');p.write_text(p.read_text()+'x' if p.exists() else 'x')\nPath('behavior_pack/generated.json').write_text('{\"fresh\":true}')\n")
         result=self.invoke('package','--json')
