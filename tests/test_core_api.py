@@ -69,6 +69,14 @@ class CoreApiTests(unittest.TestCase):
             self.assertFalse(self.core.request(request)['ok'])
         self.assertFalse((self.project/'build').exists())
 
+    def test_project_operation_validation_keeps_the_structured_error_envelope(self):
+        for operation,options in [('mod',{}),('mod',{'name':['invalid']}),('script.run',{}),
+                                  ('script.run',{'name':'build','args':'not-a-list'}),('script.list',{'effective':'yes'})]:
+            with self.subTest(operation=operation,options=options):
+                result=self.core.request({'core_api':1,'operation':operation,'project':str(self.project),'options':options})
+                self.assertFalse(result['ok']);self.assertIn('error',result);self.assertIn('code',result)
+        self.assertFalse((self.project/'build').exists())
+
     def test_offline_operations_do_not_import_desktop_extras(self):
         code = '''
 import importlib.abc, sys, tempfile
