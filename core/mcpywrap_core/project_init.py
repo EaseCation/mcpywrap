@@ -37,7 +37,10 @@ def initialize_project(directory, name=None, project_type=None, version='0.1.0',
         raise ValueError('无法识别项目类型，请指定 --type addon 或 --type map')
     if not detected:
         # 不向未知现有目录写入模板，防止覆盖用户资源。
-        occupied = [p.name for p in root.iterdir() if p.name not in ('.git', 'README.md', '.gitignore')]
+        from .host import current_host
+        metadata = set(current_host().project_metadata_files)
+        occupied = [p.name for p in root.iterdir() if p.name not in ('.git', 'README.md', '.gitignore')
+                    and not (p.name in metadata and p.is_file() and not p.is_symlink())]
         if occupied:
             raise ValueError('无法识别非空目录结构；请整理为 Addon/Map，或在空目录初始化')
         if project_type == 'addon':

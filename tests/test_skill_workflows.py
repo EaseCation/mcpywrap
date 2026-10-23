@@ -218,6 +218,26 @@ class BridgeInspection(unittest.TestCase):
 
 
 class BootstrapCapabilities(unittest.TestCase):
+    def test_mobile_binding_uses_host_capabilities_without_local_probes(self):
+        spec = importlib.util.spec_from_file_location('bootstrap_mobile', ROOT/'skills/mcpywrap/scripts/bootstrap.py')
+        bootstrap = importlib.util.module_from_spec(spec); spec.loader.exec_module(bootstrap)
+        for online in (True,False):
+            calls=[]
+            def invoke(args):
+                calls.append(args)
+                if '--help' in args:
+                    return Mock(returncode=0,stdout='--project --non-interactive --json status logs stop package\n  host  App connection')
+                self.assertEqual(args[2:4],['host','status'])
+                return Mock(returncode=0 if online else 1,stdout=json.dumps({'ok':online,'bound_for_project':True,
+                    'operations':['build','runtime.py'],'error':'host unavailable'}))
+            with patch.object(bootstrap,'invoke',side_effect=invoke):
+                if online:
+                    result=bootstrap.capabilities('mcpy');self.assertEqual(result['execution'],'host')
+                    self.assertEqual(result['capabilities'],['build','runtime.py'])
+                else:
+                    with self.assertRaisesRegex(ValueError,'host unavailable'):bootstrap.capabilities('mcpy')
+            self.assertEqual(len(calls),3)
+
     def test_old_new_and_missing_component_installations(self):
         spec = importlib.util.spec_from_file_location('bootstrap_test', ROOT/'skills/mcpywrap/scripts/bootstrap.py')
         bootstrap = importlib.util.module_from_spec(spec)

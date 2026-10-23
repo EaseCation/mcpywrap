@@ -99,6 +99,10 @@ def _active_process(record):
     for key in ('supervisor', 'child'):
         if record.get(key) and observed_process(record[key]):
             return True
+    if record.get('group') and any('start_ticks' in record.get(key,{}) for key in ('supervisor','child')):
+        from ._process_identity import proc_members
+        known={record['child']['pid']:record['child']} if record.get('child') else {}
+        return bool(proc_members(record['group'],known))
     if os.name != 'nt' and record.get('group'):
         import psutil
         for p in psutil.process_iter(['pid', 'status', 'create_time']):
@@ -153,8 +157,14 @@ def project_lock(project, *, force=False):
     with directory_lock(directory/'lock'):
         active = storage.read(directory/'active.json', {})
         if active:
-            state = storage.read(active['state_path'], {})
-            if _active_process(state) or state.get('state') == 'spawning':
+            inspector = current_host().project_script_inspector
+            if inspector is not None:
+                busy = inspector(project)
+            else:
+                path = project / active['state_relative'] if active.get('state_relative') else Path(active['state_path'])
+                state = storage.read(path, {})
+                busy = _active_process(state) or state.get('state') == 'spawning'
+            if busy:
                 raise ScriptError('上次脚本的进程尚未确认退出，未开始新操作。', 'script_recovery_required',
                                   script_log=active['log_path'], script_state=active['state_path'])
         yield
@@ -253,20 +263,21 @@ def _execute_process(project, name, spec, event, extra, *, cancel=None, progress
     details.update({key: spec[key] for key in ('provider', 'source') if key in spec})
     metadata = dict(details, cwd=str(project), executable=executable, started_at=time.time(), state='starting')
     storage.write(state_path, metadata)
-    storage.write(directory.parent/'active.json', {'state_path': str(state_path), 'log_path': str(log)})
+    storage.write(directory.parent/'active.json', {'state_path': str(state_path), 'log_path': str(log), 'state_relative': str(state_path.relative_to(project))})
     click.echo('[script] ' + event + ' → ' + name, err=True)
     if progress:
         progress(dict(details, state='running'))
     worker = Path(__file__).with_name('_script_worker.py')
     process = None
     interrupted = False
+    parent_identity = identity(os.getpid())
     try:
         with log.open('wb') as output:
             process = subprocess.Popen([tool_python(), '-u', str(worker)], cwd=project,
                                        env=env, stdin=subprocess.PIPE, stdout=output, stderr=output,
                                        **background_options())
             payload = dict(metadata, command=command, timeout=spec['timeout'],
-                           result=str(state_path), cancel=str(stop), parent=identity(os.getpid()))
+                           result=str(state_path), cancel=str(stop), parent=parent_identity)
             process.stdin.write(json.dumps(payload).encode('utf-8'))
             process.stdin.close()
             decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
@@ -367,3 +378,21 @@ def skipped_network(project):
     if (isinstance(hooks, dict) and hooks.get('before_run')) or settings.get('local_dependencies') or settings.get('git_dependencies'):
         from .command_context import report_warning
         report_warning('本次仅连接服务器，不执行本地 before_run 或依赖消费者准备，不装配本地资源。')
+
+
+def describe_scripts(project, effective=False):
+    """One read-only script/consumer plan for CLI and embedded hosts."""
+    scripts, hooks = configuration(project)
+    result = {'scripts': [{'name': name, 'command': spec['command'], 'timeout': spec['timeout'],
+                         'hooks': [event for event, names in hooks.items() if name in names]}
+                        for name, spec in scripts.items()]}
+    if effective:
+        from .consumer_prepare import PreparationPlan, EVENTS
+        plan = PreparationPlan(project, inspect_only=True)
+        result.update(plan.inspect())
+        result['execution_order'] = {event: [{'kind': 'root', 'name': name} for name in hooks.get(event, [])] +
+                                   [{'kind': 'consumer_prepare', 'provider': p['id'], 'name': p['name']}
+                                    for p in plan.enabled] for event in EVENTS}
+        result['execution_order']['before_archive'] = [
+            {'kind': 'root', 'name': name} for name in hooks.get('before_archive', [])]
+    return result

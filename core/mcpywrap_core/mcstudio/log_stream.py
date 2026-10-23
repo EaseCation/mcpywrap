@@ -12,8 +12,9 @@ ACTIVE = ('starting', 'running', 'pending')
 
 
 class LogCursor:
-    def __init__(self, path, tail):
+    def __init__(self, path, tail, contains=None):
         self.path, self.tail = path, tail
+        self.contains = contains
         self.decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
         self.identity = None
         self.position = 0
@@ -43,6 +44,11 @@ class LogCursor:
                     lines = data.splitlines(keepends=True)
                     if truncated and lines:
                         lines = lines[1:]
+                    if self.contains is not None:
+                        incomplete=lines.pop() if lines and not lines[-1].endswith((b'\n',b'\r')) else b''
+                        lines=[line for line in lines if self.contains in line.decode('utf-8',errors='replace')][-self.tail:]
+                        if incomplete: lines.append(incomplete)
+                        return self.decoder.decode(b''.join(lines)), reset
                     return self.decoder.decode(b''.join(lines[-self.tail:])), reset
                 if initial:
                     self.position = 0 if was_missing else info.st_size
@@ -67,7 +73,7 @@ class LogCursor:
         self.close()
 
 
-def follow(project, *, session=None, group=None, source='all', tail=100, interval=.25):
+def follow(project, *, session=None, group=None, source='all', tail=100, interval=.25, contains=None):
     """Yield JSON-serializable events until every selected session has ended.
 
     Group membership is refreshed from its public service. This function only
@@ -113,7 +119,7 @@ def follow(project, *, session=None, group=None, source='all', tail=100, interva
                 for name in sources:
                     key = (sid, name)
                     if key not in cursors:
-                        cursors[key] = LogCursor(directory/(name + '.log'), tail)
+                        cursors[key] = LogCursor(directory/(name + '.log'), tail, contains)
                     yield from read_events(sid, name, cursors[key])
             if not active:
                 # Drain a final burst in bounded chunks after process exit.

@@ -39,6 +39,15 @@ class CoreApiTests(unittest.TestCase):
         with zipfile.ZipFile(artifact) as archive:
             self.assertEqual(entries, {name: archive.read(name) for name in archive.namelist()})
 
+    def test_initialization_preserves_host_declared_metadata_only(self):
+        root=self.root/'host-project';root.mkdir()
+        metadata=root/'.host-project.json';metadata.write_text('{"id":"stable"}')
+        host=Core(HostServices(python_executable=None,allow_processes=False,project_metadata_files=('.host-project.json',)))
+        host.execute('init',root,name='host-project',project_type='addon')
+        self.assertEqual(metadata.read_text(),'{"id":"stable"}')
+        unrelated=self.root/'unrelated';unrelated.mkdir();(unrelated/'business.txt').write_text('keep')
+        with self.assertRaisesRegex(ValueError,'非空目录'):host.execute('init',unrelated,name='unrelated',project_type='addon')
+
     def test_local_sync_works_without_a_python_executable(self):
         result = self.core.execute('sync', self.project)
         self.assertTrue(result['sources_synced'])

@@ -3,6 +3,7 @@ import hashlib
 import json
 import re
 from importlib import metadata
+from ..host import distribution, marker_environment
 from functools import cached_property
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -73,7 +74,7 @@ class DependencyManager:
 
     def find_dependency_path(self, package_name):
         try:
-            dist = metadata.distribution(Requirement(package_name).name)
+            dist = distribution(Requirement(package_name).name)
         except (metadata.PackageNotFoundError, InvalidRequirement):
             return None
         direct = dist.read_text('direct_url.json')
@@ -118,11 +119,11 @@ class DependencyManager:
                     requirement = Requirement(entry.value)
                 except InvalidRequirement as exc:
                     raise DependencyError(f'无效的 Python 包声明: {entry.value}') from exc
-                if requirement.marker and not requirement.marker.evaluate():
+                if requirement.marker and not requirement.marker.evaluate(environment=marker_environment()):
                     self._status(source, entry, 'inactive', '当前工具 Python 环境不满足环境标记，未启用；不代表游戏兼容性。')
                     continue
                 try:
-                    dist = metadata.distribution(requirement.name)
+                    dist = distribution(requirement.name)
                 except metadata.PackageNotFoundError:
                     self._missing(source, entry.value, '尚未安装')
                     continue

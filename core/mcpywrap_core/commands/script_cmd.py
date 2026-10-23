@@ -1,7 +1,7 @@
 """Explicit local project scripts, separate from game run and runtime Python."""
 import click
 from ..command_context import OperationCommand, project_dir, require_project
-from ..project_scripts import configuration, operation
+from ..project_scripts import operation
 
 
 @click.group()
@@ -14,21 +14,9 @@ def script_cmd():
 def list_cmd(effective=False):
     """只读列出脚本与生命周期绑定。"""
     require_project()
-    scripts, hooks = configuration(project_dir())
-    result = {'scripts': [{'name': name, 'command': spec['command'], 'timeout': spec['timeout'],
-                         'hooks': [event for event, names in hooks.items() if name in names]}
-                        for name, spec in scripts.items()]}
     from ..command_context import json_output
-    if json_output() and not effective:
-        return result
-    from ..consumer_prepare import PreparationPlan, EVENTS
-    plan = PreparationPlan(project_dir(), inspect_only=True)
-    result.update(plan.inspect())
-    result['execution_order'] = {event: [{'kind': 'root', 'name': name} for name in hooks.get(event, [])] +
-                               [{'kind': 'consumer_prepare', 'provider': p['id'], 'name': p['name']}
-                                for p in plan.enabled] for event in EVENTS}
-    result['execution_order']['before_archive'] = [
-        {'kind': 'root', 'name': name} for name in hooks.get('before_archive', [])]
+    from ..project_scripts import describe_scripts
+    result = describe_scripts(project_dir(), effective=effective or not json_output())
     if json_output():
         return result
     for script in result['scripts']:

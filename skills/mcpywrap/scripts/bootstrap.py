@@ -1,4 +1,4 @@
-"""Install/reuse mcpywrap with uv and report local and optional Windows capabilities."""
+"""Install/reuse mcpywrap with uv and report capabilities of the selected execution host."""
 import argparse
 import json
 import os
@@ -24,6 +24,26 @@ def capabilities(command, remote=None, local=False):
     basic = ('--project', '--non-interactive', '--json', 'status', 'logs', 'stop', 'package')
     if help_result.returncode or any(k not in help_text for k in basic):
         raise ValueError('现有 CLI 缺少基础能力；显式选择版本并使用 --upgrade')
+    # Probe workspace binding first. A mobile workspace must never run local doctor/build.
+    if re.search(r'^\s+host\s', help_text, re.M):
+        result = invoke([command, '--non-interactive', 'host', 'status', '--binding-only', '--json'])
+        try:
+            host = json.loads(result.stdout)
+        except ValueError:
+            raise ValueError('无法检查工作区宿主绑定；请运行 mcpy host status --json') from None
+        if result.returncode and not host.get('bound_for_project'): raise ValueError(host.get('error') or '无法检查工作区绑定，请升级 CLI 后重试')
+        if host.get('bound_for_project'):
+            if local or (remote and remote.rstrip('/') != host.get('endpoint')):
+                raise ValueError('此工作区已绑定 mcpy App，不能改用 --local 或其他远端')
+            result=invoke([command,'--non-interactive','host','status','--json'])
+            try: host=json.loads(result.stdout)
+            except ValueError: raise ValueError('已绑定宿主没有返回有效能力；不会回退本地') from None
+            if result.returncode or not host.get('ok'):
+                raise ValueError(host.get('hint') or host.get('error') or '已绑定的 App 无法连接；不会回退本地')
+            operations = host.get('operations', [])
+            return {'capabilities': operations, 'local_capabilities': [], 'local_platform': sys.platform,
+                    'execution': 'host', 'application_host': host, 'remote': None,
+                    'mcs_auth': {'supported': False}, 'media': None, 'local_runtime': None}
     local_flag = ['--local'] if '--local' in help_text else []
     run_help = invoke([command, 'run', '--help']).stdout
     features = ['project', 'json', 'sessions', 'package']
@@ -171,7 +191,13 @@ def main(argv=None):
         for required in args.require_capability:
             game_capability = required in GAME_CAPABILITIES
             location = '本机'
-            if remote is not None and game_capability:
+            if report.get('application_host') is not None:
+                location = '已配对的 App'
+                available = report['application_host'].get('operations', [])
+                auth = {'supported': False}
+                required = {'py': 'runtime.py', 'reload': 'runtime.reload', 'sessions': 'status',
+                            'runtime': 'runtime.capabilities', 'project': 'build'}.get(required, required)
+            elif remote is not None and game_capability:
                 location = '远端 Windows'
                 if not remote.get('ok'):
                     raise ValueError(remote.get('error') or '远端能力不可用')
@@ -181,7 +207,7 @@ def main(argv=None):
             else:
                 available, auth = report['local_capabilities'], report['mcs_auth']
             if required not in available:
-                if remote is None and game_capability and os.name != 'nt':
+                if remote is None and not report.get('application_host') and game_capability and os.name != 'nt':
                     raise ValueError('本机后端不提供此游戏能力；请检查 doctor --capabilities，或用 --remote 配置 Windows 服务地址')
                 if required == 'serve' and os.name != 'nt':
                     raise ValueError('serve 仅能在 Windows 控制台启动；macOS 请检查 remote-client 和远端能力')

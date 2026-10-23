@@ -109,9 +109,19 @@ Git 项目使用 `[[tool.mcpywrap.git_dependencies]]` 声明，支持 Addon 与�
 
 外部服务器连接、可选 MCS 身份与进服判断见 [网络会话](skills/mcpywrap/references/network-sessions.md)。需要另一台 Windows 执行游戏时，再按 [远程执行端](skills/mcpywrap/references/remote-testing.md) 配置服务。远程连接不部署本地 Mod，也不提供世界实例管理。
 
+## Android 本机宿主
+
+仅在手机上使用外部开发工具时，按[本机 App 接入](skills/mcpywrap/references/application-host.md)完成配对。绑定工作区使用标准命令，由 App 核心执行工程操作；离线时不回退本地构建。普通 Windows/macOS 项目继续使用原本的桌面流程，无需安装手机应用或配置手机权限。
+
 ## AI Agent 使用
 
-安装仓库内完整的 [mcpywrap Skill](skills/mcpywrap/SKILL.md)。可让 Agent 安装 `EaseCation/mcpywrap` 的 `skills/mcpywrap` 目录，或将整个文件夹复制到其技能目录。CLI 与 Skill 分别安装，安装 Python 包不会自动注册 Skill。
+安装仓库内完整的 [mcpywrap Skill](skills/mcpywrap/SKILL.md)。可让 Agent 安装 `EaseCation/mcpywrap` 的 `skills/mcpywrap` 目录，或将整个文件夹复制到其技能目录。CLI 与 Skill 分别安装，安装 Python 包不会自动注册 Skill。0.6.2 起也可从已安装的发行包导出完整同版本 Skill：
+
+```bash
+mcpy skill install --directory <Agent技能目录>/mcpywrap
+```
+
+更新已有技能目录加 `--replace`。只维护这份标准 Skill，按任务加载平台参考。
 
 Skill 按当前任务选择参考，不要求 AI 通读产品文档。可直接描述：
 

@@ -47,6 +47,11 @@ class HostServices:
     script_runner: Optional[Callable] = None
     environment_provider: Optional[EnvironmentProvider] = None
     event_sink: Optional[Callable] = None
+    distribution_provider: Optional[Callable] = None
+    marker_environment: Optional[Callable] = None
+    git_source_provider: Optional[Callable] = None
+    project_metadata_files: tuple = ()
+    project_script_inspector: Optional[Callable] = None
 
     def capabilities(self):
         from importlib.util import find_spec
@@ -91,3 +96,15 @@ def run_command(*args, **kwargs):
     if not host.allow_processes:
         raise CapabilityUnavailable('process_execution')
     return (host.command_runner or subprocess.run)(*args, **kwargs)
+
+
+def distribution(name):
+    """Installed package data may be supplied by a separate tool environment."""
+    from importlib import metadata
+    provider = current_host().distribution_provider
+    return provider(name) if provider is not None else metadata.distribution(name)
+
+
+def marker_environment():
+    provider = current_host().marker_environment
+    return provider() if provider else None

@@ -28,7 +28,7 @@ include = ["mcpywrap_core*", "mcpywrap_host*"]
 exclude = ["mcpywrap_core.mcstudio.bridge_payload*", "mcpywrap_core.mcstudio.window_capture*"]
 
 [tool.setuptools.package-data]
-mcpywrap_core = ["core-contract.json"]
+mcpywrap_core = ["core-contract.json", "skill/**/*", "skill/SKILL.md"]
 "mcpywrap_core.ui" = ["assets/*.png", "assets/*.icns", "assets/mcpy.icon/*.json", "assets/mcpy.icon/Assets/*.svg"]
 
 [tool.setuptools.exclude-package-data]

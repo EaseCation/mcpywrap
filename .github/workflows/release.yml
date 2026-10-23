@@ -168,6 +168,10 @@ jobs:
       - run: python -m unittest discover -s tests -p test_resource_reload.py -v
       - run: python -m unittest discover -s tests -p test_session_capabilities.py -v
       - run: python -m unittest discover -s tests -p test_skill_workflows.py -v
+      - run: python -m unittest discover -s tests -p 'test_mobile*.py' -v
+      - run: python -m unittest discover -s tests -p test_execution_boundaries.py -v
+      - run: python -m unittest discover -s tests -p test_restricted_process_identity.py -v
+      - run: python -m unittest discover -s tests -p test_log_query.py -v
       - run: python -m unittest discover -s tests -p test_input_sequence.py -v
       - run: python -m unittest discover -s tests -p test_shared_logs.py -v
       - run: python -m unittest discover -s tests -p test_log_stream.py -v
@@ -191,8 +195,28 @@ jobs:
           mcpy --local --project "$RUNNER_TEMP/中文 project" --non-interactive init --name mac-smoke --type addon --json
           mcpy --local --project "$RUNNER_TEMP/中文 project" --non-interactive package --json
 
+  linux:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: python -m pip install ./core .
+      - run: python -m pip check
+      - run: python -m unittest discover -s tests -p 'test_mobile*.py' -v
+      - run: python -m unittest discover -s tests -p test_execution_boundaries.py -v
+      - run: python -m unittest discover -s tests -p test_restricted_process_identity.py -v
+      - run: python -m unittest discover -s tests -p 'test_core*.py' -v
+      - run: python -m unittest discover -s tests -p test_project_scripts.py -v
+      - run: python -m unittest discover -s tests -p test_log_query.py -v
+      - run: python -m unittest discover -s tests -p test_skill_workflows.py -v
+
   build:
-    needs: [test, native, macos]
+    needs: [test, native, macos, linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

@@ -41,38 +41,9 @@ def check_installed_modsdk():
         return False
 
 def get_available_versions() -> List[str]:
-    """
-    从PyPI API获取mc-netease-sdk所有可用版本
-    
-    Returns:
-        List[str]: 可用版本列表（按版本号排序）
-    """
-    try:
-        url = f"{PYPI_BASE_URL}/{PACKAGE_NAME}/json"
-        logger.info(f"正在从 {url} 获取包信息...")
-        
-        with urllib.request.urlopen(url, timeout=30) as response:
-            if response.status != 200:
-                logger.error(f"API请求失败: HTTP {response.status}")
-                return []
-            
-            data = json.loads(response.read().decode())
-            versions = list(data.get("releases", {}).keys())
-            # 按版本号排序（使用PyPI返回的排序规则）
-            versions.sort(key=lambda v: data["releases"][v][0]["upload_time_iso_8601"] if data["releases"][v] else "")
-            
-            logger.info(f"找到 {len(versions)} 个可用版本")
-            return versions
-    
-    except urllib.error.URLError as e:
-        logger.error(f"网络错误: {e}")
-        return []
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON解析错误: {e}")
-        return []
-    except Exception as e:
-        logger.error(f"获取版本信息时发生错误: {e}")
-        return []
+    from .modsdk_versions import catalog
+    return catalog(refresh=True)['versions']
+
 
 def print_versions():
     """打印所有可用版本（使用click格式化输出）"""
