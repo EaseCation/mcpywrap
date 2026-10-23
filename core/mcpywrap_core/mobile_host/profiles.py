@@ -7,7 +7,11 @@ from urllib.parse import urlsplit
 
 
 def location():
-    return Path(os.environ.get('MCPY_HOST_CONFIG', Path.home()/'.config/mcpywrap/hosts.json')).expanduser()
+    configured=os.environ.get('MCPY_HOST_CONFIG')
+    if configured is not None:
+        if not configured.strip(): raise ValueError('MCPY_HOST_CONFIG 不能为空')
+        return Path(configured).expanduser()
+    return Path.home()/'.config/mcpywrap/hosts.json'
 
 
 def endpoint(value):
@@ -20,7 +24,13 @@ def endpoint(value):
 
 
 def read():
-    path = location()
+    try:
+        path = location()
+    except RuntimeError:
+        # A desktop process may have no user-profile environment at all. It has no
+        # default binding to inspect; an explicit configuration must still fail closed.
+        if 'MCPY_HOST_CONFIG' in os.environ: raise
+        return []
     if not path.exists():
         return []
     data = json.loads(path.read_text(encoding='utf-8'))

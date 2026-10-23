@@ -14,22 +14,31 @@ class LogQueryTests(unittest.TestCase):
         folder=tempfile.TemporaryDirectory();self.addCleanup(folder.cleanup)
         self.root=Path(folder.name);self.log=self.root/'game.log'
 
+    def write_log(self,text):
+        self.log.write_bytes(text.encode('utf-8'))
+
     def test_sparse_matches_are_filtered_before_tail_and_counted_before_limit(self):
-        self.log.write_text('[Demo] missing label\n'+('noise\n'*756)+'[Demo] missing label\n[Demo] ready\n')
+        self.write_log('[Demo] missing label\n'+('noise\n'*756)+'[Demo] missing label\n[Demo] ready\n')
         value=snapshot(self.log,contains='[Demo]',tail=1,summary=True)
         self.assertEqual(value['text'],'[Demo] ready\n')
         self.assertEqual(value['matched_lines'],3)
         self.assertEqual(value['summary'],[{'text':'[Demo] missing label','count':2}])
         self.assertFalse(value['scan_truncated'])
 
+    def test_snapshot_preserves_windows_line_endings(self):
+        self.log.write_bytes(b'needle\r\nnoise\r\nneedle\r\n')
+        value=snapshot(self.log,contains='needle',summary=True)
+        self.assertEqual(value['text'],'needle\r\nneedle\r\n')
+        self.assertEqual(value['summary'][0]['count'],2)
+
     def test_filter_is_literal_and_case_sensitive(self):
-        self.log.write_text('x.*y\nxy\nX.*Y\n')
+        self.write_log('x.*y\nxy\nX.*Y\n')
         self.assertEqual(snapshot(self.log,contains='.*')['text'],'x.*y\nX.*Y\n')
         self.assertEqual(snapshot(self.log,contains='x.*')['matched_lines'],1)
 
     def test_bounded_search_reports_truncation_and_missing_distinctly(self):
         self.assertFalse(snapshot(self.log)['available'])
-        self.log.write_text('old needle\n'+'x\n'*(HISTORY_BYTES//2)+'new\n')
+        self.write_log('old needle\n'+'x\n'*(HISTORY_BYTES//2)+'new\n')
         result=snapshot(self.log,contains='needle')
         self.assertTrue(result['available']);self.assertTrue(result['scan_truncated'])
         self.assertEqual(result['matched_lines'],0)
@@ -42,7 +51,7 @@ class LogQueryTests(unittest.TestCase):
 
     def test_follow_history_filters_before_tail(self):
         from mcpywrap_core.mcstudio.log_stream import LogCursor
-        self.log.write_text('[Demo] evidence\n'+'noise\n'*756)
+        self.write_log('[Demo] evidence\n'+'noise\n'*756)
         with LogCursor(self.log,1,contains='[Demo]') as cursor:
             self.assertEqual(cursor.read()[0],'[Demo] evidence\n')
 

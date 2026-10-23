@@ -53,6 +53,15 @@ class ExecutionBoundaryTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)['text'],'desktop output\n')
         self.assert_desktop(result.output);logs.assert_called_once()
 
+    def test_desktop_without_a_home_directory_does_not_require_phone_configuration(self):
+        with patch.dict(os.environ,{},clear=True),patch.object(Path,'home',side_effect=RuntimeError('No user home')),patch('mcpywrap_core.mcstudio.sessions.logs',return_value='desktop\n'):
+            result=self.invoke(self.desktop,'logs','--session','a'*32,'--json')
+        self.assertEqual(result.exit_code,0,result.output);self.assert_desktop(result.output)
+
+    def test_explicit_binding_location_does_not_eagerly_resolve_user_home(self):
+        with patch.object(Path,'home',side_effect=RuntimeError('No user home')):
+            self.assertEqual(profiles.read()[0]['installation_id'],'phone')
+
     def test_desktop_failure_does_not_acquire_mobile_permission_hints(self):
         with patch.object(Client,'request',side_effect=AssertionError('unrelated phone contacted')),patch('mcpywrap_core.mcstudio.sessions.stop',side_effect=OSError('desktop process unavailable')):
             result=self.invoke(self.desktop,'stop','--session','a'*32,'--json')

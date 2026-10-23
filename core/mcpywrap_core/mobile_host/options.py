@@ -23,8 +23,13 @@ class LogSource(click.Choice):
     def target_type(self,ctx):
         return click.Choice(['game','engine','client','server','all'] if bound_context(ctx) else ['game','engine','worker','all'])
 
-    def get_metavar(self,param,ctx):
-        return self.target_type(ctx).get_metavar(param,ctx)
+    def get_metavar(self,param,ctx=None):
+        # Click 8.0/8.1 calls this without ctx; 8.2+ passes it explicitly.
+        target=self.target_type(ctx)
+        import inspect
+        if 'ctx' in inspect.signature(target.get_metavar).parameters:
+            return target.get_metavar(param,ctx=ctx)
+        return target.get_metavar(param)
 
     def convert(self,value,param,ctx):
         return self.target_type(ctx).convert(value,param,ctx)
