@@ -43,7 +43,7 @@ class Client:
         except (URLError, TimeoutError, OSError) as error:
             if isinstance(error, RemoteError): raise
             failure = RemoteError('无法连接 mcpy App；连接失败不足以区分服务关闭、进程退出或端口错误', 'host_unavailable',
-                                  hint='打开 mcpy://service/start 恢复开发连接；主动暂停的服务需在开发工具页重新开启。已提交的操作先查询原任务。')
+                                  hint='请用户手动恢复开发连接（mcpy://service/start）；不要自动调用唤起命令。主动暂停的服务需在“开发”页重新开启，已有操作先查询原任务。')
             failure.details = {'endpoint': self.endpoint, 'recovery_uri': 'mcpy://service/start',
                                'last_known_service': profiles.cached_service(self.profile), 'live_state': 'unavailable'}
             require_user(failure)
@@ -216,7 +216,7 @@ def pair(url, code, workspace, label='mcpy CLI', timeout=900):
         saved['expires'] = time.time()+900
         if resumable: profiles.write_private(receipt, saved)
     import sys
-    print('等待你允许连接：可直接点击 mcpy 弹出的确认卡或通知中的「允许连接」。没有提示时再打开 mcpy 的 开发工具页。', file=sys.stderr)
+    print('等待你允许连接：可直接点击 mcpy 弹出的确认卡或通知中的「允许连接」。没有提示时再打开 mcpy 的“开发”页。', file=sys.stderr)
     end = time.monotonic()+timeout
     while time.monotonic() < end:
         result = request(base+'/result', credentials)
