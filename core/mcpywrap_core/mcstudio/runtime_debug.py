@@ -310,6 +310,9 @@ class SafaiaChannel:
             self.serial.release()
 
     def close(self):
+        joiner = getattr(self, 'local_join', None)
+        if joiner:
+            joiner.stop.set()
         self.stop_event.set()
         with self.changed:
             if self.client:
@@ -321,6 +324,8 @@ class SafaiaChannel:
         for thread in (self.thread, self.discovery):
             if thread.is_alive():
                 thread.join(timeout=1)
+        if joiner:
+            joiner.close()
 
 
 class _ControlHandler(socketserver.BaseRequestHandler):
@@ -345,6 +350,8 @@ class _ControlHandler(socketserver.BaseRequestHandler):
                     group = membership(self.server.project, self.server.session)
                     if not group or not group.get('connection_verified') or request.get('kind') != 'python':
                         raise ValueError('客机尚未确认加入指定主机，或请求了未支持的资源热更')
+            if getattr(self.server.channel, 'joining', False) is True:
+                raise ValueError('客机正在自动加入，请等待连接校验完成后再执行调试操作。')
             if request.get('action') == 'execute':
                 options = {'condition': request['condition']} if request.get('condition') is not None else {}
                 if options and not hasattr(self.server.channel, 'submit'):

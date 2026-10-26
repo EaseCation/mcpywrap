@@ -41,6 +41,7 @@ def main():
         'sources': {p.name: hashlib.sha256(p.read_text(encoding='utf-8').encode('utf-8')).hexdigest()
                     for p in sorted(source.parent.glob('*')) if p.suffix in ('.cpp', '.h')},
         'media_protocol': 1,
+        'ocr_protocol': 1,
     }
     (output / 'manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     print('Built Windows Graphics Capture helper:', target)

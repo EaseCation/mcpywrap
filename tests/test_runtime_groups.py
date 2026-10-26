@@ -18,7 +18,7 @@ class GroupTests(unittest.TestCase):
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
-        self.backend = Mock(id='windows')
+        self.backend = Mock(id='windows', capabilities=())
 
     def record(self, kind='local'):
         record = groups._new(self.root, self.backend, kind,
@@ -191,6 +191,40 @@ class GroupTests(unittest.TestCase):
         self.assertEqual(result['state'], 'waiting_for_join')
         self.assertFalse(result['connection_verified'])
         verify.assert_not_called()
+
+    def test_auto_join_progress_and_failure_are_visible_without_failing_host(self):
+        record=self.record();record['recipe']['join_mode']='auto';groups.save(record)
+        def current(project,sid):
+            if sid==record['members'][0]['session']:
+                return {'state':'running','world_ready':True}
+            return {'state':'running','world_ready':False,'local_join':{'state':'finding_host'}}
+        with patch.object(sessions,'read',side_effect=current):
+            result=groups.status(self.root,record['group'])
+        self.assertEqual(result['state'],'joining')
+        self.assertEqual(result['members'][1]['connection_state'],'finding_host')
+        with patch.object(sessions,'read',return_value={'state':'running','local_join':{
+                'state':'failed','code':'local_join_timeout','error':'timeout'}}):
+            result=groups.status(self.root,record['group'])
+        self.assertFalse(result['ok']);self.assertEqual(result['code'],'local_join_timeout')
+        self.assertEqual(result['members'][0]['state'],'running')
+
+    def test_transient_probe_busy_keeps_last_verification_and_timestamp(self):
+        record=self.record();record.update(connection_verified=True,connection_checked_at=123)
+        groups.save(record)
+        with patch.object(sessions,'read',return_value={'state':'running','world_ready':True}), \
+                patch.object(groups,'_verify_once',side_effect=groups.ObservationBusy):
+            result=groups.refresh_status(self.root,record['group'])
+        self.assertTrue(result['connection_verified'])
+        self.assertEqual(result['connection_checked_at'],123)
+
+    def test_auto_local_handoff_does_not_read_a_null_external_target(self):
+        data={'project':str(self.root),'session':'a'*32,'state':'running','game':{'pid':1},'log_path':'log',
+              'mode':'network','backend':'windows','network':{'join':'auto','target':None,
+              'local_host':'b'*32,'engine':{'version':'3.9.0.401155'}}}
+        result=sessions.handoff(data)
+        self.assertEqual(result['join'],'auto')
+        self.assertEqual(result['local_host'],'b'*32)
+        self.assertNotIn('host',result)
 
     def test_stopped_group_does_not_instruct_joining_closed_games(self):
         record=self.record()

@@ -69,10 +69,12 @@ def take_world_options(arguments, cppconfig=None):
 @click.option('--force', '-f', is_flag=True, help='强制删除，不提示确认')
 @click.option('--clean-all', is_flag=True, help='清空所有游戏实例')
 @click.option('--clients', type=click.IntRange(1, 2), default=1, show_default=True,
-              help='本机玩家客户端数量；本地双客户端需在客户端 2 手动点击目标局域网卡片加入')
+              help='本机玩家客户端数量；Windows 本地双客户端默认自动加入目标主机')
+@click.option('--join-mode', type=click.Choice(['auto','manual']), default=None,
+              help='Windows 本地双客户端加入方式；auto 自动加入，manual 保留手动选择局域网卡片')
 @click.option('--launch-timeout', cls=HostOption, type=click.IntRange(5,120), default=None, help='App 宿主进程/画中画确认等待秒数；不含世界加载')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, clients=1, background=None, launch_timeout=None, **engine_overrides):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, clients=1, background=None, launch_timeout=None, join_mode=None, **engine_overrides):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例。
@@ -89,6 +91,8 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         raise click.UsageError('run --json 需要 --detach')
     if clients != 1 and (list or delete or clean_all):
         raise click.UsageError('--clients 仅用于启动游戏')
+    if join_mode is not None and clients != 2:
+        raise click.UsageError('--join-mode 仅用于 --clients 2 的本地联机')
     world_config = take_world_options(engine_overrides, cppconfig)
     if world_config is not None and (not new or instance_prefix or list or delete or clean_all):
         raise click.UsageError('世界创建参数仅用于 --new，不覆盖已有实例')
@@ -121,13 +125,15 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         from ..mcstudio.network import configured_target
         target = configured_target(read_project(base_dir))
         if target:
+            if join_mode is not None:
+                raise click.UsageError('--join-mode 不用于外部服务器连接')
             if new or instance_prefix or world_config is not None:
                 raise click.UsageError('网络联调不支持世界创建参数')
             if mcs_auth:
                 raise click.UsageError('双客户端进服暂不支持双账号认证')
             return groups.start_network(base_dir, backend, target, engine_overrides,
                                         background=options['background'])
-        return groups.start_local(base_dir, backend, options)
+        return groups.start_local(base_dir, backend, options, join_mode=join_mode)
     recovered = False
     try:
         try:

@@ -15,7 +15,7 @@ def verify_group(invoke, args, started, report):
         raise ValueError(started.get('error') or '双客户端启动未完成')
     current = invoke('status', '--group', group)
     deadline = time.monotonic() + args.timeout
-    while current.get('state') == 'waiting_for_join' and time.monotonic() < deadline:
+    while current.get('state') in ('waiting_for_join', 'joining') and time.monotonic() < deadline:
         time.sleep(.5)
         current = invoke('status', '--group', group)
     if not current.get('connection_verified') or len(current.get('members', [])) != 2:

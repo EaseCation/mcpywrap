@@ -33,3 +33,13 @@ Upstream licensing and source:
 The separately downloaded native launcher has its own GPL licensing and
 corresponding-source distribution. Changing the Python GUI binding does not
 change that launcher's license or permit redistribution of Minecraft binaries.
+
+## Windows LAN inspection
+
+The Windows desktop package installs Capstone 5 (BSD license) and pefile (MIT
+license) through the package manager for x64 instruction decoding and PE header
+inspection. Their upstream licenses remain in their installed distributions:
+https://github.com/capstone-engine/capstone and https://github.com/erocarrera/pefile.
+No Minecraft executable, memory snapshot, instruction fixture extracted from a
+game, or modified game binary is shipped by this feature. Menu text recognition
+uses Windows.Media.Ocr supplied by Windows.

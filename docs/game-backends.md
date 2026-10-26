@@ -48,6 +48,8 @@ Windows 后台启动使用独立桌面包提供的进程内线程级 CBT 保护�
 
 两端单人实例共用 cppconfig 的 world_info；存储、启动转换、保存优先级和创建参数见[实例世界设置](instance-world-settings.md)。
 
+Windows 本地双端的自动加入、运行映像端口定位、菜单控制与就绪契约见 [Windows 本地自动联机](windows-local-multiplayer.md)。该适配仅作用于本地客机，不改变其他平台或外服连接的协议。
+
 版本发现使用 `mcpy --local engine check-updates --json`：实时查询网易 pe/pe_old，返回真实完整版本和 URL；不得递增版本号或猜测 CDN 路径。该命令只检查，不下载或替换实例。新版本 compatibility=not_checked 需实际 APK 校验与结构兼容检查，不能把“发现版本”当作“可运行”。无需先执行此命令：首次 run 的自动安装已经查询 pe。已有本地版本/实例继续运行；缺失的旧版本若不在官方频道中则不可下载，不猜 CDN 路径。
 
 ## macOS 游戏图标

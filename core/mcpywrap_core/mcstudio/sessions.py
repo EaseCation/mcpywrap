@@ -200,8 +200,8 @@ def handoff(data):
                                      '已有世界继续使用存档中的设置。')
     from ..engines.backend import get_backend
     result.update(get_backend(data.get('backend', 'windows')).handoff(data))
-    if data.get('network') and data['network'].get('join') == 'manual':
-        result.update(join='manual', local_host=data['network']['local_host'],
+    if data.get('network') and data['network'].get('join') in ('manual','auto'):
+        result.update(join=data['network']['join'], local_host=data['network']['local_host'],
                       connection_verified=False, addons_assembled=False,
                       engine_version=data['network']['engine']['version'])
     elif data.get('network'):

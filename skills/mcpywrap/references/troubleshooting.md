@@ -31,6 +31,9 @@
 
 | 错误或现象 | 下一步 |
 |---|---|
+| joining | Windows 自动加入中；等待 status --group 校验，不并行操作客机菜单或执行客机 Python |
+| local_join_failed / local_join_timeout | 保留客机 local-join.json、local-join-menu.json 和日志；确认窗口仍渲染、OCR 语言及目标主机。修复后重启客机；需要手动方式时先停止客机，再 run --clients 2 --join-mode manual |
+| lan_target_ambiguous / lan_adapter_unavailable | 端口或注入点无法唯一确认；保留现场，不猜 room_info.port 或套用另一版本地址 |
 | waiting_for_join | 客机等待用户点击指定局域网卡片；不要重开第二个独立世界 |
 | group_not_ready / 玩家未确认 | status --group 查成员与加入目标；有界等待，保留仍成功的主机 |
 | group_required | 用 group 更新；单 session 不能绕过组协调 |

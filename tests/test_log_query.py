@@ -70,6 +70,9 @@ class LogQueryTests(unittest.TestCase):
         self.assertEqual(value['previous_session'],'old');self.assertTrue(value['session_changed'])
         self.assertIn('--session new',value['hint']);self.assertFalse(value['ok'])
         self.assertNotIn('session_changed',restart_handoff({'session':'old'},'old'))
+        group=restart_handoff({'group':'g','session':'host','replacement_session':'new-guest'},'old-guest')
+        self.assertEqual(group['session'],'host')
+        self.assertIn('--session new-guest',group['hint'])
 
     def test_windows_v1_filters_existing_endpoint_and_reports_scope(self):
         from mcpywrap_core.remote.client import routed_command

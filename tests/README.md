@@ -1,5 +1,13 @@
 # 测试入口
 
+Windows 本地自动联机可选实机验收：
+
+```powershell
+python tests/manual_windows_local_groups.py --output test/lan-acceptance --engine-version 3.9.0.401155 --engine-version 3.10.0.436581
+```
+
+输出目录必须尚不存在；两次版本参数可相同。程序经公开 CLI 新建两个独立 Mod 项目、自动启动四端，验证每组世界/网络身份和服务端名单、实际客户端/服务端 Mod 系统加载、客机重启及另一组连接保留，最后停止自己创建的组。它需要完整 Windows 原生组件、对应引擎和可后台渲染的桌面；不进入默认 CI。`test_windows_lan.py` 使用人工指令夹具与模拟调用覆盖自动定位、歧义拒绝、写入回滚、菜单选择和取消；夹具不包含游戏二进制。明确未发送的只读探针争用可有限重试，未知执行结果不重放。
+
 仓库通用开发与验证约定见 [CONTRIBUTING.md](../CONTRIBUTING.md)。默认自动化使用临时文件、真实有限子进程、模拟游戏调用端与回环服务，不启动真实游戏：
 
 ```text

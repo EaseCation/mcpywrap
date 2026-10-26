@@ -20,6 +20,10 @@ _result = {'player': api.GetLocalPlayerId(), 'players': players,
 '''
 
 
+class ObservationBusy(Exception):
+    """明确未发送的只读探针争用，不代表原连接已断开。"""
+
+
 def path(project, group):
     return Path(project).resolve()/'.runtime/groups'/storage.identifier(group, '联调组 ID')/'group.json'
 
@@ -72,7 +76,7 @@ def capabilities(project, group):
     return {'group': group, 'kind': record['kind'], 'members': members,
             'state': current['state'], 'connection_verified': current['connection_verified'],
             'coordinated_reload': record['kind'] == 'local',
-            'join': 'manual' if record['kind'] == 'local' else 'automatic',
+            'join': record.get('recipe', {}).get('join_mode','manual') if record['kind'] == 'local' else 'automatic',
             'resource_reload': False,
             'hint': '外部服务器的代码和资源由服务器管理。' if record['kind'] == 'network' else
                     '确认两名玩家加入后可协调 Python 更新；客机资源缓存尚不支持组资源热更。'}
@@ -159,6 +163,8 @@ def status(project, group):
                 member.update(state=current['state'], world_ready=current.get('world_ready', False),
                               game=current.get('game'), error=current.get('error'),
                               log_path=current.get('log_path'))
+                if current.get('local_join'):
+                    member['local_join'] = current['local_join']
             except (ValueError, OSError) as error:
                 member.update(state='failed', error=str(error))
         else:
@@ -166,16 +172,24 @@ def status(project, group):
         members.append(member)
     running = [member for member in members if member['state'] == 'running']
     manual = record['kind'] == 'local'
+    automatic = manual and record.get('recipe', {}).get('join_mode') == 'auto'
     state = ('ready' if len(running) == 2 and record.get('connection_verified') else
              'waiting_for_join' if manual and len(running) == 2 and not record.get('error') else
              'running' if len(running) == 2 else 'partial' if running else
              'starting' if any(m['state'] in ('starting', 'pending') for m in members) else 'exited')
+    join_problem = (members[1].get('local_join') or {}) if automatic and len(members)>1 else {}
+    if automatic and state == 'waiting_for_join':
+        state = 'partial' if join_problem.get('state') == 'failed' else 'joining'
     if record.get('kind') == 'local' and members[0]['state'] != 'running' and len(members) > 1 and members[1]['state'] == 'running':
         members[1]['connection_state'] = 'host_disconnected'
     elif manual and len(members) > 1 and members[1]['state'] == 'running':
         members[1]['connection_state'] = ('verified' if state == 'ready' else
+                                          join_problem.get('state','joining') if automatic else
                                           record.get('join_state', 'waiting_for_join'))
     instruction = record.get('join_instruction') if manual and state not in ('ready', 'exited') else None
+    if automatic and state not in ('ready','exited'):
+        instruction = (join_problem.get('error') if join_problem.get('state') == 'failed' else
+                       '正在自动加入目标主机；完成后将校验双方玩家与服务端名单。')
     if manual and members[0]['state'] not in ('running', 'starting') and running:
         instruction = '主机已退出，客户端仍保留；请明确重启联调组或停止客户端。'
     elif manual and members[1]['state'] in ('exited', 'failed') and running:
@@ -185,12 +199,12 @@ def status(project, group):
         instruction = '客户端 2 未加入指定主机，请退出当前世界后重新选择目标局域网卡片。'
     if manual and state != 'exited' and record.get('source_matches') is False:
         instruction = ((instruction + ' ') if instruction else '') + '主机继续使用已加载版本；源码改动尚未应用，应用改动请重启联调组。'
-    return {'ok': not record.get('error'), 'group': group, 'session': members[0].get('session'),
+    return {'ok': not record.get('error') and join_problem.get('state') != 'failed', 'group': group, 'session': members[0].get('session'),
             'kind': record['kind'], 'backend': record['backend'],
             'state': state, 'members': members, 'connection_verified': state == 'ready',
             'connection_verified_at': record.get('connection_verified_at'),
             'connection_checked_at': record.get('connection_checked_at'),
-            'error': record.get('error'), 'code': record.get('code'), 'hint': record.get('hint') or instruction,
+            'error': record.get('error') or join_problem.get('error'), 'code': record.get('code') or join_problem.get('code'), 'hint': record.get('hint') or instruction,
             'details': record.get('details', {}), 'actions': record.get('actions', []), 'operation_id':record.get('operation_id'),
             'join_instruction': instruction, 'world_name': record.get('world_name'),
             'source_matches': record.get('source_matches')}
@@ -253,6 +267,8 @@ def _observe(record, member):
     if record['kind'] == 'local':
         code += "\nimport clientlevel\n_result['host_network_id'] = str(clientlevel.get_nethernet_id())\n"
     result = control_request(record['project'], member['session'], 'execute', code=code, side='client')
+    if result.get('error') == '已有游戏脚本正在执行':
+        raise ObservationBusy()
     if result.get('state') == 'unknown':
         raise EngineError('客户端就绪探针结果未知，请检查会话后重试。', 'verification_unknown')
     if result.get('state') != 'completed' or not isinstance(result.get('value'), dict):
@@ -274,7 +290,10 @@ def _ready(record, member, timeout=300):
     while time.monotonic() < deadline:
         if _cancelled(record):
             raise EngineError('联调启动已取消。', 'cancelled')
-        value = _observe(record, member)
+        try:
+            value = _observe(record, member)
+        except ObservationBusy:
+            value = None
         if value is not None:
             save(record)
             return value
@@ -298,6 +317,8 @@ def _verify_once(record):
                                          code='import mod.server.extraServerApi as api\n'
                                               '_result = dict((str(p), api.GetEngineCompFactory().CreateName(p).GetName()) '
                                               'for p in api.GetPlayerList())', side='server')
+                if result.get('error') == '已有游戏脚本正在执行':
+                    raise ObservationBusy()
                 rosters = [result.get('value')] if result.get('state') == 'completed' else []
             else:
                 rosters = [value.get('player_names') for value in observations]
@@ -327,6 +348,8 @@ def refresh_status(project, group):
                     if record.get('code') in (None, 'world_ready_timeout', 'players_not_verified',
                                               'client_exited', 'verification_unknown'):
                         record.update(error=None, code=None, hint=None)
+            except ObservationBusy:
+                return current
             except (ValueError, OSError) as error:
                 if not any((sessions.session_path(project, m['session'])/'stop').exists()
                            for m in record['members']):
@@ -351,7 +374,11 @@ def verify(record, timeout=60):
     while time.monotonic() < deadline:
         if _cancelled(record):
             raise EngineError('联调验证已取消。', 'cancelled')
-        if _verify_once(record):
+        try:
+            verified = _verify_once(record)
+        except ObservationBusy:
+            verified = False
+        if verified:
             record.update(connection_verified=True, connection_verified_at=time.time(), connection_checked_at=time.time(),
                           error=None, code=None, hint=None)
             save(record)
@@ -389,6 +416,8 @@ def _connect_member(record, index, target=None, local_host=None, created=None):
                    background=record['recipe'].get('background',
                               record['recipe'].get('options', {}).get('background', False)))
     if local_host:
+        if record['backend'] == 'windows':
+            options['join_mode'] = record.get('recipe', {}).get('join_mode', 'manual')
         result = backend.start_guest(host, **options)
     else:
         result = backend.connect(target, engine_overrides=overrides, detach=True, **options)
@@ -451,7 +480,11 @@ class GroupMonitor:
         self.thread.join(timeout=15)
 
 
-def start_local(project, backend, options):
+def start_local(project, backend, options, join_mode=None):
+    requested_join = join_mode
+    join_mode = join_mode or ('auto' if 'local-dual-client-auto' in backend.capabilities else 'manual')
+    if join_mode not in ('auto', 'manual') or (join_mode == 'auto' and backend.id != 'windows'):
+        raise EngineError('当前平台不支持所选的本地加入方式。', 'unsupported_feature')
     if options.get('mcs_auth') or options.get('auth_context'):
         raise EngineError('双客户端联调目前使用无认证开发身份。', 'unsupported_auth')
     backend.prepare_guest(None)
@@ -462,7 +495,7 @@ def start_local(project, backend, options):
     created = [] if result.get('already_running') else [result['session']]
     with directory_lock(Path(project)/'.runtime/group-registry-lock'):
         existing = membership(project, result['session'])
-        record = existing or _new(project, backend, 'local', {'options': options, 'overrides': options.get('overrides') or {}})
+        record = existing or _new(project, backend, 'local', {'options': options, 'overrides': options.get('overrides') or {}, 'join_mode': join_mode})
         if not existing:
             record['members'][0].update(session=result['session'], state='running')
             save(record)
@@ -471,6 +504,13 @@ def start_local(project, backend, options):
         # the latest member reservation.
         record = read(project, record['group'])
         try:
+            if requested_join and requested_join != record['recipe'].get('join_mode','manual'):
+                guest_id = record['members'][1].get('session')
+                if guest_id and occupancy.live(sessions.read(project,guest_id)):
+                    raise EngineError('已有客机使用不同的加入方式。', 'session_conflict',
+                                      '请先停止该客机，再用 run --clients 2 --join-mode '+requested_join+' 启动。')
+                record['recipe']['join_mode'] = requested_join
+                save(record)
             _ready(record, record['members'][0])
             _prepare_local(record)
             guest = record['members'][1]
@@ -643,7 +683,7 @@ def restart(project, *, session=None, group=None, migration=None):
                     _ready(record, record['members'][0])
                     _prepare_local(record)
                     _connect_member(record, index, local_host=host, created=created)
-                    return _local_result(record, created)
+                    return dict(_local_result(record, created), replacement_session=record['members'][index]['session'])
                 else:
                     from ..mcstudio.network import ServerTarget
                     target = ServerTarget(**record['recipe']['target'])
@@ -661,7 +701,7 @@ def restart(project, *, session=None, group=None, migration=None):
     sessions.stop(project, session)
     backend = get_backend(data.get('backend', 'windows'))
     if data.get('mode') == 'network':
-        if data['network'].get('join') == 'manual':
+        if data['network'].get('join') in ('manual','auto'):
             raise EngineError('此客机的联调组记录缺失，不能按外服会话重启。', 'group_not_found')
         from ..mcstudio.network import ServerTarget
         return backend.connect(ServerTarget(**data['network']['target']), project_dir=project,

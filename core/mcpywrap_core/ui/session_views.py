@@ -154,6 +154,8 @@ class SessionControls(QWidget):
         self.member.blockSignals(True)
         self.member.clear()
         states = {'waiting_for_join': '等待点击卡片加入', 'verified': '已确认加入',
+                  'initializing': '准备自动加入', 'leaving_setup': '准备连接',
+                  'finding_host': '查找目标主机', 'joining': '正在自动加入', 'joined': '正在校验连接',
                   'wrong_world': '未加入指定主机', 'host_disconnected': '与主机失联'}
         for member in c.members:
             state = member.get('connection_state', member.get('state', 'pending'))

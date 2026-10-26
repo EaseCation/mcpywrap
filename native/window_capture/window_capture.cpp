@@ -25,8 +25,14 @@
 
 #include <winrt/base.h>
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Graphics.Capture.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
+#include <winrt/Windows.Globalization.h>
+#include <winrt/Windows.Graphics.Imaging.h>
+#include <winrt/Windows.Media.Ocr.h>
+#include <winrt/Windows.Storage.Streams.h>
+#include <winrt/Windows.Storage.h>
 #include <windows.graphics.capture.interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
 
@@ -282,6 +288,7 @@ Pixels capture(HWND hwnd) {
 }
 
 #include "video_capture.h"
+#include "ocr.h"
 
 }  // namespace
 
@@ -292,8 +299,10 @@ int wmain(int argc, wchar_t** argv) {
         if (option(argc, argv, L"--capabilities")) return media_capabilities();
         if (option(argc, argv, L"--record")) return record_video(argc, argv);
         if (option(argc, argv, L"--extract")) return extract_frames(argc, argv);
+        if (option(argc, argv, L"--ocr-file")) return ocr_file(argument(argc, argv, L"--ocr-file"));
         const HWND hwnd = parse_hwnd(argc, argv);
         const Pixels pixels = capture(hwnd);
+        if (option(argc, argv, L"--ocr")) return ocr_pixels(pixels);
         const auto png = encode_png(pixels);
         _setmode(_fileno(stdout), _O_BINARY);
         std::cout << "MCPYCAP1 " << pixels.width << ' ' << pixels.height << ' ' << png.size() << '\n';

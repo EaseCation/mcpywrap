@@ -627,7 +627,7 @@ class GameInstanceManager(QMainWindow):
         choices = []
         grouped = set()
         for value in groups.list_groups(self.base_dir):
-            if value['state'] in ('ready', 'running', 'waiting_for_join', 'partial', 'starting'):
+            if value['state'] in ('ready', 'running', 'waiting_for_join', 'joining', 'partial', 'starting'):
                 choices.append(('联调组 ' + value['group'][:8] + ' · ' + value['state'], value))
                 grouped.update(m.get('session') for m in value['members'])
         for data in occupancy.active(self.base_dir):

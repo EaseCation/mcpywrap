@@ -97,7 +97,7 @@ class PlayerProfile:
             preferences = {key: value for key, value in values.items() if game_preference(key)}
             if preferences:
                 write_properties(target, preferences, ':')
-        if self.data['network'].get('join') == 'manual':
+        if self.data['network'].get('join') in ('manual', 'auto'):
             self.prepare_pack_cache(target.parent.parent, self.data['network']['deployment_fingerprint'])
             values = read_properties(target, ':') or {}
             values['mp_username'] = self.data['network']['player']['user_name']

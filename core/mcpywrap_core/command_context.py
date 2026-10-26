@@ -88,7 +88,7 @@ def require_project():
 
 def restart_handoff(result, previous):
     if not isinstance(result,dict) or not previous: return result
-    current=result.get('session')
+    current=result.get('replacement_session',result.get('session'))
     if current and current!=previous:
         result=dict(result,previous_session=previous,session_changed=True)
         message='会话已更换；后续日志、截图和调试请使用 --session '+current+'。旧会话记录仍保留。'
