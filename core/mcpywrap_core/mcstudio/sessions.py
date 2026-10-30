@@ -188,6 +188,8 @@ def handoff(data):
               'window_title_hint': 'Minecraft', 'window_verified': False}
     if data.get('operation_id'):
         result['operation_id'] = data['operation_id']
+    if data.get('dependency_selection'):
+        result['dependency_selection'] = data['dependency_selection']
     if data.get('scripts'):
         result['scripts'] = data['scripts']
     if data.get('warnings'):
@@ -216,6 +218,8 @@ def handoff(data):
 def show_configuration(result):
     """CLI presentation shared by foreground backends; JSON handoffs retain fields."""
     import click
+    from ..dependency_feedback import report_selection
+    report_selection(result.get('dependency_selection'))
     if result.get('config_path'):
         click.echo('实例配置：' + result['config_path'])
         if result.get('config_hint'): click.echo(result['config_hint'])

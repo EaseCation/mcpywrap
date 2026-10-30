@@ -84,6 +84,20 @@ def rebuild_file(packs, kind, relative, destination):
             shutil.copy2(source, destination)
 
 
+def validate_unbundled_overrides(packs):
+    owners = {}
+    for pack in packs:
+        for relative in pack_files(pack, 'behavior'):
+            if not relative.endswith('.py'):
+                continue
+            module = relative[:-len('/__init__.py')] if relative.endswith('/__init__.py') else relative[:-3]
+            key = module.casefold()
+            for previous in owners.get(key, []):
+                if getattr(previous, 'unbundled', False) != getattr(pack, 'unbundled', False):
+                    raise DependencyError('unbundled 依赖不能覆盖随发布的 Python 模块: ' + relative + '\n来源: ' + str(previous.path) + ' / ' + str(pack.path))
+            owners.setdefault(key, []).append(pack)
+
+
 def assemble_addon(packs, target_pack):
     for kind in ('behavior', 'resource'):
         target = getattr(target_pack, kind + '_pack_dir')

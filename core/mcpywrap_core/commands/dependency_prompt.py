@@ -36,6 +36,8 @@ def prompt_dependency():
             options['subdir'] = click.prompt('源码子目录', default='.').strip()
             options['target'] = click.prompt('行为包内安装目录').strip()
         return PromptDependency('git', url, options)
+    if kind == '2':
+        click.echo('默认添加正式依赖，随 build/package 发布；仅本地开发使用可执行 add --path <目录> --unbundled。')
     value = click.prompt('包名/版本约束' if kind == '1' else 'Addon 目录').strip()
     if kind == '1':
         try:

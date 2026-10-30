@@ -39,3 +39,11 @@ shared-addon/
 这不代表游戏运行时的资源包优先级。修改依赖声明后重启 `mcpy dev`。
 
 遇到结构错误先核对目录和清单；查看参数使用 `mcpy add --help`。
+
+## 不随构建打包的运行依赖
+
+本地引用可带布尔标记 `unbundled`，默认 false。true 时 dev/run 仍加载，build/package 在组装前排除；普通字符串引用保持旧行为。该依赖正常需要的子依赖随运行加载，上游自身的不打包引用不向消费者传递；被普通发布路径同时引用的共享节点仍随发布。
+
+发布不要求被排除的本地路径存在。更改标记后需重启会话；停止 dev 后 build 完整替换输出，package 独立组装。仅通过 unbundled 引用的依赖暂不支持 consumer_prepare，以防生成文件残留到源码包。
+
+CLI、配置示例和 JSON 判断方法统一见 [Skill 的 unbundled 指引](../skills/mcpywrap/references/project-dependencies.md#不随构建打包unbundled)。

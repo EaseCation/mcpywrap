@@ -1,13 +1,15 @@
 """添加 Python 包或本地 Addon 目录依赖。"""
 import click
 from ..command_context import OperationCommand, project_dir as current_project, report_dependency_warnings
-from ..dependencies import DependencyDeclaration, DependencyError, DependencyService
+from ..dependencies import DependencyDeclaration, DependencyError, DependencyService, canonical_path, resolve_path, included_in_release
 from .dependency_prompt import prompt_dependency, require_interactive, PromptDependency
 from ..framework_presets import FRAMEWORK_PRESETS
+from ..dependency_feedback import report_unbundled
 
 
 @click.command(cls=OperationCommand)
 @click.argument('package', required=False)
+@click.option('--unbundled/--bundled', default=None, help='不随 build/package 打包；新依赖默认打包，重复添加时省略则保留原设置')
 @click.option('--path', 'local_path', help='直接引用本地 Addon 根目录，不安装目录')
 @click.option('--qumod', is_flag=True, help='添加并同步已验证版本的 QuMod 外部代码库')
 @click.option('--framework', type=click.Choice(list(FRAMEWORK_PRESETS)), help='添加已注册框架预设')
@@ -19,11 +21,15 @@ from ..framework_presets import FRAMEWORK_PRESETS
 @click.option('--target', help='代码依赖在行为包内的安装目录')
 @click.option('--script-dir', help='框架所属脚本目录；唯一入口自动识别，无入口默认 MyScript')
 @click.option('--source', '--qumod-source', 'preset_source', help='预设源码来源名称，例如 github/gitee')
-def add_cmd(package, local_path, qumod, framework, git_url, git_ref, dep_name, subdir, kind, target, script_dir, preset_source):
+def add_cmd(package, local_path, qumod, framework, git_url, git_ref, dep_name, subdir, kind, target, script_dir, preset_source, unbundled=None):
     """添加依赖；包安装到 mcpy 工具环境，不安装到游戏。无参数进入向导。"""
     if sum((package is not None, local_path is not None, qumod, framework is not None, git_url is not None)) > 1:
         raise click.UsageError('请选择一种依赖来源：包名、--path、--git、--framework 或 --qumod')
+    if unbundled is not None and package is not None:
+        raise click.UsageError('--unbundled/--bundled 只用于游戏依赖；Python 包仍安装在工具环境')
     preset = 'qumod' if qumod else framework
+    if unbundled is True and preset:
+        raise click.UsageError('框架快捷入口保持正式依赖；开发辅助代码请使用 add --git --unbundled')
     if (script_dir or preset_source) and not preset:
         raise click.UsageError('--script-dir/--source 需要框架预设')
     if (git_ref or dep_name or subdir is not None or kind is not None or target) and not git_url:
@@ -33,9 +39,10 @@ def add_cmd(package, local_path, qumod, framework, git_url, git_ref, dep_name, s
     try:
         service = DependencyService(str(current_project()))
         if git_url:
-            result = service.add_git(git_url, ref=git_ref, name=dep_name, subdir=subdir, kind=kind, target=target)
+            result = service.add_git(git_url, ref=git_ref, name=dep_name, subdir=subdir, kind=kind, target=target, unbundled=unbundled)
             from ..consumer_prepare import guidance
             result['preparation'] = guidance(current_project())
+            report_unbundled(result)
             return result
         if preset:
             entry = PromptDependency('framework', preset, {'script_dir': script_dir, 'source': preset_source})
@@ -46,11 +53,14 @@ def add_cmd(package, local_path, qumod, framework, git_url, git_ref, dep_name, s
             entry = DependencyDeclaration('local' if local_path is not None else 'package', local_path if local_path is not None else package)
         service = DependencyService(str(current_project()))
         if entry.kind == 'git':
-            result = service.add_git(entry.value, **entry.options)
+            result = service.add_git(entry.value, **entry.options, unbundled=unbundled)
             from ..consumer_prepare import guidance
             result['preparation'] = guidance(current_project())
+            report_unbundled(result)
             return result
         if entry.kind == 'framework':
+            if unbundled is True:
+                raise click.UsageError('框架快捷入口保持正式依赖；开发辅助代码请使用 add --git --unbundled')
             click.echo('正在准备框架外部依赖（固定提交，不安装到工具 Python 环境）...')
             result = service.add_framework(entry.value, **entry.options)
             for warning in result['warnings']:
@@ -58,10 +68,17 @@ def add_cmd(package, local_path, qumod, framework, git_url, git_ref, dep_name, s
             click.secho('框架已准备；其他开发者克隆后执行 mcpy sync 即可恢复。', fg='green')
             from ..consumer_prepare import guidance
             result['preparation'] = guidance(current_project())
+            report_unbundled(result)
             return result
+        previous_unbundled = None
         if entry.kind == 'local':
-            changed, _ = service.add_local(entry.value)
+            previous = next((item for item in service.list() if item.kind == 'local' and canonical_path(resolve_path(current_project(), item.value)) == canonical_path(resolve_path(current_project(), entry.value))), None)
+            previous_unbundled = previous.unbundled if previous else None
+            changed, _ = service.add_local(entry.value, unbundled=unbundled)
+            entry = next(item for item in service.list() if item.kind == "local" and canonical_path(resolve_path(current_project(), item.value)) == canonical_path(resolve_path(current_project(), entry.value)))
         else:
+            if unbundled is not None:
+                raise click.UsageError('--unbundled/--bundled 只用于游戏依赖')
             click.echo(f'正在向 mcpy 工具环境安装 {entry.value}（非游戏环境）...')
             changed = service.add_package(entry.value)
         manager = service.last_resolution
@@ -69,7 +86,10 @@ def add_cmd(package, local_path, qumod, framework, git_url, git_ref, dep_name, s
         click.secho('依赖已添加' if changed else '依赖已存在', fg='green')
         from ..consumer_prepare import guidance
         preparation = guidance(current_project(), resolved=manager)
-        return {'changed': changed, 'dependency': entry.value, 'source': entry.kind, 'preparation': preparation,
+        release_inclusion = included_in_release(manager, resolve_path(current_project(), entry.value)) if entry.kind == 'local' else None
+        if entry.kind == 'local':
+            report_unbundled({'unbundled': entry.unbundled, 'previous_unbundled': previous_unbundled, 'included_in_release': release_inclusion})
+        return {'unbundled': entry.unbundled if entry.kind == 'local' else None, 'previous_unbundled': previous_unbundled, 'included_in_release': release_inclusion, 'changed': changed, 'dependency': entry.value, 'source': entry.kind, 'preparation': preparation,
                 'classification': 'addon' if entry.kind == 'local' else manager.status_for(current_project(), entry).state,
                 'warnings': manager.warnings}
     except (DependencyError, OSError) as exc:

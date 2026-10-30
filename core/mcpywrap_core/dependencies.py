@@ -25,6 +25,7 @@ class DependencyError(ValueError):
 class DependencyDeclaration:
     kind: str
     value: str
+    unbundled: bool = False
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,39 @@ def validate_tables(config):
         raise DependencyError('tool.mcpywrap 必须是 TOML 表')
 
 
+def validate_unbundled(unbundled):
+    if type(unbundled) is not bool:
+        raise DependencyError('依赖 unbundled 必须为布尔值 true 或 false（默认 false）')
+    return unbundled
+
+
+def validate_purpose(purpose):
+    if purpose not in ('release', 'runtime'):
+        raise DependencyError('依赖用途仅支持 release（构建发布）或 runtime（本地运行）')
+    return purpose
+
+
+def local_value(item):
+    return item['path'] if isinstance(item, dict) else item
+
+
+def local_record(value, unbundled):
+    validate_unbundled(unbundled)
+    return {'path': value, 'unbundled': True} if unbundled else value
+
+
+def require_resolution(manager, project, purpose):
+    validate_purpose(purpose)
+    if manager.purpose != purpose or canonical_path(manager.root_node.addon_pack.path) != canonical_path(project):
+        raise DependencyError('依赖解析结果与项目或用途不匹配，请重新解析依赖')
+    return manager
+
+
+def included_in_release(manager, path):
+    pack = manager.get_all_dependencies()[canonical_path(path)]
+    return not pack.unbundled
+
+
 def declarations(config):
     validate_tables(config)
     result = []
@@ -123,9 +157,22 @@ def declarations(config):
         ('package', config.get('project', {}).get('dependencies', [])),
         ('local', config.get('tool', {}).get('mcpywrap', {}).get('local_dependencies', [])),
     ):
-        if not isinstance(values, list) or any(not isinstance(v, str) or not v.strip() for v in values):
-            raise DependencyError(f'{kind} 依赖必须是非空字符串数组')
-        result.extend(DependencyDeclaration(kind, value) for value in values)
+        if not isinstance(values, list):
+            raise DependencyError(f'{kind} 依赖必须是数组')
+        seen = set()
+        for item in values:
+            unbundled = False
+            if kind == 'local' and isinstance(item, dict):
+                if 'path' not in item or set(item) - {'path', 'unbundled'}:
+                    raise DependencyError('本地依赖表需要 path，可选 unbundled（布尔值，默认 false）；不接受其他字段')
+                unbundled = validate_unbundled(item.get('unbundled', False))
+                item = item['path']
+            if not isinstance(item, str) or not item.strip():
+                raise DependencyError(f'{kind} 依赖必须是非空字符串，本地依赖也可使用 path/unbundled 表')
+            if kind == 'local' and item in seen:
+                raise DependencyError('本地依赖重复声明: ' + item)
+            seen.add(item)
+            result.append(DependencyDeclaration(kind, item, unbundled))
     return result
 
 
@@ -198,7 +245,7 @@ class DependencyService:
         config = read_project(self.project_dir)
         return declarations(config) + [DependencyDeclaration('code', item['name'])
                                        for item in libraries(self.project_dir, config)] + [
-            DependencyDeclaration('git', item['name']) for item in projects(self.project_dir, config)]
+            DependencyDeclaration('git', item['name'], item.get('unbundled', False)) for item in projects(self.project_dir, config)]
 
     def add_framework(self, preset, script_dir=None, source=None, require_new=False):
         from .frameworks import add_framework
@@ -208,18 +255,20 @@ class DependencyService:
         from .project_dependencies import GitDependencyService
         return GitDependencyService(self.project_dir).add(url, **options)
 
-    def resolve(self, config=None, allow_missing=False, git_lock=None, collect_errors=False):
+    def resolve(self, config=None, allow_missing=False, git_lock=None, collect_errors=False, *, purpose="runtime"):
         from .builders.dependency_manager import DependencyManager
         config = read_project(self.project_dir) if config is None else config
         manager = DependencyManager()
         manager.build_dependency_tree(config.get('project', {}).get('name', self.project_dir.name),
                                       str(self.project_dir), config=config, allow_missing=allow_missing, git_lock=git_lock,
-                                      collect_errors=collect_errors)
+                                      collect_errors=collect_errors, purpose=purpose)
         self.last_resolution = manager
         return manager
 
-    def prepare_local(self, value, config=None):
+    def prepare_local(self, value, config=None, *, unbundled=None):
         """预检候选配置，不写文件；缺失 Python 包以警告返回。"""
+        if unbundled is not None:
+            validate_unbundled(unbundled)
         value = value.strip()
         if not value:
             raise DependencyError('本地目录不能为空')
@@ -228,14 +277,24 @@ class DependencyService:
         values = settings.setdefault('local_dependencies', [])
         declarations(candidate)
         target = canonical_path(resolve_path(self.project_dir, value))
-        duplicate = any(canonical_path(resolve_path(self.project_dir, item)) == target for item in values)
-        if not duplicate:
-            values.append(value)
+        matches = [i for i, item in enumerate(values) if canonical_path(resolve_path(self.project_dir, local_value(item))) == target]
+        if len(matches) > 1:
+            raise DependencyError('同一目录重复声明，请保留一个依赖条目')
+        changed = not matches
+        if matches:
+            index = matches[0]
+            old = values[index]
+            selected = unbundled if unbundled is not None else (old.get('unbundled', False) if isinstance(old, dict) else False)
+            replacement = local_record(local_value(old), selected)
+            changed = replacement != old
+            values[index] = replacement
+        else:
+            values.append(local_record(value, unbundled if unbundled is not None else False))
         manager = self.resolve(candidate, allow_missing=True)
-        return candidate, not duplicate, manager.warnings
+        return candidate, changed, manager.warnings
 
-    def add_local(self, value):
-        candidate, changed, warnings = self.prepare_local(value)
+    def add_local(self, value, *, unbundled=None):
+        candidate, changed, warnings = self.prepare_local(value, unbundled=unbundled)
         if changed:
             write_project(self.project_dir, candidate)
         return changed, warnings
@@ -284,7 +343,7 @@ class DependencyService:
         if declaration.kind == 'local':
             values = config.get('tool', {}).get('mcpywrap', {}).get('local_dependencies', [])
             target = canonical_path(resolve_path(self.project_dir, declaration.value))
-            matches = [v for v in values if v == declaration.value or canonical_path(resolve_path(self.project_dir, v)) == target]
+            matches = [v for v in values if v == declaration.value or canonical_path(resolve_path(self.project_dir, local_value(v))) == target]
         else:
             values = config.get('project', {}).get('dependencies', [])
             matches = [v for v in values if v == declaration.value]
@@ -311,8 +370,9 @@ class DependencyService:
                 return DependencyStatus('code_library', f"{resolved['git']}\n提交: {resolved['rev']}\n行为包内目标: {resolved['target']}")
             except (DependencyError, OSError, ValueError, KeyError, TypeError) as exc:
                 return DependencyStatus('unavailable', f'{exc}\n请执行 mcpy sync 恢复代码库')
+        config.setdefault('tool', {}).setdefault('mcpywrap', {})['git_dependencies'] = []
         config.setdefault('project', {})['dependencies'] = [declaration.value] if declaration.kind == 'package' else []
-        config.setdefault('tool', {}).setdefault('mcpywrap', {})['local_dependencies'] = [declaration.value] if declaration.kind == 'local' else []
+        config.setdefault('tool', {}).setdefault('mcpywrap', {})['local_dependencies'] = [local_record(declaration.value, declaration.unbundled)] if declaration.kind == 'local' else []
         try:
             manager = self.resolve(config, allow_missing=True)
             status = manager.status_for(self.project_dir, declaration)
@@ -321,6 +381,25 @@ class DependencyService:
             return DependencyStatus(status.state, '\n'.join(manager.warnings) or status.message)
         except (DependencyError, OSError) as exc:
             return DependencyStatus('unavailable', str(exc))
+
+    def set_unbundled(self, declaration, unbundled):
+        validate_unbundled(unbundled)
+        if declaration.kind not in ('local', 'git'):
+            raise DependencyError('仅本地 Addon 和通用 Git 依赖支持不打包设置')
+        config = read_project(self.project_dir)
+        if declaration.kind == 'local':
+            values = config.get('tool', {}).get('mcpywrap', {}).get('local_dependencies', [])
+            target = canonical_path(resolve_path(self.project_dir, declaration.value))
+            matches = [i for i, item in enumerate(values) if canonical_path(resolve_path(self.project_dir, local_value(item))) == target]
+            if len(matches) != 1:
+                raise DependencyError('依赖已变化，请刷新后重试')
+            values[matches[0]] = local_record(local_value(values[matches[0]]), unbundled)
+            write_project(self.project_dir, config)
+        else:
+            from .project_dependencies import GitDependencyService
+            GitDependencyService(self.project_dir).set_unbundled(declaration.value, unbundled)
+        return {'dependency': declaration.value, 'unbundled': unbundled, 'previous_unbundled': declaration.unbundled,
+                'included_in_release': not unbundled}
 
     def status(self, declaration):
         return self.inspect(declaration).message

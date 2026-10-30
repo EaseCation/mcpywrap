@@ -63,6 +63,7 @@ def add_framework(root, preset_name, script_dir=None, source=None, require_new=F
             raise DependencyError('此目标使用既有code_libraries声明；请用mcpy sync恢复，格式迁移请显式修改声明并保留业务入口')
         sync_libraries(root)
         return {**{key: preview[key] for key in ('preset', 'title', 'script_dir', 'script_path', 'version', 'dependency', 'source', 'rev', 'target')},
+                'unbundled': False, 'included_in_release': True,
                 'classification': 'code_library', 'synced': True, 'changed': False, 'new_script': False,
                 'warnings': ['已恢复兼容代码库声明；已有入口与配置格式保持不变。']}
     scaffold = None
@@ -70,7 +71,7 @@ def add_framework(root, preset_name, script_dir=None, source=None, require_new=F
         scaffold = {'directory': preview['script_dir'], 'files': {
             name: text.replace('{script_dir}', preview['script_dir']) for name, text in preset['files'].items()}}
     result = GitDependencyService(root).add(preview['source'], preview['rev'], preview['dependency'],
-        preset['subdir'], preset['kind'], preview['target'], scaffold)
+        preset['subdir'], preset['kind'], preview['target'], scaffold, unbundled=False)
     result.update({key: preview[key] for key in ('preset', 'title', 'script_dir', 'script_path', 'version')})
     if not preview['new_script']:
         result['warnings'].append('已有脚本保留；请按所选框架接入入口，向导不会改写业务代码。')

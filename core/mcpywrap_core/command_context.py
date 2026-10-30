@@ -226,7 +226,7 @@ class OperationGroup(click.Group):
                     if result.get('hint'):
                         click.echo(result['hint'])
                     for key, value in result.items():
-                        if key not in ('ok', 'error', 'hint') and value is not None:
+                        if key not in ('ok', 'error', 'hint', 'dependency_selection') and value is not None:
                             click.echo(f'{key}: {value}')
         finally:
             _context.reset(token)

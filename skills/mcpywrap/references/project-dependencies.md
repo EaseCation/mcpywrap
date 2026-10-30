@@ -23,6 +23,34 @@
 
 GUI对应 `mcpy ui` → Git依赖表单，其中“一键添加 QuMod”只是快捷按钮；下拉菜单可选来源和指定脚本目录。AI执行CLI，不为使用这些能力去操作Qt向导。
 
+## 不随构建打包：unbundled
+
+`unbundled` 是游戏依赖的布尔打包标记，默认 `false`：
+
+| 值 | dev/run | build/package |
+|---|---|---|
+| `false`（默认） | 加载 | 包含 |
+| `true` | 加载 | 排除 |
+
+使用前确认 bootstrap 的 `unbundled-dependencies` 能力及 `add --help` 中的 `--unbundled/--bundled`。仅本地 Addon 和通用 Git Addon/code 支持；Python 工具包、框架快捷入口和旧 code_libraries 不使用此标记。
+
+```text
+mcpy --project "<项目>" --non-interactive add --path "../helper" --unbundled --json
+mcpy --project "<项目>" --non-interactive add --path "../helper" --bundled --json
+mcpy --project "<项目>" --non-interactive deps --json
+mcpy --project "<项目>" --non-interactive deps --bundled-only --json
+```
+
+Git 依赖在原 `add --git ...` 命令后加相同标志。`--unbundled` 设置 true，`--bundled` 恢复 false；新依赖省略时默认 false，重复 add 省略时保留已有值。手写 TOML 时用布尔值，如 `{ path = "../helper", unbundled = true }`。
+
+`deps` 只读预览运行依赖；`--bundled-only` 预览发布依赖。默认 sync 恢复全部运行依赖；`sync --bundled-only --json` 仅恢复已锁定的发布依赖，保留其余锁记录。
+
+只启用当前根项目的 unbundled 引用；它所需的普通子依赖仍会加载，上游自身的 unbundled 引用不自动传递。共享节点若也被普通打包路径引用，仍进入发布，不能按目录直接删除。
+
+检查退出码和 `ok`。add 返回本引用的 `unbundled`、`previous_unbundled`，以及节点实际是否随发布的 `included_in_release`；deps 顶层及 build/package/sync 的 `dependency_selection` 含有效节点、`via` 引用链和 `excluded` 排除原因。节点的 `unbundled` 反映当前根项目的有效发布状态。
+
+更改标记后重启会话；发布使用 `package` 并检查实际 ZIP。该标记不让游戏读取工具 Python 包，也不为发布环境安装被排除的依赖。仅通过 unbundled 引用的依赖暂不支持 [consumer_prepare](consumer-prepare.md)。
+
 ## 三种常用流程
 
 ### 新建基础 QuMod 项目
@@ -90,7 +118,7 @@ mcpy --project "<项目>" --non-interactive remove --git shared --json
 
 ## 标准项目描述与边界
 
-消费者持有 `[[tool.mcpywrap.git_dependencies]]`：必需 `name/git/rev`，可选 `subdir/kind/target`；持久化的rev是完整提交。一般让add生成它，不手工猜锁文件。
+消费者持有 `[[tool.mcpywrap.git_dependencies]]`：必需 `name/git/rev`，可选 `subdir/kind/target/unbundled`；持久化的rev是完整提交。一般让add生成它，不手工猜锁文件。
 
 发布者可以在远端pyproject.toml声明：
 

@@ -148,7 +148,7 @@ def runtime_builder(project, target, resolved=None):
     if read_project(project).get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') == 'map':
         from .preparation import MapRuntimeBuilder
         return MapRuntimeBuilder(project, target, resolved=resolved)
-    return AddonProjectBuilder(project, target, resolved=resolved, stable_layout=True)
+    return AddonProjectBuilder(project, target, resolved=resolved, stable_layout=True, purpose="runtime")
 
 
 def matches_source(project, data):

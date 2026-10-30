@@ -1,5 +1,6 @@
 """A paired CLI must never silently invoke the local engineering implementation."""
 import json
+import inspect
 import os
 from pathlib import Path
 import tempfile
@@ -12,6 +13,11 @@ from mcpywrap_core.mobile_host.client import Client
 from mcpywrap_core.remote.protocol import RemoteError
 from mcpywrap_core.host import HostServices, host_scope
 
+def cli_runner():
+    options = {'mix_stderr': False} if 'mix_stderr' in inspect.signature(CliRunner).parameters else {}
+    return CliRunner(**options)
+
+
 class MobileHostTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
@@ -21,33 +27,54 @@ class MobileHostTests(unittest.TestCase):
         profiles.bind(self.record)
     def test_build_routes_before_local_core_even_without_project_toml(self):
         with patch.object(Client,'operation',return_value={'output':'host-output'}) as remote, patch('mcpywrap_core.api.Core.execute',side_effect=AssertionError('local build forbidden')):
-            result=CliRunner().invoke(cli,['--project',str(self.project),'build','--json'])
+            result=cli_runner().invoke(cli,['--project',str(self.project),'build','--json'])
         self.assertEqual(result.exit_code,0,result.output);self.assertEqual(remote.call_args.args[0],'build')
         self.assertEqual(json.loads(result.output)['output'],'host-output')
+    def test_dependency_preview_has_the_same_cli_shape_when_bound(self):
+        selection={'purpose':'release','includes_unbundled':False,'dependencies':[],
+                   'excluded':[{'dependency':'helper','unbundled':True,'reason':'unbundled'}]}
+        for structured in (False,True):
+            with self.subTest(json=structured), patch.object(Client,'operation',return_value={'dependency_selection':selection}) as remote, patch('mcpywrap_core.dependencies.DependencyService.resolve',side_effect=AssertionError('local resolution forbidden')):
+                result=cli_runner().invoke(cli,['--project',str(self.project),'deps','--bundled-only',*(['--json'] if structured else [])])
+            self.assertEqual(result.exit_code,0,result.output)
+            self.assertEqual(remote.call_args.args[0],'resolve')
+            self.assertTrue(remote.call_args.args[2]['bundled_only'])
+            if structured:
+                self.assertEqual(json.loads(result.stdout)['purpose'],'release')
+                self.assertEqual(json.loads(result.stdout)['excluded'],selection['excluded'])
+            else:
+                self.assertIn('helper [已排除',result.output)
+                self.assertNotIn('dependency_selection:',result.output)
+    def test_dependency_preview_requires_the_host_capability_without_fallback(self):
+        with patch.object(Client,'operation',return_value={'dependencies':[]}), patch('mcpywrap_core.dependencies.DependencyService.resolve') as local:
+            result=cli_runner().invoke(cli,['--project',str(self.project),'deps','--json'])
+        self.assertNotEqual(result.exit_code,0,result.output)
+        self.assertEqual(json.loads(result.output)['code'],'host_capability_missing')
+        local.assert_not_called()
     def test_explicit_local_cannot_bypass_binding(self):
         with patch.object(Client,'operation') as remote:
-            result=CliRunner().invoke(cli,['--local','--project',str(self.project),'build','--json'])
+            result=cli_runner().invoke(cli,['--local','--project',str(self.project),'build','--json'])
         self.assertNotEqual(result.exit_code,0);remote.assert_not_called()
     def test_failure_never_falls_back(self):
         with patch.object(Client,'operation',side_effect=RemoteError('offline','host_unavailable')),patch('mcpywrap_core.api.Core.execute') as local:
-            result=CliRunner().invoke(cli,['--project',str(self.project),'build','--json'])
+            result=cli_runner().invoke(cli,['--project',str(self.project),'build','--json'])
         self.assertNotEqual(result.exit_code,0);local.assert_not_called()
     def test_unpaired_workspace_keeps_desktop_execution(self):
         profiles.write([])
         with patch('mcpywrap_core.api.Core.execute',return_value={'output':'local'}) as local:
             (self.project/'pyproject.toml').write_text('[project]\nname="example"\nversion="1"\n')
-            result=CliRunner().invoke(cli,['--project',str(self.project),'build','--json'])
+            result=cli_runner().invoke(cli,['--project',str(self.project),'build','--json'])
         self.assertEqual(result.exit_code,0,result.output);local.assert_called_once()
     def test_nested_runtime_command_routes_with_code_file_contents(self):
         path=self.project/'probe.py';path.write_text('_result = 42')
         with patch.object(Client,'operation',return_value={'value':42}) as remote:
-            result=CliRunner().invoke(cli,['--project',str(self.project),'runtime','py','--session','s','--side','server','--file',str(path),'--json'])
+            result=cli_runner().invoke(cli,['--project',str(self.project),'runtime','py','--session','s','--side','server','--file',str(path),'--json'])
         self.assertEqual(result.exit_code,0,result.output)
         self.assertEqual(remote.call_args.args[0],'runtime.py');self.assertEqual(remote.call_args.args[2]['code'],'_result = 42')
     def test_credentials_private_and_not_returned_by_status(self):
         if os.name != 'nt': self.assertEqual(profiles.location().stat().st_mode&0o777,0o600)
         with patch.object(Client,'capabilities',return_value={'core_version':'0.6.2'}):
-            result=CliRunner().invoke(cli,['--project',str(self.project),'host','status','--json'])
+            result=cli_runner().invoke(cli,['--project',str(self.project),'host','status','--json'])
         self.assertEqual(result.exit_code,0,result.output);self.assertNotIn('not-a-real-token',result.output)
     def test_paths_are_mount_relative(self):
         self.assertEqual(profiles.project_path(self.record,self.project),'projects/demo')
@@ -114,11 +141,11 @@ class SkillInstallTests(unittest.TestCase):
     def test_complete_skill_tree_installs_without_app_specific_fork(self):
         with tempfile.TemporaryDirectory() as temp:
             target=Path(temp)/'agent/skills/mcpywrap'
-            result=CliRunner().invoke(cli,['skill','install','--directory',str(target),'--json'])
+            result=cli_runner().invoke(cli,['skill','install','--directory',str(target),'--json'])
             self.assertEqual(result.exit_code,0,result.output)
             for path in ('SKILL.md','scripts/bootstrap.py','references/application-host.md','assets/consumer-prepare/framework/build_tools/schema.json'):
                 self.assertTrue((target/path).is_file(),path)
             original=(target/'SKILL.md').read_bytes()
-            rejected=CliRunner().invoke(cli,['skill','install','--directory',str(target),'--json'])
+            rejected=cli_runner().invoke(cli,['skill','install','--directory',str(target),'--json'])
             self.assertNotEqual(rejected.exit_code,0)
             self.assertEqual((target/'SKILL.md').read_bytes(),original)

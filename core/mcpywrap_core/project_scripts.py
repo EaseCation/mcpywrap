@@ -181,7 +181,7 @@ def startup_options(project):
     from .consumer_prepare import PreparationPlan
     plan = PreparationPlan(project)
     plan.preflight()
-    return {'script_budget': startup_budget(project, plan), 'script_config_digest': snapshot_digest(project),
+    return {'dependency_selection': plan.manager.selection() if plan.manager else None, 'script_budget': startup_budget(project, plan), 'script_config_digest': snapshot_digest(project),
             'consumer_plan_digest': plan.token(),
             'consumer_plan': {'providers': plan.rows(), 'environment': plan.environment_status()}}
 
@@ -213,6 +213,7 @@ def startup_hooks(data, deployment):
     with before(project, 'before_run', cancel=stop.exists, progress=progress, lock_held=True, plan=plan) as results:
         if (config_path.read_bytes() if config_path.exists() else None) != original_config:
             raise ScriptError('前置脚本修改了世界配置，本次启动已停止。', 'script_config_changed')
+        data['dependency_selection'] = plan.manager.selection() if plan.manager else None
         data['scripts'] = results
     # 仅保存于本次 worker 的部署对象，不序列化到会话文件。
     deployment.preparation_plan = plan
@@ -350,7 +351,7 @@ def before(project, event, *, cancel=None, progress=None, lock_held=False, plan=
         yield results
 
 
-def validate_build(project, target, *, resolved=None):
+def validate_build(project, target, *, resolved=None, purpose=None):
     """Preflight destinations/structure without running hooks or publishing files."""
     from .runtime.deployment import check_build_target
     from .builders.project_builder import AddonProjectBuilder
@@ -361,10 +362,11 @@ def validate_build(project, target, *, resolved=None):
         raise ValueError('构建目标不能是目录链接')
     kind = read_project(project).get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon')
     check_build_target(project, target)
+    purpose = purpose or (resolved.purpose if resolved is not None else "release")
     if kind == 'addon':
-        AddonProjectBuilder(project, target, resolved=resolved).initialize()
+        AddonProjectBuilder(project, target, resolved=resolved, purpose=purpose).initialize()
     elif kind == 'map':
-        manager = DependencyService(project).resolve()
+        manager = DependencyService(project).resolve(purpose=purpose)
         validate_target(target, project, list(manager.get_all_dependencies().values()) + [manager.root_node.addon_pack])
         if any(is_within(target, Path(project)/name) for name in ('behavior_packs', 'resource_packs', 'db')):
             raise ValueError('构建输出不能位于地图数据目录内')

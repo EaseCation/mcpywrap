@@ -161,6 +161,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_remote.py -v
       - run: python -m unittest discover -s tests -p test_remote_scripts.py -v
       - run: python -m unittest discover -s tests -p test_git_projects.py -v
+      - run: python -m unittest discover -s tests -p test_unbundled_dependencies.py -v
       - run: python -m unittest discover -s tests -p test_qumod_workflow.py -v
       - run: python -m unittest discover -s tests -p test_recordings.py -v
       - run: python -m unittest discover -s tests -p 'test_runtime*.py' -v
@@ -269,6 +270,7 @@ jobs:
           wheel-smoke/bin/python -c "import importlib.util; from importlib.metadata import version; from mcpywrap_core import __version__; assert __version__ == version('mcpywrap'); assert importlib.util.find_spec('mcpywrap') is None; from mcpywrap_core.dependencies import DependencyService; from mcpywrap_core.consumer_prepare import PreparationPlan; from jsonschema import Draft202012Validator; from mcpywrap_core.minecraft.template.generate_mod_files import generate_mod_framework"
           wheel-smoke/bin/mcpy --help
           wheel-smoke/bin/mcpy add --help
+          wheel-smoke/bin/mcpy deps --help
           wheel-smoke/bin/mcpy connect --help
           wheel-smoke/bin/mcpy deployment --help
           wheel-smoke/bin/mcpy deployment migrate --help

@@ -12,5 +12,7 @@ def package_cmd(merge):
     """组装 Addon/地图并生成分发 ZIP；游戏兼容性需实际测试。"""
     require_project()
     result = Core().execute('package', project_dir(), merge=merge)
+    from ..dependency_feedback import report_selection
+    report_selection(result.get('dependency_selection'))
     click.secho('✅ 打包成功！分发文件路径: ' + result['artifact'], fg='green')
     return result

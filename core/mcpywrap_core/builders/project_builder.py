@@ -11,6 +11,7 @@ from .MapPack import MapPack
 from .assembly import assemble_addon, validate_target, is_within, pack_files, rebuild_file
 from ..code_libraries import prepare_libraries
 from ..utils.paths import is_link
+from .output_lock import locked_output
 
 
 def _replace_with_retry(source, target):
@@ -39,7 +40,7 @@ def _clear_directory(directory):
 
 
 class AddonProjectBuilder:
-    def __init__(self, source_dir, target_dir, include_dependencies=True, *, resolved=None, stable_layout=False):
+    def __init__(self, source_dir, target_dir, include_dependencies=True, *, resolved=None, stable_layout=False, purpose="release", output_lease=None):
         self.source_dir = str(Path(source_dir).resolve())
         self.requested_target = Path(target_dir).absolute() if target_dir else None
         self.target_dir = str(Path(target_dir).resolve()) if target_dir else None
@@ -47,6 +48,9 @@ class AddonProjectBuilder:
         self.project_name = self.config.get('project', {}).get('name', 'current_project')
         self.include_dependencies = include_dependencies
         self.resolved = resolved
+        from ..dependencies import validate_purpose
+        self.purpose = validate_purpose(purpose)
+        self.output_lease = output_lease
         self.stable_layout = stable_layout
 
     def initialize(self):
@@ -60,12 +64,16 @@ class AddonProjectBuilder:
             config.setdefault('project', {})['dependencies'] = []
             config.setdefault('tool', {}).setdefault('mcpywrap', {})['local_dependencies'] = []
             config['tool']['mcpywrap']['git_dependencies'] = []
-        self.dependency_manager = self.resolved or DependencyService(self.source_dir).resolve(config)
+        self.dependency_manager = self.resolved or DependencyService(self.source_dir).resolve(config, purpose=self.purpose)
+        from ..dependencies import require_resolution
+        require_resolution(self.dependency_manager, self.source_dir, self.purpose)
         report_dependency_warnings(self.dependency_manager)
         self.dependency_tree = self.dependency_manager.root_node
         self.origin_addon = self.dependency_tree.addon_pack
         self.packs = list(self.dependency_manager.get_all_dependencies().values()) + [self.origin_addon]
         prepare_libraries(self.packs)
+        from .assembly import validate_unbundled_overrides
+        validate_unbundled_overrides(self.packs)
         validate_target(self.target_dir, self.source_dir, self.packs)
         if is_link(self.target_dir):
             raise DependencyError('构建目标不能是目录链接')
@@ -77,6 +85,7 @@ class AddonProjectBuilder:
             setattr(self.target_addon, kind + '_pack_dir', str(Path(self.target_dir) / name))
         return True
 
+    @locked_output
     def build(self):
         try:
             from ..runtime.deployment import check_build_target
@@ -125,19 +134,25 @@ class AddonProjectBuilder:
 
 
 class MapProjectBuilder:
-    def __init__(self, source_dir, target_dir, merge=False):
+    def __init__(self, source_dir, target_dir, merge=False, *, purpose="release", resolved=None, output_lease=None):
         self.source_dir = str(Path(source_dir).resolve())
         self.requested_target = Path(target_dir).absolute() if target_dir else None
         self.target_dir = str(Path(target_dir).resolve()) if target_dir else None
         self.merge = merge
+        self.purpose, self.resolved = purpose, resolved
+        self.output_lease = output_lease
 
+    @locked_output
     def build(self):
         try:
             if self.requested_target is not None and is_link(self.requested_target):
                 raise DependencyError('构建目标不能是目录链接')
             from ..runtime.deployment import check_build_target
             check_build_target(self.source_dir, self.target_dir)
-            manager = DependencyService(self.source_dir).resolve()
+            manager = self.resolved or DependencyService(self.source_dir).resolve(purpose=self.purpose)
+            from ..dependencies import require_resolution
+            require_resolution(manager, self.source_dir, self.purpose)
+            self.manager = manager
             report_dependency_warnings(manager)
             packs = list(manager.get_all_dependencies().values())
             root = manager.root_node.addon_pack

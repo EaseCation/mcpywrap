@@ -86,6 +86,8 @@ disabled = [
 
 Git URL 与现有声明匹配，subdir 默认 `.`。选择器覆盖同一来源的别名、安装目标和传递路径，升级后仍停用；运行库依赖保留。不要为了掩盖缺配置或脚本失败自动添加停用项。
 
+仅通过 `unbundled=true` 引用的依赖暂不支持 consumer_prepare，避免生成文件残留到发布包。`script list --effective` 查看运行准备计划；发布依赖用 `deps --bundled-only --json` 查看。
+
 ## 独立示例
 
 需要可复制的演示时，将本 Skill 的 [assets/consumer-prepare](../assets/consumer-prepare/) 整体复制到新的工作目录，以其中的 game 为项目执行上述 sync/package。framework 提供工具与运行库，game/data/items.json 是原始数据；修改后再次构建可检查生成结果。不要直接在 Skill 资产目录运行会写文件的命令。

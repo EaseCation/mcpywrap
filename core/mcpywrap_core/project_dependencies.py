@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 
 from . import git_projects
 from .source_files import _relative
-from .dependencies import DependencyError, DependencyService, DependencyStatus, addon_directories, read_project, write_project
+from .dependencies import DependencyError, DependencyService, DependencyStatus, addon_directories, read_project, write_project, included_in_release
 
 
 def _snapshot(path):
@@ -34,7 +34,10 @@ class GitDependencyService:
     def __init__(self, root):
         self.root = Path(root).resolve()
 
-    def add(self, url, ref=None, name=None, subdir=None, kind=None, target=None, scaffold=None):
+    def add(self, url, ref=None, name=None, subdir=None, kind=None, target=None, scaffold=None, *, unbundled=None):
+        from .dependencies import validate_unbundled
+        if unbundled is not None:
+            validate_unbundled(unbundled)
         if not (self.root / 'pyproject.toml').is_file():
             raise DependencyError('请先执行 mcpy init 初始化项目')
         name = name or re.sub(r'[^A-Za-z0-9_.-]', '-', Path(urlsplit(url).path.rstrip('/')).name.removesuffix('.git'))
@@ -62,6 +65,10 @@ class GitDependencyService:
         before = [_snapshot(path) for path in paths]
         source, commit = git_projects.fetch_source(self.root, url, requested_ref)
         entry = {'name': name, 'git': url, 'rev': commit, 'subdir': subdir, 'kind': kind}
+        selected_unbundled = unbundled if unbundled is not None else (previous.get('unbundled', False) if previous else False)
+        validate_unbundled(selected_unbundled)
+        if selected_unbundled:
+            entry['unbundled'] = True
         if target:
             entry['target'] = target
         if previous:
@@ -118,12 +125,45 @@ class GitDependencyService:
         node_id = lock['roots'][next(i for i, item in enumerate(entries) if item['name'] == name)]
         resolved = next(node for node in lock['nodes'] if node['id'] == node_id)
         return {'dependency': name, 'source': url, 'rev': commit, 'target': resolved['target'], 'kind': resolved['kind'],
-                'classification': 'git_project', 'synced': True, 'changed': candidate != config,
+                'unbundled': selected_unbundled, 'previous_unbundled': previous.get('unbundled', False) if previous else None,
+                'included_in_release': included_in_release(manager, self.root/'.mcpy/git-projects'/node_id), 'classification': 'git_project', 'synced': True, 'changed': candidate != config,
                 'new_script': created, 'warnings': manager.warnings, 'nodes': len(lock['nodes'])}
+
+    def set_unbundled(self, name, unbundled):
+        from .dependencies import validate_unbundled
+        validate_unbundled(unbundled)
+        config = read_project(self.root)
+        entries = git_projects.declarations(self.root, config)
+        entry = next((entry for entry in entries if entry['name'] == name), None)
+        if entry is None:
+            raise DependencyError('未声明此 Git 依赖: ' + name)
+        before = {path: _snapshot(path) for path in (self.root/'pyproject.toml', self.root/git_projects.LOCK_FILE)}
+        lock = json.loads(before[self.root/git_projects.LOCK_FILE]) if before[self.root/git_projects.LOCK_FILE] else None
+        matches = lock is not None and lock['declarations'] == entries
+        if unbundled:
+            entry['unbundled'] = True
+        else:
+            entry.pop('unbundled', None)
+        try:
+            if matches:
+                lock['declarations'] = entries
+                lock['version'] = 3
+                git_projects.write_lock(self.root, lock)
+            write_project(self.root, config)
+        except Exception:
+            for path, data in before.items():
+                _restore(path, data)
+            raise
 
     def inspect(self, name):
         try:
-            for entry, path, node in git_projects.resolve_projects(self.root):
+            config = read_project(self.root)
+            entries = git_projects.declarations(self.root, config)
+            selected = [entry for entry in entries if entry['name'] == name]
+            if not selected:
+                raise DependencyError('未声明此Git依赖')
+            config['tool']['mcpywrap']['git_dependencies'] = selected
+            for entry, path, node in git_projects.resolve_projects(self.root, config):
                 if entry['name'] == name:
                     return DependencyStatus('git_project', f"{entry['git']}\n提交: {entry['rev']}\n类型: {node['kind']}\n目标: {node.get('target') or '独立Addon'}")
             raise DependencyError('未声明此Git依赖')
@@ -154,7 +194,8 @@ class GitDependencyService:
                             for child in by_id[key]['children']:
                                 include(child)
                     for key in lock['roots']:
-                        include(key)
+                        if key is not None:
+                            include(key)
                     lock['nodes'] = [node for node in lock['nodes'] if node['id'] in reachable]
                     git_projects.write_lock(self.root, lock)
             write_project(self.root, config)

@@ -89,6 +89,9 @@ python tests/manual/lifecycle_dependency_audit.py --output <新的隔离验收�
 
 ## 依赖与资源准备
 
+`test_unbundled_dependencies.py` 覆盖 unbundled 布尔标记的本地与 Git 声明、根项目运行引用、共享节点、发布排除、未安装开发节点、部分同步锁、CLI/JSON/API、Qt 打包设置修改、dev 输出残留和跨进程写入互斥。真实游戏加载仍需单独验收；测试中的运行组装和 watcher 不等于游戏启动。
+
+
 `test_git_projects.py` 使用真实本地 Git 验证固定提交、导出、传递关系、缓存、锁和更新回退；游戏对第三方框架的兼容性需要单独确认。
 
 `test_consumer_prepare.py` 覆盖本地/Git 准备入口、工具环境、只读计划、配置校验和生命周期；其中的独立 Skill 模板测试不依赖仓库外层示例。可选程序 `manual/consumer_prepare_acceptance.py --output <新目录>` 默认只验证资源准备，显式加 `--game` 才启动测试游戏，`--clients 2` 检查主机/客机准备次数。保留报告和世界，脚本只停止自己的测试会话。

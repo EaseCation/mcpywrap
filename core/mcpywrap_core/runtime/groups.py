@@ -163,6 +163,8 @@ def status(project, group):
                 member.update(state=current['state'], world_ready=current.get('world_ready', False),
                               game=current.get('game'), error=current.get('error'),
                               log_path=current.get('log_path'))
+                if current.get('dependency_selection'):
+                    member['dependency_selection'] = current['dependency_selection']
                 if current.get('local_join'):
                     member['local_join'] = current['local_join']
             except (ValueError, OSError) as error:
@@ -201,6 +203,7 @@ def status(project, group):
         instruction = ((instruction + ' ') if instruction else '') + '主机继续使用已加载版本；源码改动尚未应用，应用改动请重启联调组。'
     return {'ok': not record.get('error') and join_problem.get('state') != 'failed', 'group': group, 'session': members[0].get('session'),
             'kind': record['kind'], 'backend': record['backend'],
+            'dependency_selection': members[0].get('dependency_selection') if record['kind'] == 'local' else None,
             'state': state, 'members': members, 'connection_verified': state == 'ready',
             'connection_verified_at': record.get('connection_verified_at'),
             'connection_checked_at': record.get('connection_checked_at'),

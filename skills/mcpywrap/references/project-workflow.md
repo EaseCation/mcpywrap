@@ -22,7 +22,7 @@
 
 ## 游戏 ZIP
 
-`package` 生成 `dist/<project.name>-<project.version>.zip`：Addon 内为实际存在的 `<name>_bp/`、`<name>_rp/`；Map 根目录含世界数据及包，默认保留独立包，--merge 合并依赖资源。纯开发依赖不进入 ZIP。
+`package` 生成 `dist/<project.name>-<project.version>.zip`：Addon 内为实际存在的 `<name>_bp/`、`<name>_rp/`；Map 根目录含世界数据及包，默认保留独立包，--merge 合并依赖资源。打包排除规则见[unbundled](project-dependencies.md#不随构建打包unbundled)；普通工具 Python 包不进入游戏包。
 
 使用公开 package 导出，不自行重压缩或改包名。检查返回的 artifact 及实际 ZIP；行为包 `entities/` 空目录会保留，纯脚本项目不需要虚构实体。新 ZIP 成功后替换同名产物，失败保留旧 ZIP；这不代表脚本对源码的写入也会回滚。
 
@@ -30,7 +30,7 @@
 
 ## dev 与运行部署的区别
 
-dev 只维护配置的离线构建目录；源码变化不会因此自动注入游戏。实际游戏更新用 runtime reload/watch，见[运行时调试](runtime-debug.md)。依赖声明改变后重新 sync（需要获取时）并重启 dev；不要把 target_dir 改成 `.mcpy/runtime` 或 `.runtime` 绕过部署保护。
+dev 维护配置的离线构建目录，包含 unbundled 依赖；源码变化不会因此自动注入游戏。停止 dev 后再让 build 写同一目标；build 会完整替换输出，package 独立组装发布包。实际游戏更新用 runtime reload/watch，见[运行时调试](runtime-debug.md)。依赖声明改变后重新 sync（需要获取时）并重启 dev；不要把 target_dir 改成 `.mcpy/runtime` 或 `.runtime` 绕过部署保护。
 
 游戏世界数据由实例保存。build/package 产物、当前运行部署、世界存档是不同对象；离线打包不应删除或重建测试世界。共享部署占用、重新启动和失败处理见[本地生命周期](local-development.md)。
 

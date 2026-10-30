@@ -66,43 +66,48 @@ def dev_cmd(reload_session):
         project_name = config.get('project', {}).get('name', 'current_project')
         dependencies_list = config.get('project', {}).get('dependencies', [])
         
-        # 实际构建
-        from ..project_scripts import before, configured, validate_build
-        from ..consumer_prepare import PreparationPlan
-        plan = PreparationPlan(source_dir)
-        if configured(source_dir):
-            validate_build(source_dir, target_dir, resolved=plan.manager)
-        with before(source_dir, 'before_build', plan=plan):
-            suc = build(source_dir, target_dir, resolved=plan.manager)
-        if not suc:
-            click.secho("❌ 初始构建失败", fg="red")
-            raise click.ClickException('无法启动开发监控')
+        from ..builders.output_lock import output_lease
+        with output_lease(target_dir) as lease:
+            # 实际构建
+            from ..project_scripts import before, configured, validate_build
+            from ..consumer_prepare import PreparationPlan
+            plan = PreparationPlan(source_dir)
+            from ..dependency_feedback import report_selection
+            report_selection(plan.manager.selection())
+            if configured(source_dir):
+                validate_build(source_dir, target_dir, resolved=plan.manager, purpose="runtime")
+            with before(source_dir, 'before_build', plan=plan):
+                suc = build(source_dir, target_dir, resolved=plan.manager, purpose="runtime", output_lease=lease)
+            if not suc:
+                click.secho("❌ 初始构建失败", fg="red")
+                raise click.ClickException('无法启动开发监控')
 
-        click.secho(f"🔍 开始监控代码变化，路径: ", fg="bright_blue", nl=False)
-        click.secho(f"{source_dir}", fg="bright_cyan")
+            click.secho(f"🔍 开始监控代码变化，路径: ", fg="bright_blue", nl=False)
+            click.secho(f"{source_dir}", fg="bright_cyan")
         
-        if plan.enabled:
-            click.echo('初次资源准备已完成；dev 后续只同步包内文件，原始素材修改需要重新构建并应用。')
+            if plan.enabled:
+                click.echo('初次资源准备已完成；dev 后续只同步包内文件，原始素材修改需要重新构建并应用。')
 
-        # 创建项目监视器
-        project_watcher = ProjectWatcher(source_dir, target_dir, file_change_callback)
+            # 创建项目监视器
+            project_watcher = ProjectWatcher(source_dir, target_dir, file_change_callback, output_lease=lease)
         
-        # 设置监视器
-        dep_count = project_watcher.setup_from_config(project_name, dependencies_list)
+            # 设置监视器
+            dep_count = project_watcher.setup_from_config(project_name, dependencies_list)
         
-        if dep_count > 0:
-            click.secho(f"✅ 找到并监控 {dep_count} 个依赖包", fg="green")
+            if dep_count > 0:
+                click.secho(f"✅ 找到并监控 {dep_count} 个依赖包", fg="green")
         
-        # 启动监视
-        project_watcher.start()
-        try:
-            click.secho("👀 监控中... 按 Ctrl+C 停止", fg="bright_magenta")
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            project_watcher.stop()
-            click.secho("🛑 监控已停止", fg="bright_yellow")
-            raise
+            # 启动监视
+            project_watcher.start()
+            try:
+                click.secho("👀 监控中... 按 Ctrl+C 停止", fg="bright_magenta")
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                click.secho("🛑 监控已停止", fg="bright_yellow")
+                raise
+            finally:
+                project_watcher.stop()
     else:
         click.secho('❌ 暂未支持: 当前仅支持Addons项目的构建', fg="red")
         raise click.ClickException('无法启动开发监控')

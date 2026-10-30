@@ -71,6 +71,9 @@ class DependencyManager:
         self._git_sources = {}
         self.collect_errors = False
         self.has_git_projects = False
+        self.purpose = "runtime"
+        self.edges = []
+        self.excluded = []
 
     def find_dependency_path(self, package_name):
         try:
@@ -80,8 +83,10 @@ class DependencyManager:
         direct = dist.read_text('direct_url.json')
         return _local_url(json.loads(direct).get('url', '')) if direct else None
 
-    def build_dependency_tree(self, project_name, project_path, dependencies=None, *, config=None, allow_missing=False, git_lock=None, collect_errors=False):
+    def build_dependency_tree(self, project_name, project_path, dependencies=None, *, config=None, allow_missing=False, git_lock=None, collect_errors=False, purpose="runtime"):
         self.__init__()
+        from ..dependencies import validate_purpose
+        self.purpose = validate_purpose(purpose)
         self.collect_errors = collect_errors
         project_path = str(Path(project_path).resolve())
         if git_lock is not None:
@@ -101,18 +106,38 @@ class DependencyManager:
         self._active.append(key)
         self._process(root, config)
         self._active.pop()
+        self.bundled_nodes = {id(root)}
+        pending = [root]
+        while pending:
+            current = pending.pop()
+            for owner, child, unbundled in self.edges:
+                if owner is current and not unbundled and id(child) not in self.bundled_nodes:
+                    self.bundled_nodes.add(id(child))
+                    pending.append(child)
+        for node in self._ordered:
+            node.unbundled = id(node) not in self.bundled_nodes
+            node.addon_pack.unbundled = node.unbundled
         self.dependency_map = {canonical_path(n.addon_pack.path): n.addon_pack for n in self._ordered}
         if self.errors and not (allow_missing or collect_errors):
             raise DependencyError('\n'.join(self.errors))
         return root
 
     def _process(self, parent, config):
+        local_paths = set()
         for entry in declarations(config):
             source = parent.addon_pack.path
+            if entry.unbundled and (parent is not self.root_node or self.purpose == 'release'):
+                self.excluded.append({'source': str(source), 'dependency': entry.value, 'unbundled': True,
+                                      'reason': 'unbundled' if parent is self.root_node else 'dependency_unbundled'})
+                self._status(source, entry, 'excluded', 'unbundled 依赖不进入 build/package，也不向消费者传递')
+                continue
             try:
                 if entry.kind == 'local':
                     path = str(resolve_path(source, entry.value))
-                    self._visit(parent, path, Path(path).name)
+                    if canonical_path(path) in local_paths:
+                        raise DependencyError('同一目录重复声明: ' + entry.value)
+                    local_paths.add(canonical_path(path))
+                    self._visit(parent, path, Path(path).name, unbundled=entry.unbundled)
                     self._status(source, entry, 'addon')
                     continue
                 try:
@@ -153,14 +178,18 @@ class DependencyManager:
                 if not self.collect_errors:
                     raise DependencyError(message) from exc
                 self.errors.append(message)
-        from ..git_projects import resolve_projects
+        from ..git_projects import resolve_projects, declarations as git_declarations
+        for entry in git_declarations(parent.addon_pack.path, config):
+            if entry.get('unbundled', False) and (parent is not self.root_node or self.purpose == 'release'):
+                self.excluded.append({'source': str(parent.addon_pack.path), 'dependency': entry['name'], 'unbundled': True,
+                                      'reason': 'unbundled' if parent is self.root_node else 'dependency_unbundled'})
         try:
             projects = resolve_projects(parent.addon_pack.path, config,
                                         self._git_locks.get(str(Path(parent.addon_pack.path).resolve())),
-                                        source_records=self._git_sources)
+                                        source_records=self._git_sources, purpose=self.purpose if parent is self.root_node else "release")
             for entry, path, info in projects:
                 self.has_git_projects = True
-                self._visit(parent, str(path), entry['name'])
+                self._visit(parent, str(path), entry['name'], unbundled=entry.get('unbundled', False))
         except (DependencyError, OSError, ValueError) as exc:
             if not self.collect_errors:
                 raise
@@ -185,7 +214,7 @@ class DependencyManager:
         self.warnings.append(message)
         self._status(source, entry, 'development_only', message)
 
-    def _visit(self, parent, path, name, source_kind='local'):
+    def _visit(self, parent, path, name, source_kind='local', unbundled=False):
         key = canonical_path(path)
         if key in self._active:
             raise DependencyError('循环依赖: ' + ' -> '.join(self._active + [key]))
@@ -193,6 +222,7 @@ class DependencyManager:
             if source_kind == 'local' and self._nodes[key].source['kind'] == 'package':
                 self._nodes[key].source['kind'] = 'local'
             parent.add_child(self._nodes[key])
+            self.edges.append((parent, self._nodes[key], unbundled))
             return
         config = read_project(path)
         if config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
@@ -211,6 +241,7 @@ class DependencyManager:
         node = DependencyNode(name, addon, parent, source=source)
         self._nodes[key] = node
         parent.add_child(node)
+        self.edges.append((parent, node, unbundled))
         self._active.append(key)
         config = read_project(path)
         try:
@@ -219,6 +250,27 @@ class DependencyManager:
         finally:
             self._active.pop()
         self._ordered.append(node)
+
+    def selection(self):
+        from collections import deque
+        paths = {(id(self.root_node), False): [self.root_node.name]}
+        pending = deque([(self.root_node, False)])
+        outgoing = {}
+        for parent, child, unbundled in self.edges:
+            outgoing.setdefault(id(parent), []).append((child, unbundled))
+        while pending:
+            parent, inherited = pending.popleft()
+            for child, unbundled in outgoing.get(id(parent), []):
+                effective = inherited or unbundled
+                key = (id(child), effective)
+                if key not in paths:
+                    paths[key] = paths[(id(parent), inherited)] + [child.name]
+                    pending.append((child, effective))
+        return {'purpose': self.purpose, 'includes_unbundled': self.purpose == 'runtime',
+                'dependencies': [{'name': node.name, 'path': str(node.addon_pack.path),
+                                  'unbundled': node.unbundled, 'included_in_release': not node.unbundled,
+                                  'via': [paths[(id(node), value)] for value in (False, True) if (id(node), value) in paths]} for node in self._ordered],
+                'excluded': self.excluded}
 
     def get_all_dependencies(self):
         return self.dependency_map

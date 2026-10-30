@@ -7,13 +7,13 @@ from ..dependencies import read_project, write_project
 from ..host import run_command, tool_python
 
 
-def sync_project(path, install=False, migrate_windows_lock=False):
+def sync_project(path, install=False, migrate_windows_lock=False, bundled_only=False):
     from ..project_scripts import project_lock
     with project_lock(path, force=True):
-        return _sync_project(path, install, migrate_windows_lock)
+        return _sync_project(path, install, migrate_windows_lock, bundled_only=bundled_only)
 
 
-def _sync_project(path, install=False, migrate_windows_lock=False):
+def _sync_project(path, install=False, migrate_windows_lock=False, bundled_only=False):
     from ..config import ensure_map_setuptools_sync
     from ..utils.project_setup import find_and_configure_behavior_pack
     with project_scope(path):
@@ -24,7 +24,7 @@ def _sync_project(path, install=False, migrate_windows_lock=False):
         from ..builders.dependency_manager import DependencyManager
         visited, active = set(), set()
         git_count = 0
-        def sync_sources(directory):
+        def sync_sources(directory, root=False):
             nonlocal git_count
             key = canonical_path(directory)
             if key in active:
@@ -35,6 +35,8 @@ def _sync_project(path, install=False, migrate_windows_lock=False):
             active.add(key)
             source_config = read_project(directory)
             for entry in dependency_declarations(source_config):
+                if entry.unbundled and (not root or bundled_only):
+                    continue
                 if entry.kind == 'local':
                     sync_sources(resolve_path(directory, entry.value))
                 else:
@@ -42,11 +44,11 @@ def _sync_project(path, install=False, migrate_windows_lock=False):
                     if target and 'mcpywrap' in read_project(target).get('tool', {}):
                         sync_sources(target)
             if git_declarations(directory, source_config) or Path(directory, GIT_LOCK_FILE).exists():
-                git_count += sync_projects(directory, source_config)
+                git_count += sync_projects(directory, source_config, purpose="runtime" if root and not bundled_only else "release", consumer=not root)
             active.remove(key)
             visited.add(key)
-        sync_sources(path)
-        manager = DependencyService(path).resolve()
+        sync_sources(path, root=True)
+        manager = DependencyService(path).resolve(purpose="release" if bundled_only else "runtime")
         packs = list(manager.get_all_dependencies().values()) + [manager.root_node.addon_pack]
         library_count = sum(sync_libraries(pack.path) for pack in packs if declarations(pack.path) or
                             Path(pack.path, 'mcpy-code-libraries.lock.json').exists())
@@ -62,7 +64,7 @@ def _sync_project(path, install=False, migrate_windows_lock=False):
             if proc.returncode:
                 raise ValueError(proc.stderr or proc.stdout or '项目安装失败')
     result = {'project': str(path), 'installed': install, 'code_libraries': library_count,
-              'git_projects': git_count, 'git_lock_migrations': [], 'sources_synced': True}
+              'dependency_selection': manager.selection(), 'git_projects': git_count, 'git_lock_migrations': [], 'sources_synced': True}
     from ..consumer_prepare import PreparationPlan, guidance
     from ..prepare_environment import ensure_environment
     from ..project_scripts import ScriptError

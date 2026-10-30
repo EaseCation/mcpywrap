@@ -156,6 +156,9 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         retry = recover_run(base_dir, result)
         if retry is not None:
             result, recovered = retry, True
+    if isinstance(result, dict) and result.get("dependency_selection"):
+        from ..dependency_feedback import report_selection
+        report_selection(result["dependency_selection"])
     if show_debug and isinstance(result, dict) and result.get('session'):
         from ..mcstudio.sessions import show_configuration
         show_configuration(result)

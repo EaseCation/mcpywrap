@@ -83,3 +83,11 @@ v2 锁使用相同的大小写敏感路径排序；源码由 Git archive 提取�
 终端只显示同步进度、结果和必要操作；`mcpy sync --json` 返回结构化结果。`--migrate-windows-lock` 和 JSON 中始终为空的 `git_lock_migrations` 仅保留旧脚本兼容。团队各设备应使用包含此修复的版本，并提交 sync 更新后的锁文件。
 
 测试入口见[测试说明](../tests/README.md)。
+
+## 不随构建打包：unbundled
+
+通用 Git Addon/code 支持布尔标记 `unbundled`，默认 false。它属于依赖引用，不参与源码或安装节点身份计算。true 时仅随运行图加载；发布图排除该引用，但仍保留其他普通路径需要的共享节点。
+
+含新标记语义的锁使用 v3；旧项目继续使用 v2。默认 sync 恢复完整运行图，部分恢复只安装发布节点并保留其余锁记录；build/package 只校验有效节点。上游项目自身的 unbundled 引用不自动获取。旧 code_libraries 和生成业务入口的框架快捷依赖继续随发布。
+
+CLI、配置和预览用法统一见 [Skill 的 unbundled 指引](../skills/mcpywrap/references/project-dependencies.md#不随构建打包unbundled)。

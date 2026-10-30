@@ -200,11 +200,12 @@ def source_digest(root):
 
 
 class PreparationPlan:
-    def __init__(self, project, *, resolved=None, inspect_only=False):
+    def __init__(self, project, *, resolved=None, inspect_only=False, purpose=None):
         from .project_scripts import project_snapshot
         self.project = Path(project).resolve()
         self.snapshot = project_snapshot(self.project)
         self.config = read_project(self.project)
+        self.purpose = purpose or (resolved.purpose if resolved is not None else "runtime")
         self.manager = resolved
         self.providers, self.issues, self.protected, self.sources, self.files = [], [], {}, {}, {}
         self.complete = True
@@ -214,7 +215,9 @@ class PreparationPlan:
         if self.config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
             return
         try:
-            self.manager = resolved or DependencyService(self.project).resolve(collect_errors=inspect_only)
+            self.manager = resolved or DependencyService(self.project).resolve(collect_errors=inspect_only, purpose=self.purpose)
+            from .dependencies import require_resolution
+            require_resolution(self.manager, self.project, self.purpose)
         except (ValueError, OSError) as exc:
             if not inspect_only:
                 raise
@@ -271,6 +274,8 @@ class PreparationPlan:
                         'direct': key in direct, 'state': 'invalid', 'events': list(EVENTS)}
             self.providers.append(provider)
             try:
+                if all(getattr(alias, 'unbundled', False) for alias in nodes[key]):
+                    raise PrepareError(node.name + ': unbundled 依赖暂不支持 consumer_prepare；请将生成资源作为普通打包依赖提供，避免临时内容残留到发布包。')
                 spec = _declaration(raw, node.name)
                 provider['spec'] = spec
                 disabled = any(all(provider['source'].get(k) == v for k, v in selector.items())

@@ -11,5 +11,7 @@ def build_cmd(merge):
     """构建为 MCStudio 工程"""
     require_project()
     result = Core().execute('build', project_dir(), merge=merge)
+    from ..dependency_feedback import report_selection
+    report_selection(result.get('dependency_selection'))
     click.secho('✅ 构建成功！项目已生成到目标目录。', fg='green')
     return result

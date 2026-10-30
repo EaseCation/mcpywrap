@@ -23,6 +23,14 @@ class CoreApiTests(unittest.TestCase):
         self.core = Core(HostServices(python_executable=None, allow_processes=False,
                                      lock_directory=self.root/'locks'))
 
+    def test_describe_preserves_host_capability_values_and_exposes_packaging(self):
+        capabilities = self.core.describe()['capabilities']
+        self.assertIsInstance(capabilities, dict)
+        self.assertIs(capabilities['process_execution'], False)
+        self.assertIs(capabilities['tool_python_process'], False)
+        self.assertIs(capabilities['private_lock_storage'], True)
+        self.assertIs(capabilities['unbundled-dependencies'], True)
+
     def test_api_cli_and_host_without_processes_have_identical_outputs(self):
         self.assertEqual(len(self.core.execute('resolve', self.project)['dependencies']), 1)
         output = Path(self.core.execute('build', self.project)['output'])

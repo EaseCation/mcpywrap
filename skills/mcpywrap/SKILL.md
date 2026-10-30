@@ -42,6 +42,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 ## 当前工作方式的关键变化
 
 - 世界保存进度，部署决定代码：`--new` 只创建世界；再次 run 若接管已有会话，不应用新代码，也不执行预处理。具体更新选择见本地生命周期页。
+- 游戏依赖的 `unbundled` 默认 false；true 表示 dev/run 加载、build/package 排除。需要此能力时读[不随构建打包](references/project-dependencies.md#不随构建打包unbundled)。
 - 普通 build/dev 不写运行目录；运行资源由受控部署发布。同版多世界可以并行，有其他读者时不能单方面换版。
 - 两名玩家使用组；输入/Python/截图选具体 session，组热更与停止选 group。Windows 新版默认自动加入，`joining` 等待 worker 完成；手动模式的 `waiting_for_join` 需要点击局域网卡片。
 - 项目自己的宿主任务用 scripts/hooks；依赖提供的资源处理用 consumer_prepare；`runtime py` 在游戏内执行。有效准备计划使用 `script list --effective --json`，还需检查 complete/ready，不能只看查询的 ok。

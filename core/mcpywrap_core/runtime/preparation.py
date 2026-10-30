@@ -27,7 +27,7 @@ def prepare_editor(project):
     if read_project(project).get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') == 'map':
         return resolve_packs(project)
     target = Path(project)/'.mcpy/editor/assembled'
-    builder = AddonProjectBuilder(project, target)
+    builder = AddonProjectBuilder(project, target, purpose="runtime")
     ok, error = builder.build()
     if not ok:
         raise EngineError(error, 'build_failed')
@@ -43,6 +43,8 @@ class MapRuntimeBuilder:
 
     def initialize(self):
         self.manager = self.resolved or DependencyService(self.source_dir).resolve()
+        from ..dependencies import require_resolution
+        require_resolution(self.manager, self.source_dir, "runtime")
         self.packs = [copy.copy(pack) for pack in self.manager.get_all_dependencies().values()]
         world = MapPack('map', self.source_dir)
         for kind in ('behavior', 'resource'):

@@ -94,17 +94,20 @@ class MultiWatcher:
 
 
 class ProjectWatcher:
-    def __init__(self, source_dir, target_dir, callback=None):
+    def __init__(self, source_dir, target_dir, callback=None, *, output_lease=None):
         self.source_dir, self.target_dir = os.path.abspath(source_dir), os.path.abspath(target_dir)
         self.callback = callback
         self.multi_watcher = MultiWatcher()
         self.lock = threading.RLock()
         self.known_files = set()
+        self.output_lease = output_lease
 
     def setup_from_config(self, project_name, dependencies=None):
         self.dependency_manager = DependencyService(self.source_dir).resolve()
         self.main_addon_pack = self.dependency_manager.root_node.addon_pack
         self.packs = list(self.dependency_manager.get_all_dependencies().values()) + [self.main_addon_pack]
+        from .assembly import validate_unbundled_overrides
+        validate_unbundled_overrides(self.packs)
         self.has_libraries = prepare_libraries(self.packs)
         self.has_libraries = self.has_libraries or self.dependency_manager.has_git_projects
         validate_target(self.target_dir, self.source_dir, self.packs)
@@ -147,11 +150,13 @@ class ProjectWatcher:
     def _build_libraries(self):
         # 带固定代码库的项目使用原子完整组装，不能绕过摘要或目标冲突校验。
         from .project_builder import AddonProjectBuilder
-        success, error = AddonProjectBuilder(self.source_dir, self.target_dir).build()
+        success, error = AddonProjectBuilder(self.source_dir, self.target_dir, purpose="runtime", output_lease=self.output_lease).build()
         if not success:
             raise ValueError(error)
 
     def validate_sources(self):
+        from .assembly import validate_unbundled_overrides
+        validate_unbundled_overrides(self.packs)
         for pack in self.packs:
             validate_game_files(pack.path, [pack.behavior_pack_dir, pack.resource_pack_dir])
 

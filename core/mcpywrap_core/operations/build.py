@@ -15,22 +15,30 @@ def build_project(source, merge=False, *, preparation_event='before_build'):
     target = os.path.normpath(os.path.join(str(source), target))
     from ..project_scripts import before, configured, validate_build
     from ..consumer_prepare import PreparationPlan
-    plan = PreparationPlan(source)
-    if configured(source):
-        validate_build(source, target, resolved=plan.manager)
-    with before(source, preparation_event, plan=plan) as scripts:
-        if not build(str(source), target, force_merge=merge, raise_errors=True, resolved=plan.manager, report=False):
-            raise ValueError('构建失败')
+    from ..builders.output_lock import output_lease
+    with output_lease(target) as lease:
+        purpose = 'runtime' if preparation_event == 'before_run' else 'release'
+        plan = PreparationPlan(source, purpose=purpose)
+        if configured(source):
+            validate_build(source, target, resolved=plan.manager, purpose=purpose)
+        with before(source, preparation_event, plan=plan) as scripts:
+            if not build(str(source), target, force_merge=merge, raise_errors=True, resolved=plan.manager, report=False, purpose=purpose, output_lease=lease):
+                raise ValueError('构建失败')
     sources = {}
     if plan.manager is not None:
         root = plan.manager.root_node.addon_pack
         sources = {kind: str(Path(directory).relative_to(source))
                    for kind in ('behavior', 'resource')
                    if (directory := getattr(root, kind + '_pack_dir', None))}
-    return {'output': target, 'source_packs': sources, **({'scripts': scripts} if scripts else {})}
+    return {'dependency_selection': (plan.manager or builder_manager(source, purpose)).selection(), 'output': target, 'source_packs': sources, **({'scripts': scripts} if scripts else {})}
 
 
-def build(source_dir, target_dir, force_merge: bool = False, raise_errors=False, *, resolved=None, report=True):
+def builder_manager(source, purpose):
+    from ..dependencies import DependencyService
+    return DependencyService(source).resolve(purpose=purpose)
+
+
+def build(source_dir, target_dir, force_merge: bool = False, raise_errors=False, *, resolved=None, report=True, purpose="release", output_lease=None):
     """
     执行项目构建
 
@@ -51,10 +59,10 @@ def build(source_dir, target_dir, force_merge: bool = False, raise_errors=False,
 
 
     if project_type == "addon":
-        builder = AddonProjectBuilder(source_dir, target_dir, resolved=resolved)
+        builder = AddonProjectBuilder(source_dir, target_dir, resolved=resolved, purpose=purpose, output_lease=output_lease)
         success, error = builder.build()
     elif project_type == "map":
-        builder = MapProjectBuilder(source_dir, target_dir, force_merge)
+        builder = MapProjectBuilder(source_dir, target_dir, force_merge, purpose=purpose, resolved=resolved, output_lease=output_lease)
         success, error = builder.build()
     else:
         click.secho('❌ 暂未支持: 当前仅支持Addons和Map项目的构建', fg="red")

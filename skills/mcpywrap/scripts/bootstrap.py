@@ -56,6 +56,8 @@ def capabilities(command, remote=None, local=False):
     add_help = invoke([command, 'add', '--help']).stdout
     if '--git' in add_help and '--ref' in add_help:
         features.append('git-dependencies')
+    if '--unbundled' in add_help and re.search(r'^\s+deps\s', help_text, re.M):
+        features.append('unbundled-dependencies')
     if '--framework' in add_help:
         features.append('framework-presets')
     if '--detach' not in run_help or '--no-gui' not in run_help:

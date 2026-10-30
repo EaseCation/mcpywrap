@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QTableWidget, QTableWidgetItem, QPushButton, QLabel, QHeaderView, 
     QMessageBox, QSplitter, QTextEdit, QPlainTextEdit, QFrame,
-    QCheckBox, QFileDialog, QGroupBox,
+    QCheckBox, QFileDialog, QGroupBox, QScrollArea,
     QTabWidget, QLineEdit, QListWidget, QListWidgetItem, QComboBox, QCompleter, QToolButton, QMenu, QInputDialog, QSizePolicy, QFormLayout
 )
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer, QStringListModel
@@ -151,6 +151,13 @@ class GameInstanceManager(QMainWindow):
         self.remove_dep_btn.setEnabled(False)
         self.remove_dep_btn.clicked.connect(self.remove_selected_dependency)
         dependency_layout.addWidget(self.remove_dep_btn)
+        self.change_packaging_btn = QPushButton('更改打包设置…')
+        self.change_packaging_btn.setEnabled(False)
+        self.change_packaging_btn.clicked.connect(self.change_dependency_packaging)
+        dependency_layout.addWidget(self.change_packaging_btn)
+        packaging_note = QLabel('依赖默认随构建打包；勾选“不随构建打包”后，仅在 dev/run 中加载。修改后请重启游戏会话。')
+        packaging_note.setWordWrap(True)
+        dependency_layout.addWidget(packaging_note)
         
         # 添加依赖区域
         add_dep_group = QGroupBox("添加新依赖")
@@ -164,6 +171,10 @@ class GameInstanceManager(QMainWindow):
         self.dependency_note = QLabel()
         self.dependency_note.setWordWrap(True)
         add_dep_layout.addWidget(self.dependency_note)
+        self.dependency_unbundled = QCheckBox('不随构建打包（unbundled）')
+        self.dependency_unbundled.setChecked(False)
+        self.dependency_unbundled.setToolTip('默认不勾选。勾选后 dev/run 照常加载，build/package 排除；Python 工具包不使用此设置。')
+        add_dep_layout.addWidget(self.dependency_unbundled)
         self.new_dep_input = QComboBox()
         self.new_dep_input.setEditable(True)
         self.new_dep_input.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
@@ -225,15 +236,23 @@ class GameInstanceManager(QMainWindow):
         self.add_dep_btn = QPushButton("添加依赖")
         self.add_dep_btn.clicked.connect(self.add_dependency)
         add_dep_layout.addWidget(self.add_dep_btn)
+        self.dependency_unbundled.toggled.connect(self.update_packaging_controls)
         self.on_dependency_kind_changed()
 
         dependency_layout.addWidget(add_dep_group)
         self.sync_dependencies_btn = QPushButton('同步项目依赖')
         self.sync_dependencies_btn.clicked.connect(self.sync_dependencies)
         dependency_layout.addWidget(self.sync_dependencies_btn)
+        self.preview_release_btn = QPushButton('查看发布依赖…')
+        self.preview_release_btn.clicked.connect(self.preview_release_dependencies)
+        dependency_layout.addWidget(self.preview_release_btn)
         
         # 将依赖管理界面添加到分割器
-        h_splitter.addWidget(dependency_widget)
+        dependency_scroll = QScrollArea()
+        dependency_scroll.setWidgetResizable(True)
+        dependency_scroll.setWidget(dependency_widget)
+        dependency_scroll.setMinimumWidth(340)
+        h_splitter.addWidget(dependency_scroll)
         
         # 右侧实例管理区域
         instance_widget = QWidget()
@@ -454,13 +473,16 @@ class GameInstanceManager(QMainWindow):
             for dependency in self.dependencies:
                 status = self.dependency_service.inspect(dependency)
                 label = {'local': '本地目录', 'package': 'Python 包', 'code': 'Git依赖', 'git': 'Git依赖'}[dependency.kind]
-                text = f"[{label}] {dependency.value}"
+                usage = ('不随构建打包' if dependency.unbundled else '随构建打包') if dependency.kind in ('local', 'git', 'code') else '工具 Python'
+                text = f"[{label} / {usage}] {dependency.value}"
                 labels = {'addon': 'Addon', 'development_only': '仅开发环境',
                           'inactive': '环境标记未启用', 'unavailable': '缺失／无效', 'code_library': '已同步', 'git_project': '已同步'}
                 text += ' — ' + labels[status.state]
                 item = QListWidgetItem(text)
                 item.setData(Qt.ItemDataRole.UserRole, dependency)
                 tooltip = status.message or '可参与 Addon 组装；游戏兼容性需实际测试'
+                if dependency.kind in ('local', 'git', 'code'):
+                    tooltip += '\n' + ('仅 dev/run 加载；build/package 排除。' if dependency.unbundled else 'dev/run 加载，并进入 build/package。')
                 if dependency.kind == 'local':
                     tooltip = str(resolve_path(self.base_dir, dependency.value)) + "\n" + tooltip
                 item.setToolTip(tooltip)
@@ -468,6 +490,7 @@ class GameInstanceManager(QMainWindow):
         except (DependencyError, OSError) as exc:
             self.log(str(exc), 'error')
         self.remove_dep_btn.setEnabled(False)
+        self.change_packaging_btn.setEnabled(False)
 
     def reload_runtime_dependencies(self):
         try:
@@ -488,6 +511,7 @@ class GameInstanceManager(QMainWindow):
             'local': '引用完整的本地 Addon；保留源目录，并解析其声明的子依赖。',
             'git': '从仓库读取项目描述和子依赖。也可使用快捷按钮添加常用 Git 依赖。',
         }[kind])
+        self.dependency_unbundled.setVisible(kind != 'package')
         self.new_dep_input.setVisible(kind == 'package')
         for widget in (self.git_panel, *self.git_shortcuts.values()):
             widget.setVisible(kind == 'git')
@@ -496,6 +520,12 @@ class GameInstanceManager(QMainWindow):
         if kind == 'local':
             self.update_path_preview()
         self.add_dep_btn.setText('添加 Git 依赖' if kind == 'git' else '添加依赖')
+        self.update_packaging_controls()
+
+    def update_packaging_controls(self, *args):
+        for button in self.git_shortcuts.values():
+            button.setEnabled(not self.dependency_busy and not self.dependency_unbundled.isChecked())
+        self.dependency_unbundled.setToolTip('默认随构建打包。勾选后 dev/run 照常加载，build/package 排除；框架快捷入口需要随业务代码发布，勾选时不可使用。')
 
     def add_preset_dependency(self, preset, source=None, script_dir=None, choose_script=False):
         if self.dependency_busy:
@@ -509,6 +539,8 @@ class GameInstanceManager(QMainWindow):
                     candidates or ['MyScript'], 0, True)
                 if not accepted:
                     return
+            if self.dependency_unbundled.isChecked():
+                raise DependencyError('框架快捷入口会生成需要该依赖的业务入口，请取消“不随构建打包”；辅助代码可在 Git 表单中添加。')
             preview = framework_preview(self.base_dir, preset, script_dir, source)
             self.dependency_kind.setCurrentIndex(self.dependency_kind.findData('git'))
             from ..framework_presets import FRAMEWORK_PRESETS
@@ -545,12 +577,15 @@ class GameInstanceManager(QMainWindow):
     def set_dependency_busy(self, busy):
         self.dependency_busy = busy
         self.controller.set_workspace_busy(busy)
-        for widget in (self.dependency_kind, self.new_dep_input, self.local_path_input,
+        for widget in (self.dependency_kind, self.dependency_unbundled, self.new_dep_input, self.local_path_input,
                        self.browse_dependency_btn, self.absolute_path_check, self.add_dep_btn,
-                       self.sync_dependencies_btn, *self.git_shortcuts.values(),
+                       self.sync_dependencies_btn, self.preview_release_btn, *self.git_shortcuts.values(),
                        self.git_kind, *self.git_fields.values()):
             widget.setEnabled(not busy)
         self.remove_dep_btn.setEnabled(not busy and bool(self.dependency_list.selectedItems()))
+        self.update_packaging_controls()
+        selected = self.dependency_list.currentItem()
+        self.change_packaging_btn.setEnabled(not busy and selected is not None and selected.data(Qt.ItemDataRole.UserRole).kind in ("local", "git"))
         self.new_btn.setEnabled(not busy and self.all_packs is not None)
         self.edit_btn.setEnabled(not busy and self.all_packs is not None and 'editor' in self.backend.capabilities)
         self.run_btn.setEnabled(not busy and self.all_packs is not None and bool(self.instance_table.selectedItems()))
@@ -569,7 +604,29 @@ class GameInstanceManager(QMainWindow):
     def on_dependency_selected(self, item):
         """依赖项目被选中"""
         self.remove_dep_btn.setEnabled(not self.dependency_busy)
-    
+        entry = item.data(Qt.ItemDataRole.UserRole)
+        self.change_packaging_btn.setEnabled(not self.dependency_busy and entry.kind in ('local', 'git'))
+
+    def change_dependency_packaging(self):
+        item = self.dependency_list.currentItem()
+        if self.dependency_busy or item is None:
+            return
+        entry = item.data(Qt.ItemDataRole.UserRole)
+        if entry.kind not in ('local', 'git'):
+            return
+        labels = ['随构建打包（默认，unbundled=false）', '不随构建打包（unbundled=true）']
+        selected, accepted = QInputDialog.getItem(self, '更改打包设置', entry.value + '\ndev/run 均加载；修改后需重启会话。', labels, 1 if entry.unbundled else 0, False)
+        if not accepted:
+            return
+        unbundled = selected == labels[1]
+        try:
+            self.dependency_service.set_unbundled(entry, unbundled)
+            self.log('打包设置已更新：' + selected + '；重启会话后应用。', 'success')
+            self.refresh_dependencies()
+            self.reload_runtime_dependencies()
+        except (DependencyError, OSError, ValueError) as exc:
+            self.log(str(exc), 'error')
+
     def create_new_instance(self):
         self.confirm_new_instance()
 
@@ -831,10 +888,11 @@ class GameInstanceManager(QMainWindow):
                 if not value:
                     raise DependencyError('请输入或选择本地 Addon 目录')
                 saved = path_for_storage(self.base_dir, value, self.absolute_path_check.isChecked())
-                changed, warnings = self.dependency_service.add_local(saved)
+                changed, warnings = self.dependency_service.add_local(saved, unbundled=self.dependency_unbundled.isChecked())
                 self.log('依赖已添加' if changed else '依赖已存在', 'success')
                 for warning in warnings:
                     self.log(warning, 'warning')
+                self.log("打包设置：" + ("不随构建打包（unbundled=true）" if self.dependency_unbundled.isChecked() else "随构建打包（unbundled=false）") + "；运行中的会话需重启。", "info")
                 self.local_path_input.clear()
                 self.refresh_dependencies()
                 self.reload_runtime_dependencies()
@@ -853,6 +911,23 @@ class GameInstanceManager(QMainWindow):
         self.install_thread.finished.connect(self.on_dependency_finished)
         self.install_thread.start()
 
+    def preview_release_dependencies(self):
+        try:
+            selection = self.dependency_service.resolve(purpose='release').selection()
+            lines = []
+            for item in selection['dependencies']:
+                lines.append(item['name'] + ' · 随 build/package 发布')
+                lines.extend('  ' + ' → '.join(chain) for chain in item['via'])
+            lines.extend(item['dependency'] + ' · 已排除（unbundled=true）' for item in selection['excluded'])
+            dialog = QMessageBox(self)
+            dialog.setWindowTitle('发布依赖')
+            dialog.setText('build/package 仅包含随发布的依赖，共 %d 个依赖节点。' % len(selection['dependencies']))
+            dialog.setInformativeText('unbundled 节点若同时被普通打包依赖引用，仍会随发布；展开详情查看引用链。')
+            dialog.setDetailedText('\n'.join(lines) or '没有外部发布依赖。')
+            dialog.exec()
+        except (DependencyError, OSError, ValueError) as exc:
+            self.log(str(exc), 'error')
+
     def sync_dependencies(self):
         if not self.dependency_busy:
             self._start_dependency_operation('sync')
@@ -861,7 +936,7 @@ class GameInstanceManager(QMainWindow):
         self.set_dependency_busy(True)
         self.install_thread = DependencyTaskThread(
             self.base_dir, operation, script_dir, source, preset=preset,
-            git_options={**{key: field.text().strip() or None for key, field in self.git_fields.items()}, 'kind': self.git_kind.currentData()})
+            git_options={**{key: field.text().strip() or None for key, field in self.git_fields.items()}, 'kind': self.git_kind.currentData(), 'unbundled': self.dependency_unbundled.isChecked()})
         self.install_thread.log_message.connect(self.log)
         self.install_thread.result.connect(self.on_dependency_installed)
         self.install_thread.finished.connect(self.on_dependency_finished)
@@ -907,7 +982,7 @@ class DependencyTaskThread(QThread):
                 if options.get('kind') == 'auto':
                     options['kind'] = None
                 result = DependencyService(self.project_dir).add_git(url, **options)
-                message = f"Git项目已注册：{result['dependency']}，提交 {result['rev'][:12]}"
+                message = f"Git项目已注册：{result['dependency']}，提交 {result['rev'][:12]}；" + ("unbundled=true，dev/run 加载，不进入 build/package" if result["unbundled"] else "unbundled=false，随 build/package 发布")
             else:
                 self.log_message.emit('正在准备框架外部依赖...', 'info')
                 result = DependencyService(self.project_dir).add_framework(self.preset, self.script_dir, self.source)

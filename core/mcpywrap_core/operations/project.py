@@ -4,7 +4,7 @@ from pathlib import Path
 OPTIONS = {
     'init': {'name','project_type','version','target_dir'},
     'mod': {'name','version','script_dir','server_system','client_system','framework','source'},
-    'add': {'package','local_path','git_url','git_ref','dep_name','subdir','kind','target','framework','script_dir','source'},
+    'add': {'package','local_path','git_url','git_ref','dep_name','subdir','kind','target','framework','script_dir','source','unbundled'},
     'remove': {'package','local_path','library','git_name'},
     'script.list': {'effective'}, 'script.run': {'name','args'}, 'prepare_run': set(),
 }
@@ -37,16 +37,25 @@ def execute(operation, project, options):
             return {'dependency': declaration.value, 'source': declaration.kind}
         kinds = [k for k in ('package','local_path','git_url','framework') if options.get(k)]
         if len(kinds) != 1: raise ValueError('请选择一种依赖来源')
+        if options.get('unbundled') is not None and kinds[0] not in ('local_path', 'git_url'):
+            raise ValueError('unbundled 只用于本地或通用 Git 游戏依赖')
         if kinds[0] == 'git_url':
             result = service.add_git(options['git_url'], ref=options.get('git_ref'),name=options.get('dep_name'),
-                                     subdir=options.get('subdir'),kind=options.get('kind'),target=options.get('target'))
+                                     subdir=options.get('subdir'),kind=options.get('kind'),target=options.get('target'),unbundled=options.get('unbundled'))
         elif kinds[0] == 'framework':
             result = service.add_framework(options['framework'],script_dir=options.get('script_dir'),source=options.get('source'))
         elif kinds[0] == 'local_path':
-            changed, _ = service.add_local(options['local_path']);result={'changed':changed}
-        else: result={'changed':service.add_package(options['package'])}
+            changed, _ = service.add_local(options['local_path'], unbundled=options.get('unbundled'));result={'changed':changed}
+        else:
+            if options.get('unbundled') is not None:
+                raise ValueError('Python 工具包不支持游戏依赖 unbundled')
+            result={'changed':service.add_package(options['package'])}
         from ..consumer_prepare import guidance
         result['preparation'] = guidance(project)
+        if kinds[0] == 'local_path':
+            from ..dependencies import canonical_path, resolve_path, included_in_release
+            entry = next(item for item in service.list() if item.kind == 'local' and canonical_path(resolve_path(project, item.value)) == canonical_path(resolve_path(project, options['local_path'])))
+            result.update(unbundled=entry.unbundled, included_in_release=included_in_release(service.last_resolution, resolve_path(project, entry.value)))
         return result
     if operation == 'script.list':
         from ..project_scripts import describe_scripts

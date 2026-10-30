@@ -16,19 +16,19 @@ class Core:
 
     def describe(self):
         return {'core_api': CORE_API, 'host_api': HOST_API, 'version': __version__,
-                'operations': list(OPERATIONS), 'capabilities': self.host.capabilities()}
+                'operations': list(OPERATIONS), 'capabilities': {**self.host.capabilities(), 'unbundled-dependencies': True}}
 
     def execute(self, operation, project, **options):
         """Execute or raise the original structured error; never invoke another core."""
         if operation not in OPERATIONS:
             raise ValueError('未知工程操作：' + str(operation))
-        allowed = OPTIONS[operation] if operation in OPTIONS else {'resolve': set(), 'build': {'merge'}, 'package': {'merge'},
-                   'sync': {'install', 'migrate_windows_lock'}}[operation]
+        allowed = OPTIONS[operation] if operation in OPTIONS else {'resolve': {'bundled_only'}, 'build': {'merge'}, 'package': {'merge'},
+                   'sync': {'install', 'migrate_windows_lock', 'bundled_only'}}[operation]
         if set(options) - allowed or (operation not in OPTIONS and any(type(value) is not bool for value in options.values())):
             raise ValueError('无效的工程操作参数')
         if operation in OPTIONS:
             for name,value in options.items():
-                valid = (type(value) is bool if name=='effective' else
+                valid = (type(value) is bool if name in ('effective', 'unbundled') else
                          isinstance(value,(list,tuple)) and all(isinstance(item,str) for item in value) if name=='args' else
                          value is None or isinstance(value,str))
                 if not valid: raise ValueError('无效的工程操作参数：'+name)
@@ -45,10 +45,10 @@ class Core:
                 result = execute(operation, project, options)
             elif operation == 'resolve':
                 from .dependencies import DependencyService
-                manager = DependencyService(project).resolve()
+                manager = DependencyService(project).resolve(purpose="release" if options.get("bundled_only") else "runtime")
                 result = {'project': str(project), 'dependencies': [
                     {'name': pack.pkg_name, 'path': str(pack.path)}
-                    for pack in manager.get_all_dependencies().values()], 'warnings': manager.warnings}
+                    for pack in manager.get_all_dependencies().values()], 'warnings': manager.warnings, 'dependency_selection': manager.selection()}
             elif operation == 'build':
                 from .operations.build import build_project
                 result = build_project(project, **options)

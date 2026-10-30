@@ -43,7 +43,15 @@ def route(ctx):
     if operation == 'mod':
         if params.pop('gui',False): raise click.UsageError('手机宿主不提供桌面 Qt 界面')
         params['source']=params.pop('qumod_source',None)
+    dependency_preview = operation == 'deps'
+    if dependency_preview:
+        operation = 'resolve'
     if operation == 'add':
+        unbundled = params.get('unbundled')
+        if unbundled is not None and (params.get('package') or params.get('framework') or params.get('qumod')):
+            raise click.UsageError('--unbundled/--bundled 只用于本地或通用 Git 游戏依赖')
+        if unbundled is None:
+            params.pop('unbundled', None)
         if params.pop('qumod',False): params['framework']='qumod'
         params['source']=params.pop('preset_source',None)
     if operation == 'remove':
@@ -71,6 +79,16 @@ def route(ctx):
         save_image(output, content)
         return True, dict(result, image=str(output))
     result=Client(profile).operation(operation, project_dir(), params)
+    if dependency_preview:
+        selection = result.get('dependency_selection')
+        if not isinstance(selection, dict):
+            from ..remote.protocol import RemoteError
+            raise RemoteError('App 核心未返回依赖打包计划，请更新 App 核心后重试', 'host_capability_missing')
+        from ..command_context import report_warning
+        from ..commands.deps_cmd import present_selection
+        for warning in result.get('warnings', []):
+            report_warning(warning)
+        return True, present_selection(selection)
     if operation=='logs':
         from ..command_context import json_output
         if not json_output():

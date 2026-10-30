@@ -27,7 +27,7 @@ def package_project(source, merge=False):
 
         from ..project_scripts import before, configured, validate_build, operation
         from ..consumer_prepare import PreparationPlan
-        plan = PreparationPlan(source)
+        plan = PreparationPlan(source, purpose="release")
         if configured(source):
             validate_build(source, source/'dist'/'_script_preflight', resolved=plan.manager)
         with before(source, 'before_package', plan=plan) as scripts:
@@ -38,7 +38,7 @@ def package_project(source, merge=False):
             with tempfile.TemporaryDirectory(prefix='_temp_package_', dir=dist) as temporary:
                 output = Path(temporary) / 'build'
                 builder = (AddonProjectBuilder(source, output, resolved=plan.manager) if project_type == 'addon'
-                           else MapProjectBuilder(source, output, merge))
+                           else MapProjectBuilder(source, output, merge, resolved=plan.manager))
                 success, error = builder.build()
                 if not success:
                     raise ValueError(f'构建失败: {error}')
@@ -73,7 +73,7 @@ def package_project(source, merge=False):
         label = '构建失败' if isinstance(exc, DependencyError) else '打包失败'
         raise ValueError(f'{label}: {exc}') from exc
 
-    return {'artifact': str(destination), **({'scripts': scripts} if scripts else {})}
+    return {'dependency_selection': (plan.manager or builder.manager).selection(), 'artifact': str(destination), **({'scripts': scripts} if scripts else {})}
 
 
 def _package_manifests(root):
