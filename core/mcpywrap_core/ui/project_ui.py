@@ -982,7 +982,8 @@ class DependencyTaskThread(QThread):
                 if options.get('kind') == 'auto':
                     options['kind'] = None
                 result = DependencyService(self.project_dir).add_git(url, **options)
-                message = f"Git项目已注册：{result['dependency']}，提交 {result['rev'][:12]}；" + ("unbundled=true，dev/run 加载，不进入 build/package" if result["unbundled"] else "unbundled=false，随 build/package 发布")
+                from ..dependency_feedback import packaging_summary
+                message = f"Git项目已注册：{result['dependency']}，提交 {result['rev'][:12]}；" + packaging_summary(result)
             else:
                 self.log_message.emit('正在准备框架外部依赖...', 'info')
                 result = DependencyService(self.project_dir).add_framework(self.preset, self.script_dir, self.source)

@@ -431,6 +431,20 @@ class UnbundledDependencies(unittest.TestCase):
         self.assertEqual(lock['roots'], [None])
         self.assertEqual(lock['nodes'], [])
 
+    def test_qt_git_result_explains_a_shared_node_still_published(self):
+        from PySide6.QtWidgets import QApplication
+        from mcpywrap_core.ui.project_ui import DependencyTaskThread
+        app = QApplication.instance() or QApplication([])
+        worker = DependencyTaskThread(str(self.main), 'git', git_options={'git':'https://example.invalid/helper.git', 'unbundled':True})
+        outcomes = []
+        worker.result.connect(lambda success, message: outcomes.append((success, message)))
+        result = {'dependency':'helper', 'rev':'f'*40, 'unbundled':True, 'included_in_release':True}
+        with patch.object(DependencyService, 'add_git', return_value=result):
+            worker.run()
+        self.assertTrue(outcomes[0][0], outcomes)
+        self.assertIn('共享节点仍通过其他打包引用', outcomes[0][1])
+        app.processEvents()
+
     def test_qt_unbundled_selection_editing_and_host_package_boundary(self):
         from PySide6.QtWidgets import QApplication
         from mcpywrap_core.ui import project_ui as ui
