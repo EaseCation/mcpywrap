@@ -189,6 +189,22 @@ class UnbundledDependencies(unittest.TestCase):
         self.assertEqual(self.service.list(), [])
         self.assertTrue(helper.exists())
 
+    def test_local_path_aliases_with_the_same_packaging_policy_are_deduplicated(self):
+        helper = self.helper('helper')
+        for unbundled in (False, True):
+            with self.subTest(unbundled=unbundled):
+                self.config(local_dependencies=[{'path':'../helper','unbundled':unbundled}, {'path':str(helper),'unbundled':unbundled}])
+                manager = self.service.resolve()
+                self.assertEqual(len(manager.get_all_dependencies()), 1)
+                self.assertIs(manager.selection()['dependencies'][0]['unbundled'], unbundled)
+                self.assertEqual(len(manager.root_node.children), 1)
+
+    def test_local_aliases_with_conflicting_packaging_policies_are_rejected(self):
+        helper = self.helper('helper')
+        self.config(local_dependencies=['../helper', {'path':str(helper),'unbundled':True}])
+        with self.assertRaisesRegex(DependencyError, 'unbundled 设置冲突'):
+            self.service.resolve()
+
     def test_strict_configuration_and_mismatched_resolution(self):
         for item in ({'path':'../x','unbundled':'true'}, {'path':'../x','optional':True}, {'path':42}, {'path':'../x','unbundled':[]}):
             with self.subTest(item=item), self.assertRaises(DependencyError):

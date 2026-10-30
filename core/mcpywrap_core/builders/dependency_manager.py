@@ -123,7 +123,7 @@ class DependencyManager:
         return root
 
     def _process(self, parent, config):
-        local_paths = set()
+        local_paths = {}
         for entry in declarations(config):
             source = parent.addon_pack.path
             if entry.unbundled and (parent is not self.root_node or self.purpose == 'release'):
@@ -134,9 +134,10 @@ class DependencyManager:
             try:
                 if entry.kind == 'local':
                     path = str(resolve_path(source, entry.value))
-                    if canonical_path(path) in local_paths:
-                        raise DependencyError('同一目录重复声明: ' + entry.value)
-                    local_paths.add(canonical_path(path))
+                    key = canonical_path(path)
+                    if key in local_paths and local_paths[key] != entry.unbundled:
+                        raise DependencyError('同一目录的 unbundled 设置冲突: ' + entry.value)
+                    local_paths[key] = entry.unbundled
                     self._visit(parent, path, Path(path).name, unbundled=entry.unbundled)
                     self._status(source, entry, 'addon')
                     continue
