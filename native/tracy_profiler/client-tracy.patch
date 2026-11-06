@@ -1,0 +1,41 @@
+diff --git a/src/developer_compat.h b/src/developer_compat.h
+index aa4b983..d4a7c2d 100644
+--- a/src/developer_compat.h
++++ b/src/developer_compat.h
+@@ -57,9 +57,10 @@ inline void addLibCBindings(std::unordered_map<std::string, void*>& libC) {
+     // Deliberately terminating diagnostic bindings, not API emulation.
+     // These allow relocation to proceed without silently accepting calls
+     // for which Bionic/Darwin structures or semantics differ.
+-#define UNIMPLEMENTED_ANDROID(name) libC[#name] = (void*)+[]() { \
++    // libc-shim 已提供 ABI 转换的接口优先，终止桩只填补缺口。
++#define UNIMPLEMENTED_ANDROID(name) libC.emplace(#name, (void*)+[]() { \
+         Log::error("DeveloperCompat", "Unimplemented Android interface: " #name); \
+-        std::fflush(nullptr); _Exit(53); };
++        std::fflush(nullptr); _Exit(53); });
+     UNIMPLEMENTED_ANDROID(__libc_current_sigrtmin)
+     UNIMPLEMENTED_ANDROID(__libc_current_sigrtmax)
+     UNIMPLEMENTED_ANDROID(ttyname)
+@@ -68,8 +69,6 @@ inline void addLibCBindings(std::unordered_map<std::string, void*>& libC) {
+     UNIMPLEMENTED_ANDROID(getservbyport)
+     UNIMPLEMENTED_ANDROID(getprotobyname)
+     UNIMPLEMENTED_ANDROID(__get_h_errno)
+-    UNIMPLEMENTED_ANDROID(getlogin)
+-    UNIMPLEMENTED_ANDROID(sysinfo)
+ #undef UNIMPLEMENTED_ANDROID
+     libC["pthread_sigmask"] = (void*)+[](int, const void*, void*) -> int {
+         Log::error("DeveloperCompat", "Unimplemented Android interface: pthread_sigmask");
+diff --git a/src/main.cpp b/src/main.cpp
+index 525cf9d..130cea8 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -438,6 +438,10 @@ Hardware	: Qualcomm Technologies, Inc MSM8998
+     for(auto&& redir : shim::rewrite_filesystem_access) {
+         Log::trace("REDIRECT", "%s to %s", redir.first.data(), redir.second.data());
+     }
++    // 游戏内置的 Tracy 会在首次线程命名时自行启动；默认只监听本机 IPv4，
++    // 避免对局域网开放分析端口。显式设置的环境变量优先。
++    setenv("TRACY_ONLY_LOCALHOST", "1", 0);
++    setenv("TRACY_ONLY_IPV4", "1", 0);
+     auto libC = MinecraftUtils::getLibCSymbols();
+     ThreadMover::hookLibC(libC);
+     if(extendedBindings)

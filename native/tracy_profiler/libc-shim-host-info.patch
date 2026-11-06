@@ -1,0 +1,213 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 44c6d1c..5f4dac0 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -2,7 +2,7 @@ cmake_minimum_required (VERSION 2.6...4.0.0)
+ 
+ project(libc-shim LANGUAGES C CXX)
+ 
+-add_library(libc-shim src/common.cpp src/pthreads.cpp src/pthreads.h src/meta.h src/common.h src/semaphore.cpp src/semaphore.h src/network.cpp src/network.h src/dirent.cpp src/dirent.h src/cstdio.cpp src/cstdio.h src/errno.cpp src/errno.h src/ctype_data.h src/ctype_data.cpp src/bionic/strlcpy.cpp src/stat.cpp src/stat.h src/file_misc.cpp src/file_misc.h src/sysconf.cpp src/sysconf.h src/system_properties.cpp src/system_properties.h src/iorewrite.cpp src/iorewrite.h src/statvfs.h src/statvfs.cpp src/sched.h src/sched.cpp)
++add_library(libc-shim src/common.cpp src/pthreads.cpp src/pthreads.h src/meta.h src/common.h src/semaphore.cpp src/semaphore.h src/network.cpp src/network.h src/dirent.cpp src/dirent.h src/cstdio.cpp src/cstdio.h src/errno.cpp src/errno.h src/ctype_data.h src/ctype_data.cpp src/bionic/strlcpy.cpp src/stat.cpp src/stat.h src/file_misc.cpp src/file_misc.h src/sysconf.cpp src/sysconf.h src/host_info.cpp src/host_info.h src/system_properties.cpp src/system_properties.h src/iorewrite.cpp src/iorewrite.h src/statvfs.h src/statvfs.cpp src/sched.h src/sched.cpp)
+ target_include_directories(libc-shim PUBLIC include/)
+ target_link_libraries(libc-shim PRIVATE logger)
+ 
+diff --git a/src/common.cpp b/src/common.cpp
+index 7b631da..ebd80a1 100644
+--- a/src/common.cpp
++++ b/src/common.cpp
+@@ -14,6 +14,7 @@
+ #include "stat.h"
+ #include "file_misc.h"
+ #include "sysconf.h"
++#include "host_info.h"
+ #include "system_properties.h"
+ #include "sched.h"
+ #include <cmath>
+@@ -1083,8 +1084,6 @@ void shim::add_setjmp_shimmed_symbols(std::vector<shim::shimmed_symbol> &list) {
+ 
+ void shim::add_misc_shimmed_symbols(std::vector<shim::shimmed_symbol> &list) {
+     list.insert(list.end(), {
+-        {"uname", uname}, // TODO: This may be wrong?
+-
+         {"utime", utime},
+ 
+         {"writev", writev},
+@@ -1131,6 +1130,7 @@ std::vector<shimmed_symbol> shim::get_shimmed_symbols() {
+     add_epoll_shimmed_symbols(ret);
+     add_misc_shimmed_symbols(ret);
+     add_sysconf_shimmed_symbols(ret);
++    add_host_info_shimmed_symbols(ret);
+     add_system_properties_shimmed_symbols(ret);
+     add_eventfd_shimmed_symbols(ret);
+     add_fnmatch_shimmed_symbols(ret);
+diff --git a/src/host_info.h b/src/host_info.h
+new file mode 100644
+index 0000000..333260a
+--- /dev/null
++++ b/src/host_info.h
+@@ -0,0 +1,49 @@
++#pragma once
++
++#include <libc_shim.h>
++
++namespace shim {
++
++    namespace bionic {
++
++        // Bionic/Linux 内核布局：6 个 65 字节字段。Darwin 为 5 个 256 字节字段，不能直接透传。
++        struct utsname {
++            char sysname[65];
++            char nodename[65];
++            char release[65];
++            char version[65];
++            char machine[65];
++            char domainname[65];
++        };
++        static_assert(sizeof(utsname) == 390, "bionic utsname layout");
++
++        // Bionic/Linux 内核 struct sysinfo；内存字段以 mem_unit 为单位。
++        struct sysinfo {
++            long uptime;
++            unsigned long loads[3];
++            unsigned long totalram;
++            unsigned long freeram;
++            unsigned long sharedram;
++            unsigned long bufferram;
++            unsigned long totalswap;
++            unsigned long freeswap;
++            unsigned short procs;
++            unsigned short pad;
++            unsigned long totalhigh;
++            unsigned long freehigh;
++            unsigned int mem_unit;
++#if !defined(__LP64__)
++            char _f[20 - 2 * sizeof(long) - sizeof(int)];
++#endif
++        };
++        static_assert(sizeof(sysinfo) == (sizeof(long) == 8 ? 112 : 64), "bionic sysinfo layout");
++
++    }
++
++    int uname(bionic::utsname *buf);
++
++    int sysinfo(bionic::sysinfo *info);
++
++    void add_host_info_shimmed_symbols(std::vector<shimmed_symbol> &list);
++
++}
+diff --git a/src/host_info.cpp b/src/host_info.cpp
+new file mode 100644
+index 0000000..4dbff5e
+--- /dev/null
++++ b/src/host_info.cpp
+@@ -0,0 +1,110 @@
++#include "no-fortify.h"
++#include "host_info.h"
++#include "common.h"
++#include "errno.h"
++
++#include <cerrno>
++#include <cstring>
++#include <ctime>
++#include <cstdlib>
++#include <unistd.h>
++#include <sys/utsname.h>
++#ifdef __linux__
++#include <sys/sysinfo.h>
++#endif
++#ifdef __APPLE__
++#include <libproc.h>
++#include <mach/mach.h>
++#include <sys/sysctl.h>
++#include <sys/time.h>
++#endif
++
++int shim::uname(bionic::utsname *buf) {
++    ::utsname host {};
++    if(::uname(&host) != 0)
++        return -1;
++    // 按字段截断复制，保证只写入调用方的 390 字节。
++    std::memset(buf, 0, sizeof(*buf));
++    bionic::strlcpy(buf->sysname, host.sysname, sizeof(buf->sysname));
++    bionic::strlcpy(buf->nodename, host.nodename, sizeof(buf->nodename));
++    bionic::strlcpy(buf->release, host.release, sizeof(buf->release));
++    bionic::strlcpy(buf->version, host.version, sizeof(buf->version));
++    bionic::strlcpy(buf->machine, host.machine, sizeof(buf->machine));
++#if defined(__linux__) && defined(_GNU_SOURCE)
++    bionic::strlcpy(buf->domainname, host.domainname, sizeof(buf->domainname));
++#endif
++    return 0;
++}
++
++int shim::sysinfo(bionic::sysinfo *info) {
++    if(!info) {
++        errno = EFAULT;
++        return -1;
++    }
++    std::memset(info, 0, sizeof(*info));
++#ifdef __linux__
++    struct ::sysinfo host {};
++    if(::sysinfo(&host) != 0)
++        return -1;
++    info->uptime = host.uptime;
++    for(int i = 0; i < 3; ++i)
++        info->loads[i] = host.loads[i];
++    info->totalram = host.totalram;
++    info->freeram = host.freeram;
++    info->sharedram = host.sharedram;
++    info->bufferram = host.bufferram;
++    info->totalswap = host.totalswap;
++    info->freeswap = host.freeswap;
++    info->procs = host.procs;
++    info->totalhigh = host.totalhigh;
++    info->freehigh = host.freehigh;
++    info->mem_unit = host.mem_unit;
++    return 0;
++#elif defined(__APPLE__)
++    // 字段取自宿主内核；无法获得的值保持 0，mem_unit 固定为 1 字节。
++    uint64_t memory = 0;
++    size_t size = sizeof(memory);
++    if(::sysctlbyname("hw.memsize", &memory, &size, nullptr, 0) != 0)
++        return -1;
++    info->totalram = (unsigned long)memory;
++    info->mem_unit = 1;
++    ::timeval boot {};
++    size = sizeof(boot);
++    int bootMib[2] = {CTL_KERN, KERN_BOOTTIME};
++    if(::sysctl(bootMib, 2, &boot, &size, nullptr, 0) == 0 && boot.tv_sec > 0)
++        info->uptime = (long)(::time(nullptr) - boot.tv_sec);
++    double loads[3];
++    if(::getloadavg(loads, 3) == 3) {
++        for(int i = 0; i < 3; ++i)
++            info->loads[i] = (unsigned long)(loads[i] * 65536.0); // SI_LOAD_SHIFT
++    }
++    mach_port_t host = mach_host_self();
++    vm_statistics64_data_t vm {};
++    mach_msg_type_number_t count = HOST_VM_INFO64_COUNT;
++    if(host_statistics64(host, HOST_VM_INFO64, (host_info64_t)&vm, &count) == KERN_SUCCESS)
++        info->freeram = (unsigned long)((uint64_t)vm.free_count * vm_kernel_page_size);
++    mach_port_deallocate(mach_task_self(), host);
++    xsw_usage swap {};
++    size = sizeof(swap);
++    if(::sysctlbyname("vm.swapusage", &swap, &size, nullptr, 0) == 0) {
++        info->totalswap = (unsigned long)swap.xsu_total;
++        info->freeswap = (unsigned long)swap.xsu_avail;
++    }
++    int processes = ::proc_listallpids(nullptr, 0);
++    if(processes > 0)
++        info->procs = (unsigned short)(processes > 0xffff ? 0xffff : processes);
++    return 0;
++#else
++    errno = ENOSYS;
++    return -1;
++#endif
++}
++
++void shim::add_host_info_shimmed_symbols(std::vector<shim::shimmed_symbol> &list) {
++    list.insert(list.end(), {
++        {"uname", WithErrnoUpdate(shim::uname)},
++        {"sysinfo", WithErrnoUpdate(shim::sysinfo)},
++        // char* 返回值与 Bionic ABI 一致，可直接使用宿主实现。
++        {"getlogin", WithErrnoUpdate(::getlogin)},
++    });
++}
