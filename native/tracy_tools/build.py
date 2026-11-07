@@ -90,6 +90,10 @@ def build_target(source, work, name):
                  '-DFT_DISABLE_HARFBUZZ=ON', '-DBUILD_SHARED_LIBS=OFF',
                  # CMake 4 拒绝 freetype 2.13.2 等依赖声明的过旧最低版本；CMake 3 忽略此项
                  '-DCMAKE_POLICY_VERSION_MINIMUM=3.5']
+    if os.name == 'nt':
+        # 静态链接 MSVC 运行库，不依赖目标机的 VC++ 可再发行组件版本（如 MSVCP140_ATOMIC_WAIT.dll）；
+        # 依赖子项目的最低版本较旧，需同时把 CMP0091 默认设为 NEW，保证全部目标一致
+        configure += ['-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded', '-DCMAKE_POLICY_DEFAULT_CMP0091=NEW']
     # Windows 只在已进入 MSVC 环境时用 Ninja，否则使用 Visual Studio 生成器
     if shutil.which('ninja') and (os.name != 'nt' or os.environ.get('VCINSTALLDIR')):
         configure[1:1] = ['-G', 'Ninja']

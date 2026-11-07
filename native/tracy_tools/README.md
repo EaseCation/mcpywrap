@@ -12,7 +12,7 @@
 - `mcpy-tracy-report`：本目录 `report/` 的 JSON 报告工具，基于同版本 TracyServer，输出区段统计与分位数、调用边、线程、帧标记，以及主循环/服务端 tick 最慢实例内按线程的自身耗时归因。
 - `LICENSE`（Tracy，BSD-3-Clause）与 `BUILDINFO.json`（版本、源码提交、协议、各文件 SHA-256）。
 
-依赖（capstone、glfw、freetype）由 Tracy 的 CPM 下载并静态链接，不使用构建机上的 Homebrew/pkg-config 动态库。macOS 产物最低 13.0、ad-hoc 签名；Windows 使用 MSVC 默认运行库。
+依赖（capstone、glfw、freetype）由 Tracy 的 CPM 下载并静态链接，不使用构建机上的 Homebrew/pkg-config 动态库。macOS 产物最低 13.0、ad-hoc 签名；Windows 静态链接 MSVC 运行库，只依赖系统 DLL。
 
 ## 构建
 
