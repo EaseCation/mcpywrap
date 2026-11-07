@@ -68,7 +68,9 @@ def build_target(source, work, name):
                  # 固定版本源码静态链接，不使用构建机上的 Homebrew/pkg-config 动态库
                  '-DDOWNLOAD_CAPSTONE=ON', '-DDOWNLOAD_GLFW=ON', '-DDOWNLOAD_FREETYPE=ON',
                  '-DFT_DISABLE_PNG=ON', '-DFT_DISABLE_BZIP2=ON', '-DFT_DISABLE_BROTLI=ON',
-                 '-DFT_DISABLE_HARFBUZZ=ON', '-DBUILD_SHARED_LIBS=OFF']
+                 '-DFT_DISABLE_HARFBUZZ=ON', '-DBUILD_SHARED_LIBS=OFF',
+                 # CMake 4 拒绝 freetype 2.13.2 等依赖声明的过旧最低版本；CMake 3 忽略此项
+                 '-DCMAKE_POLICY_VERSION_MINIMUM=3.5']
     # Windows 只在已进入 MSVC 环境时用 Ninja，否则使用 Visual Studio 生成器
     if shutil.which('ninja') and (os.name != 'nt' or os.environ.get('VCINSTALLDIR')):
         configure[1:1] = ['-G', 'Ninja']

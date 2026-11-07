@@ -19,13 +19,16 @@ BUSY_HINT = 'Tracy 同时只接受一个连接；关闭已打开的分析器或�
 def handshake(port, protocol, timeout=2.0, host=HOST):
     """返回 welcome / protocol_mismatch / busy / closed 等状态；不读取分析数据。"""
     try:
-        with socket.create_connection((host, port), timeout=timeout) as sock:
+        # Windows 对未监听的本机端口会重试 SYN 而非立即拒绝，连接阶段超时同样视为未监听
+        sock = socket.create_connection((host, port), timeout=timeout)
+    except OSError:
+        return 'closed'
+    try:
+        with sock:
             sock.sendall(SHIBBOLETH + struct.pack('<I', protocol))
             reply = sock.recv(1)
-    except ConnectionRefusedError:
-        return 'closed'
     except socket.timeout:
-        # 已有分析器连接时游戏不再应答新连接
+        # 连接已建立但没有应答：游戏已有分析器连接，不再处理新的握手
         return 'busy'
     except OSError:
         return 'closed'

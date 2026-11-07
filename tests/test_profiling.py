@@ -244,6 +244,11 @@ class EndpointTests(unittest.TestCase):
         probe.close()
         self.assertEqual(endpoint.handshake(port, 69, timeout=0.3), 'closed')
 
+    def test_connect_timeout_is_closed_not_busy(self):
+        # Windows 未监听端口表现为连接超时，不能误报为已有分析器
+        with patch.object(endpoint.socket, 'create_connection', side_effect=socket.timeout()):
+            self.assertEqual(endpoint.handshake(8086, 69, timeout=0.3), 'closed')
+
     def test_resolve_reports_mismatch_and_busy_without_trying_other_versions(self):
         for state, code in (('protocol_mismatch', 'protocol_mismatch'), ('busy', 'profiler_busy'), ('closed', 'profiler_unavailable')):
             with patch.object(endpoint, 'handshake', return_value=state) as handshake:
