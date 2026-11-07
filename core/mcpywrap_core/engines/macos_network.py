@@ -51,7 +51,9 @@ def connect(target, *, project_dir=None, packs=(), engine_overrides=None, detach
         data = sessions.start(root, backend='macos-arm64', session_id=session, launch=plan,
                               group=group, role=role, background=background,
                               network={'target': asdict(target), 'engine': {'version': version},
-                                       'player': player})
+                                       'player': player,
+                                       # 运行包是否为开发服下发的纯明文源码包补充导入；.mcp 包始终由游戏加载
+                                       'plain_source_packs': state.get('network_plain_source_protocol') == 1})
     result = sessions.handoff(data)
     if detach:
         return result

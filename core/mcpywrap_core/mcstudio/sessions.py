@@ -212,6 +212,9 @@ def handoff(data):
                       identity_provided=data['mcs_auth'], authenticated=False,
                       connection_verified=data.get('connection_verified', False), addons_assembled=False,
                       engine_version=data['network']['engine']['version'])
+        if 'plain_source_packs' in data['network']:
+            # 仅报告运行包能力；是否有包按明文加载以游戏日志 [PlainSourcePack] 为准
+            result['plain_source_packs'] = data['network']['plain_source_packs']
     return result
 
 

@@ -75,6 +75,7 @@ def pinned_runtime(item):
     return {'runtime': str(app), 'application': str(application), 'game': str(game), 'profile': plan['profile'], 'runtime_id': plan['runtime_id'],
             'compat_report': compatibility, 'cppconfig_protocol': meta.get('cppconfig_protocol'),
             'network_connect_protocol': meta.get('network_connect_protocol'),
+            'network_plain_source_protocol': meta.get('network_plain_source_protocol'),
             'developer_identity_protocol': meta.get('developer_identity_protocol'),
             'background_window_protocol': meta.get('background_window_protocol')}
 

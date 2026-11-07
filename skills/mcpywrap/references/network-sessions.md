@@ -35,6 +35,12 @@ port = 19132
 
 远程 EXE/下载目录由 Windows serve 配置；调用端可按帮助覆盖完整 engine-version，不传 Windows 文件路径当本机项目。公开服务器是否接受此开发客户端由其认证和协议决定，不能从工具启动成功推断。
 
+## 开发服下发明文源码包
+
+开发 APK 的游戏 importer 只能加载审核打包的 `.mcp`，服务器直接下发明文 `.py` 行为包会 ImportError。macOS 运行包 0.4.8+（connect 结果 `plain_source_packs=true`）在网络会话中自动为整包只含明文源码的下发包补充导入，无需参数；含 `.mcp`/`.mcs` 的包和混合包仍由游戏原流程加载，不受影响。
+
+开发服测试流程：正常构建项目，把行为包源码放入自己测试服的资源包目录并重载/重启服务器，再 connect。客户端不读取本机源码目录，修改后需更新服务器资源并重连。是否真的按明文加载以游戏日志 `[PlainSourcePack] Loaded plain sources for <名称> <UUID> <版本>` 和模块初始化证据为准，`plain_source_packs` 只表示运行包具备该能力。正式客户端只接受审核后的 `.mcp`，明文包在开发服能运行不代表可以发布。Windows 和旧运行包不提供此报告，不要据此推断其行为。
+
 ## 查询、调试、退出
 
 保存 endpoint/project/session，用相同目标执行 status、logs --source game|engine|worker 和 stop。进程 running 不证明进服；按日志、HUD 和业务状态核验。macOS 单会话 connection_verified 只表示曾观察到 HUD，不是持续在线探活或身份认证。

@@ -68,6 +68,14 @@ class MacOSNetworkTests(unittest.TestCase):
         self.assertFalse((self.root/'.runtime/macos/instances').exists())
         self.assertIn(data['session'], self.start_mock.call_args.kwargs['launch']['data'])
 
+    def test_plain_source_pack_capability_follows_runtime(self):
+        result = self.call('connect', 'localhost', '--detach')
+        self.assertIs(json.loads(result.stdout)['plain_source_packs'], False)
+        self.state['network_plain_source_protocol'] = 1
+        result = self.call('connect', 'localhost', '--detach')
+        self.assertIs(json.loads(result.stdout)['plain_source_packs'], True)
+        self.assertIs(self.start_mock.call_args.kwargs['network']['plain_source_packs'], True)
+
     def test_old_background_runtime_rejected_but_explicit_foreground_still_works(self):
         self.state.pop('background_window_protocol')
         result = self.call('connect', 'localhost', '--detach')

@@ -1,5 +1,9 @@
 # 更新记录
 
+## 0.6.5
+
+- macOS 默认运行包升级到 0.4.8：网络会话自动加载开发服下发的纯明文源码行为包，修复开发 APK 只认 `.mcs` 导致的 ImportError；审核后的 `.mcp` 包与混合包仍由游戏原流程加载。connect 结果新增 `plain_source_packs` 能力报告，游戏日志 `[PlainSourcePack]` 标明实际按明文加载的包。旧实例保留原运行包绑定。
+
 ## 0.6.4
 
 - 游戏依赖新增 `unbundled` 布尔标记，默认 false；设为 true 时 dev/run 照常加载，build/package 排除，支持本地 Addon 与通用 Git Addon/code。
