@@ -105,6 +105,10 @@ Git 项目使用 `[[tool.mcpywrap.git_dependencies]]` 声明，支持 Addon 与�
 - 两名玩家、成员选择、组更新与重试：[双客户端联调](skills/mcpywrap/references/dual-clients.md)。
 - 资源发现与平台差异：[安装与路由](skills/mcpywrap/references/setup.md)、[macOS 平台](skills/mcpywrap/references/macos-local.md)。
 
+### 性能分析
+
+开发版游戏自带 Tracy 0.11.1，会记录每个 Mod Python 函数的耗时。`mcpy profile install` 准备固定版本的工具，`mcpy profile open` 打开实时分析器或离线查看 `.tracy` 文件，`mcpy profile capture`、`report`、`diff` 采集并对比优化前后。用法与解读见 [性能分析](skills/mcpywrap/references/profiling.md)。
+
 ### 网络连接与登录身份
 
 外部服务器连接、可选 MCS 身份与进服判断见 [网络会话](skills/mcpywrap/references/network-sessions.md)。需要另一台 Windows 执行游戏时，再按 [远程执行端](skills/mcpywrap/references/remote-testing.md) 配置服务。远程连接不部署本地 Mod，也不提供世界实例管理。

@@ -15,6 +15,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 - AI 启动本地游戏用 `run --no-gui --detach --json`，默认请求不聚焦的后台窗口，不操作 Qt/TUI；游戏仍需要图形会话和 GPU。macOS 旧包缺少后台协议时需升级运行包，不擅自改用 `--foreground`。保存返回的 session/group、项目及远程 endpoint，后续不换目标。
 - mcpy 负责工程、会话和诊断取证，不解释 ModSDK 业务规则，也不根据日志推断模组健康；API/事件/UI 语义查对应版本的 ModSDK 文档，可使用独立文档 MCP。
 - **业务代码禁止依赖 `mcpy.*`。** `mcpy.input/ui/player/api` 仅由 runtime install 临时注入调试会话，不是 ModSDK 或可分发依赖。宿主生成脚本用工具 Python 3，游戏代码仍受内置 Python/目标 ModSDK 约束。
+- 性能问题用 `mcpy profile` 采集游戏内置 Tracy 数据定位到函数，不在业务代码里加时间戳打点。
 - `running`、请求 `completed/triggered` 不等于玩法效果已验证。只结束自己创建或用户指定的会话；unknown 不盲目重发，busy 不清锁或杀无关进程。
 
 ## 按当前任务选择阅读入口
@@ -36,6 +37,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 | 已有会话执行 Python、模块/资源热更、runtime watch | [运行时调试](references/runtime-debug.md) | 组操作转双客户端页；不必重读启动教程 |
 | 移动/攻击/操作 UI、观察节点 | [统一输入](references/runtime-input.md) | 能力/参数按目标会话查询，不猜旧协议 |
 | 截图、录制视频、下载、逐帧检查 | [画面采集](references/capture.md) | 需要操作玩家时才读输入协议 |
+| 卡顿、帧率、脚本或操作耗时 | [性能分析](references/profiling.md) | 构造场景时再读输入页 |
 | macOS 安装/升级运行包、能力与引擎限制 | [macOS 平台](references/macos-local.md) | 不为普通运行每次重读安装细节 |
 | 已有明确错误或结果未知 | [故障定位](references/troubleshooting.md) | 先按错误定位，再读相应操作页 |
 

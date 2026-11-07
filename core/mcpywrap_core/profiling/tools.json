@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "tracy_version": "0.11.1",
+  "tracy_commit": "5d542dc09f3d9378d005092a4ad446bd405f819a",
+  "protocol": 69,
+  "build": "1",
+  "mirrors": [
+    "https://github.com/EaseCation/mcpywrap/releases/download/tracy-tools-0.11.1-1/"
+  ],
+  "platforms": {}
+}

@@ -40,6 +40,10 @@ PyPI 不提供两个包的原子发布。`scripts/pypi_release.py` 对重试逐�
 
 用户当前操作统一见 [内置 Skill](skills/mcpywrap/SKILL.md)。发布验证记录、候选核查和跨仓库推进计划放在被忽略的 `.local-notes/`，不随源码包分发；长期发行规则维护在本页。候选 CI 的未签名桥接不用于验证正式签名登录流程。
 
+## Tracy 分析工具包
+
+`mcpy profile` 使用的 Tracy 0.11.1 工具单独构建发布，不进入 wheel。构建与发布步骤见 [native/tracy_tools](native/tracy_tools/README.md)；新的工具包发布后，把 `platforms.json` 写入 `core/mcpywrap_core/profiling/tools.json` 再随 mcpywrap 版本发布。
+
 ## Windows 全局部署恢复验收
 
 涉及全局包发布或归属恢复时，除完整测试外，运行 `tests/manual/lifecycle_dependency_audit.py --migration`，使用新建的隔离资料目录预置历史父项目双包链接，验证完整冲突、确认迁移、新代码加载、启动失败回滚、依赖变化及世界保留。不得提前清理真实用户的冲突链接，也不能以全新空白资料目录的正常启动替代升级场景。
