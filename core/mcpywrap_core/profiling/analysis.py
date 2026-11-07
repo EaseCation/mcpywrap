@@ -11,8 +11,11 @@ from pathlib import Path
 from ..engines.host import EngineError
 from . import tools
 
-MAIN_LOOP = 'Main Update'
-SERVER_TICK = 'serverUpdate'
+# 主循环区段名随引擎版本变化：3.9 为 Main Update，3.10 为 Main app outer update；
+# 两版都有引擎通用的 update 区段（与主循环一一对应），作为最后的回退
+MAIN_LOOPS = ('Main Update', 'Main app outer update', 'update')
+SERVER_TICKS = ('serverUpdate',)
+WINDOWS = MAIN_LOOPS + SERVER_TICKS
 REPORT_SCHEMA = 1
 
 
@@ -33,11 +36,15 @@ def load(trace):
     if cache.is_file() and cache.stat().st_mtime >= trace.stat().st_mtime:
         try:
             data = json.loads(cache.read_text(encoding='utf-8'))
-            if data.get('schema') == REPORT_SCHEMA and data.get('mcpy_tools') == identity:
+            if (data.get('schema') == REPORT_SCHEMA and data.get('mcpy_tools') == identity
+                    and data.get('mcpy_windows') == list(WINDOWS)):
                 return data
         except ValueError:
             pass
-    command = [str(executable), str(trace)]
+    command = [str(executable)]
+    for name in WINDOWS:
+        command += ['--window', name]
+    command.append(str(trace))
     try:
         done = subprocess.run(command, capture_output=True, timeout=900)
     except subprocess.TimeoutExpired:
@@ -49,6 +56,7 @@ def load(trace):
     except ValueError:
         raise EngineError('分析工具输出无效', 'report_failed') from None
     data['mcpy_tools'] = identity
+    data['mcpy_windows'] = list(WINDOWS)
     try:
         cache.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
     except OSError:
@@ -158,12 +166,13 @@ def summarize(raw, project=None, top=15, filter=None):
         item['callers'] = [label(e['parent']) for e in sorted(callers.get(i, []), key=lambda e: -e['total_ns'])[:3]]
         return item
 
-    def loop(name):
-        index = next((i for i, z in enumerate(zones) if z['name'] == name and kinds[i] == 'engine'), None)
+    def loop(names):
+        index = next((i for name in names for i, z in enumerate(zones)
+                      if z['name'] == name and kinds[i] == 'engine' and z['count']), None)
         if index is None:
             return None
         z = zones[index]
-        return {'zone': name, 'count': z['count'], 'per_second': round(z['count'] / span, 2),
+        return {'zone': z['name'], 'count': z['count'], 'per_second': round(z['count'] / span, 2),
                 'mean_ms': _ms(z['total_ns'] / max(z['count'], 1)), 'p50_ms': _ms(z['p50_ns']),
                 'p95_ms': _ms(z['p95_ns']), 'p99_ms': _ms(z['p99_ns']), 'max_ms': _ms(z['max_ns'])}
 
@@ -173,8 +182,13 @@ def summarize(raw, project=None, top=15, filter=None):
     script_self = sum(zones[i]['self_ns'] for i, kind in enumerate(kinds) if kind == 'script')
     engine_ids = [i for i, kind in enumerate(kinds) if kind == 'engine']
 
+    main_loop, server_tick = loop(MAIN_LOOPS), loop(SERVER_TICKS)
+    # 只展示实际选用的主循环与服务端 tick 窗口，避免同一帧的多个别名重复
+    shown = {item['zone'] for item in (main_loop, server_tick) if item}
     windows = []
     for window in raw.get('windows', []):
+        if window['zone'] not in shown:
+            continue
         slowest = []
         for instance in window['slowest']:
             entries = []
@@ -191,8 +205,8 @@ def summarize(raw, project=None, top=15, filter=None):
     return {
         'capture': {'program': raw['capture']['program'], 'span_s': round(span, 3), 'zone_count': raw['capture']['zone_count'],
                     'tracy_version': raw.get('tracy_version')},
-        'main_loop': loop(MAIN_LOOP),
-        'server_tick': loop(SERVER_TICK),
+        'main_loop': main_loop,
+        'server_tick': server_tick,
         'script': {'self_ms_per_s': round(script_self / 1e6 / span, 3),
                    'builtin_from_script_ms_per_s': round(builtin_from_script / 1e6 / span, 3),
                    'functions': sum(1 for kind in kinds if kind == 'script')},

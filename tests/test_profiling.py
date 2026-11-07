@@ -330,6 +330,17 @@ class AnalysisTests(unittest.TestCase):
         self.assertIn('slow_path', text)
         self.assertIn('最慢的 Main Update', text)
 
+    def test_main_loop_follows_engine_version_naming(self):
+        raw = raw_report()
+        raw['zones'][0]['name'] = 'Main app outer update'  # 3.10 的主循环区段名
+        raw['windows'] = [dict(raw['windows'][0], zone='Main app outer update'),
+                          {'zone': 'Main Update', 'slowest': []}, {'zone': 'update', 'slowest': []}]
+        summary = analysis.summarize(raw, None)
+        self.assertEqual(summary['main_loop']['zone'], 'Main app outer update')
+        self.assertEqual([w['zone'] for w in summary['windows']], ['Main app outer update'])
+        raw['zones'][0].update(name='update', file='Engine', line=0)  # 只有通用 update 时回退
+        self.assertEqual(analysis.summarize(raw, None)['main_loop']['zone'], 'update')
+
     def test_filter_limits_script_list(self):
         summary = analysis.summarize(raw_report(), None, filter='slow')
         self.assertEqual([s['name'] for s in summary['scripts']], ['slow_path'])
@@ -359,6 +370,9 @@ class AnalysisTests(unittest.TestCase):
                 analysis.load(trace)
                 analysis.load(trace)
                 self.assertEqual(len(calls), 1)
+                for name in analysis.WINDOWS:
+                    self.assertIn(name, calls[0])
+                self.assertEqual(calls[0][-1], str(trace.resolve()))
                 with patch.object(tools, 'installed_identity', return_value='two'):
                     analysis.load(trace)
                 self.assertEqual(len(calls), 2)
