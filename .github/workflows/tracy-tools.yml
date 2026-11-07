@@ -54,11 +54,11 @@ jobs:
               os.chmod(path, 0o755)
               subprocess.run([path, '--help'], check=True)
           if os.name == 'nt':
-              # 只允许系统 DLL：静态链接 CRT 后不应再导入 VC++ 运行库
-              import re
+              # 只允许系统 DLL：静态链接后不应再引用 VC++ 运行库或第三方库的 DLL
               for name in info['files']:
                   data = open(os.path.join(root, name), 'rb').read().lower()
-                  for dll in (b'msvcp140', b'vcruntime140', b'glfw', b'freetype', b'capstone'):
+                  for dll in (b'msvcp140.dll', b'msvcp140_atomic_wait.dll', b'vcruntime140.dll',
+                              b'vcruntime140_1.dll', b'glfw3.dll', b'freetype.dll', b'capstone.dll'):
                       assert dll not in data, (name, dll)
           print(json.dumps(info, indent=2))
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
