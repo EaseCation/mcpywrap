@@ -20,7 +20,7 @@
 python native/tracy_tools/build.py --work <构建目录> --output <输出目录> [--source <Tracy 检出>] [--build 1]
 ```
 
-源码不存在时按 `v0.11.1` 克隆，并核对提交 `5d542dc09f3d9378d005092a4ad446bd405f819a`。输出 ZIP 与同名 `.json`（平台、文件名、大小、sha256）。支持 Apple Silicon macOS 与 Windows x64。
+源码不存在时按 `v0.11.1` 克隆，并核对提交 `5d542dc09f3d9378d005092a4ad446bd405f819a`。构建前只做编译兼容修正（`TracyView.hpp` 补充 `#include <chrono>`，新版 MSVC 需要），不改变行为，修正列表记录在 `BUILDINFO.json` 的 `source_fixes`。输出 ZIP 与同名 `.json`（平台、文件名、大小、sha256）。支持 Apple Silicon macOS 与 Windows x64。
 
 ## 发布
 

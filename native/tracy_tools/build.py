@@ -54,10 +54,29 @@ def prepare_source(source):
                           capture_output=True, text=True).stdout.strip()
     if head != TRACY_COMMIT:
         raise SystemExit('Tracy 源码提交为 %s，应为 %s（%s）' % (head, TRACY_COMMIT, TRACY_TAG))
+    apply_source_fixes(source)
     # 报告工具复用 Tracy 的 cmake 配置，需要位于源码根目录下
     target = source/'mcpy-report'
     shutil.rmtree(target, ignore_errors=True)
     shutil.copytree(HERE/'report', target)
+
+
+# 只修复与新编译器的兼容问题，不改变行为；记录在 BUILDINFO.json 中
+SOURCE_FIXES = [
+    # 新版 MSVC STL 不再间接包含 <chrono>；上游后续版本同样补上了此包含
+    ('profiler/src/profiler/TracyView.hpp', '#include <atomic>\n', '#include <atomic>\n#include <chrono>\n'),
+]
+
+
+def apply_source_fixes(source):
+    for relative, old, new in SOURCE_FIXES:
+        path = source/relative
+        text = path.read_text(encoding='utf-8')
+        if new in text:
+            continue
+        if text.count(old) != 1:
+            raise SystemExit('源码修正位置不唯一：' + relative)
+        path.write_text(text.replace(old, new), encoding='utf-8')
 
 
 def build_target(source, work, name):
@@ -77,10 +96,6 @@ def build_target(source, work, name):
     env = dict(os.environ)
     if sys.platform == 'darwin':
         env.setdefault('MACOSX_DEPLOYMENT_TARGET', '13.0')
-    if os.name == 'nt':
-        # Tracy 0.11.1 的 TracyView.hpp 依赖 <chrono> 的间接包含，新版 MSVC STL 不再提供；
-        # 仅对 C++ 强制包含，不修改固定源码。CMake 首次配置时把 CXXFLAGS 置于平台默认参数之前
-        env['CXXFLAGS'] = (env.get('CXXFLAGS', '') + ' /FIchrono').strip()
     run(configure, env=env)
     run(['cmake', '--build', build, '--config', 'Release', '--parallel'], env=env)
     suffix = '.exe' if os.name == 'nt' else ''
@@ -104,6 +119,7 @@ def package(source, binaries, output, build_number, tag):
     archive = output/(name+'.zip')
     info = {'schema': 1, 'tracy_version': TRACY_VERSION, 'tracy_commit': TRACY_COMMIT,
             'protocol': TRACY_PROTOCOL, 'build': build_number, 'platform': tag,
+            'source_fixes': [relative for relative, _, _ in SOURCE_FIXES],
             'files': {path.name: sha256(path) for path in binaries}}
     with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as bundle:
         for path in binaries:
