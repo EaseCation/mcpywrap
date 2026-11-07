@@ -7,5 +7,16 @@
   "mirrors": [
     "https://github.com/EaseCation/mcpywrap/releases/download/tracy-tools-0.11.1-1/"
   ],
-  "platforms": {}
+  "platforms": {
+    "macos-arm64": {
+      "filename": "mcpy-tracy-0.11.1-1-macos-arm64.zip",
+      "size": 7803928,
+      "sha256": "9df5bd61c342f5e5d9e02d487eee7fb0902f47b38e00d8ed61c9cf99ed3e510f"
+    },
+    "windows-x64": {
+      "filename": "mcpy-tracy-0.11.1-1-windows-x64.zip",
+      "size": 10151655,
+      "sha256": "203dece91acbeda64487e6808d2467a95dc9d3ac1a4bcaf01343da2487745d03"
+    }
+  }
 }
