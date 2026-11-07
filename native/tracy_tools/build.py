@@ -77,6 +77,10 @@ def build_target(source, work, name):
     env = dict(os.environ)
     if sys.platform == 'darwin':
         env.setdefault('MACOSX_DEPLOYMENT_TARGET', '13.0')
+    if os.name == 'nt':
+        # Tracy 0.11.1 的 TracyView.hpp 依赖 <chrono> 的间接包含，新版 MSVC STL 不再提供；
+        # 仅对 C++ 强制包含，不修改固定源码。CMake 首次配置时把 CXXFLAGS 置于平台默认参数之前
+        env['CXXFLAGS'] = (env.get('CXXFLAGS', '') + ' /FIchrono').strip()
     run(configure, env=env)
     run(['cmake', '--build', build, '--config', 'Release', '--parallel'], env=env)
     suffix = '.exe' if os.name == 'nt' else ''
