@@ -185,6 +185,38 @@ class InstallTests(ToolsEnvironment):
             tools.install()
         self.assertEqual(raised.exception.code, 'integrity_error')
 
+    def test_unpublished_platform_accepts_explicit_local_import_only(self):
+        archive = self.mirror / 'linux.zip'
+        make_bundle(archive, tag='linux-arm64')
+        self.write_manifest(make_bundle(self.mirror / 'tools.zip'), mirrors=[])
+        with patch.object(tools, 'platform_tag', return_value='linux-arm64'):
+            with self.assertRaises(EngineError) as raised:
+                tools.install()
+            self.assertEqual(raised.exception.code, 'unsupported_platform')
+            self.assertIn('--from', raised.exception.hint)
+            with self.assertRaises(EngineError) as raised:
+                tools.require('tracy-capture')
+            self.assertEqual(raised.exception.code, 'profiler_tools_missing')
+            result = tools.install(from_archive=archive)
+            self.assertEqual((result['changed'], result['source']), (True, 'local-import'))
+            status = tools.status()
+            self.assertEqual((status['available'], status['installed'], status['source']), (False, True, 'local-import'))
+            self.assertTrue(tools.require('tracy-capture').is_file())
+            self.assertFalse(tools.install(from_archive=archive)['changed'])
+
+    def test_local_import_still_verifies_bundle_identity(self):
+        self.write_manifest(make_bundle(self.mirror / 'tools.zip'), mirrors=[])
+        with patch.object(tools, 'platform_tag', return_value='linux-arm64'):
+            make_bundle(self.mirror / 'wrong.zip', tag='macos-arm64')
+            with self.assertRaises(EngineError) as raised:
+                tools.install(from_archive=self.mirror / 'wrong.zip')
+            self.assertEqual(raised.exception.code, 'integrity_error')
+            make_bundle(self.mirror / 'tampered.zip', tag='linux-arm64', tamper='tracy-capture' + SUFFIX)
+            with self.assertRaises(EngineError) as raised:
+                tools.install(from_archive=self.mirror / 'tampered.zip')
+            self.assertEqual(raised.exception.code, 'integrity_error')
+            self.assertFalse(tools.status()['installed'])
+
     def test_missing_tools_point_to_install_command(self):
         self.write_manifest(make_bundle(self.mirror / 'tools.zip'))
         with self.assertRaises(EngineError) as raised:

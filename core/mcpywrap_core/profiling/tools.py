@@ -82,13 +82,27 @@ def tools_home():
     return root.expanduser().resolve() / 'tools' / 'tracy'
 
 
-def _entry(data):
+def _entry(data, allow_local=False):
+    """返回 (平台, 清单条目)；allow_local 时，已识别但未发布工具包的平台返回 (平台, None)。"""
     tag = platform_tag()
     entry = data['platforms'].get(tag) if tag else None
-    if not entry:
+    if not entry and not (allow_local and tag):
         raise EngineError('当前平台暂无 Tracy %s 工具包' % data['tracy_version'], 'unsupported_platform',
-                          '已发布 Apple Silicon macOS 与 Windows x64 工具包；其他平台可用同版本源码自行构建后通过 --from 导入。')
+                          '已发布 Apple Silicon macOS 与 Windows x64 工具包；其他平台可用同版本源码经 '
+                          'native/tracy_tools/build.py 构建后通过 profile install --from 导入。')
     return tag, entry
+
+
+def _local_entry(directory, data, tag):
+    """未发布平台的本地导入记录：只认同版本、同协议、同平台且由 --from 导入的安装。"""
+    try:
+        marker = json.loads((directory / 'installed.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return None
+    if (marker.get('source') == 'local-import' and marker.get('platform') == tag
+            and marker.get('tracy_version') == data['tracy_version'] and isinstance(marker.get('archive_sha256'), str)):
+        return {'sha256': marker['archive_sha256']}
+    return None
 
 
 def install_dir(data=None, tag=None):
@@ -116,9 +130,13 @@ def status():
     tag = platform_tag()
     entry = data['platforms'].get(tag) if tag else None
     directory = install_dir(data, tag)
-    return {'tracy_version': data['tracy_version'], 'protocol': data['protocol'], 'build': data['build'],
-            'platform': tag, 'available': bool(entry),
-            'installed': bool(entry) and _installed(directory, data, entry), 'path': str(directory)}
+    local = None if entry or not tag else _local_entry(directory, data, tag)
+    result = {'tracy_version': data['tracy_version'], 'protocol': data['protocol'], 'build': data['build'],
+              'platform': tag, 'available': bool(entry),
+              'installed': bool(entry or local) and _installed(directory, data, entry or local), 'path': str(directory)}
+    if local:
+        result['source'] = 'local-import'
+    return result
 
 
 def installed_identity():
@@ -131,11 +149,12 @@ def installed_identity():
 def require(name):
     """返回已安装工具的路径；缺失时给出明确的安装命令，不在此处隐式联网。"""
     data = manifest()
-    tag, entry = _entry(data)
+    tag, entry = _entry(data, allow_local=True)
     directory = install_dir(data, tag)
-    if not _installed(directory, data, entry):
+    entry = entry or _local_entry(directory, data, tag)
+    if not entry or not _installed(directory, data, entry):
         raise EngineError('Tracy %s 工具未安装' % data['tracy_version'], 'profiler_tools_missing',
-                          '运行 mcpy profile install；网络受限时可用 --from 导入工具包。')
+                          '运行 mcpy profile install；网络受限或当前平台未发布工具包时可用 --from 导入工具包。')
     return executable(name, data)
 
 
@@ -171,7 +190,7 @@ def download(urls, cache, entry, progress=None, sleep=time.sleep):
     raise EngineError('Tracy 工具包下载失败', 'download_failed', RETRY_HINT, attempts=errors[-6:])
 
 
-def _extract(archive, directory, data, tag, entry):
+def _extract(archive, directory, data, tag, entry, origin='manifest'):
     from ..engines.install import digest, safe_member
     stage = directory.with_name(directory.name + '.' + uuid.uuid4().hex + '.tmp')
     try:
@@ -197,9 +216,11 @@ def _extract(archive, directory, data, tag, entry):
             path = stage / (name + suffix)
             if not path.is_file() or info.get('files', {}).get(path.name) != digest(path):
                 raise EngineError('工具包内容校验失败：' + path.name, 'integrity_error')
-        (stage / 'installed.json').write_text(json.dumps(
-            {'archive_sha256': entry['sha256'], 'tracy_version': data['tracy_version'], 'protocol': data['protocol'],
-             'build': data['build'], 'platform': tag}, indent=2) + '\n', encoding='utf-8')
+        marker = {'archive_sha256': entry['sha256'], 'tracy_version': data['tracy_version'], 'protocol': data['protocol'],
+                  'build': data['build'], 'platform': tag}
+        if origin != 'manifest':
+            marker['source'] = origin
+        (stage / 'installed.json').write_text(json.dumps(marker, indent=2) + '\n', encoding='utf-8')
         if directory.exists():
             shutil.rmtree(directory)
         stage.replace(directory)
@@ -211,10 +232,23 @@ def _extract(archive, directory, data, tag, entry):
 
 def install(from_archive=None, force=False, progress=None):
     data = manifest()
-    tag, entry = _entry(data)
+    tag, entry = _entry(data, allow_local=bool(from_archive))
     directory = install_dir(data, tag)
     result = {'tracy_version': data['tracy_version'], 'protocol': data['protocol'], 'build': data['build'],
               'platform': tag, 'path': str(directory)}
+    if entry is None:
+        # 未发布工具包的平台：只接受用户显式指定的本地包，没有可信的归档摘要可比对，
+        # 仍校验包内版本、协议、平台与逐文件摘要，并在安装记录中标明来源。
+        from ..engines.install import digest
+        archive = Path(from_archive).expanduser().resolve()
+        if not archive.is_file():
+            raise EngineError('找不到工具包：' + str(archive), 'invalid_archive')
+        local = {'sha256': digest(archive)}
+        if not force and _installed(directory, data, local):
+            return dict(result, installed=True, changed=False, source='local-import')
+        directory.parent.mkdir(parents=True, exist_ok=True)
+        _extract(archive, directory, data, tag, local, origin='local-import')
+        return dict(result, installed=True, changed=True, source='local-import')
     if not force and _installed(directory, data, entry):
         return dict(result, installed=True, changed=False)
     cache = tools_home() / 'cache' / entry['filename']

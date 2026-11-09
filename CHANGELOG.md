@@ -4,7 +4,8 @@
 
 - 新增 AArch64 Linux 本地后端（`linux-arm64`），与 macOS 共用 APK 原生运行包流程：自动安装运行包与官方开发者 APK、离线 Addon 世界、实例 cppconfig、双端 Python、Python/JSON UI 热更、原生截图、后台窗口协议、无认证联机（含开发服明文源码包）与引擎内置 Tracy。需要 glibc、Wayland 或 X11 会话及 GLES 3 驱动；资源位于 `$XDG_DATA_HOME/mcpy`。
 - `engine doctor` 在 Linux 上报告显示会话与 GPU 渲染节点；缺少显示会话时 run 在启动前给出可操作的提示。PySide6 在 Linux 为可选依赖，未安装时交互式 run 使用终端视图。
-- 原生后端内部按平台描述参数化（`engines.platforms`），macOS 行为与资源布局不变。`mcpy profile` 识别 linux-arm64，Tracy 工具构建脚本与工作流支持该平台；Linux 工具包发布前可用 `profile install --from` 导入自建包。
+- 原生后端内部按平台描述参数化（`engines.platforms`），macOS 行为与资源布局不变。
+- `mcpy profile` 识别 linux-arm64，Tracy 工具构建脚本与工作流支持该平台。清单中尚无本平台工具包时，`profile install --from` 可导入本机构建的工具包：仍校验包内版本、协议、平台和逐文件摘要，`profile status` 标记 `source=local-import`。
 
 ## 0.7.4
 
