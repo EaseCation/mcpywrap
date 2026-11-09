@@ -16,8 +16,9 @@ def location():
 
 def endpoint(value):
     url = urlsplit(value)
-    if url.scheme != 'http' or url.hostname not in ('127.0.0.1', 'localhost') or url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
-        raise ValueError('本机宿主地址必须是 http://127.0.0.1:<端口>')
+    # 不限制主机地址：鸿蒙 PC 等环境中 App 运行在独立网络命名空间的容器里，只能经桥接地址访问
+    if url.scheme not in ('http', 'https') or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
+        raise ValueError('宿主地址格式应为 http://<地址>:<端口>')
     if not url.port:
         raise ValueError('请使用 App 提供的端口')
     return value.rstrip('/')

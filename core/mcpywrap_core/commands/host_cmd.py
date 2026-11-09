@@ -10,7 +10,7 @@ def host_cmd():
     """管理本机 App 连接和共享工作区。"""
 
 @host_cmd.command('pair', cls=OperationCommand, local_only=True)
-@click.option('--url', default='http://127.0.0.1:17653', show_default=True)
+@click.option('--url', default='http://127.0.0.1:17653', show_default=True, help='App 给出的连接地址，可为本机、容器或局域网地址')
 @click.option('--code', required=True, help='App 中短时有效的配对码')
 @click.option('--workspace', required=True, type=click.Path(exists=True, file_okay=False))
 @click.option('--label', default='mcpy CLI')

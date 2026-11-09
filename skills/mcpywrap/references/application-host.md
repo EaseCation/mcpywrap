@@ -4,18 +4,18 @@
 
 ## 首次连接
 
-新版页面名为「开发」，旧版名为「开发工具」；使用同一套命令与协议。
-
-1. 用户打开 mcpy App 并授权作品目录后，新版默认开启仅监听 `127.0.0.1` 的开发连接；已主动暂停或使用旧版时，在「开发」恢复连接。页面直接显示本机地址、配对码和有效期，可以复制配对码、标准命令，或可选的 AI 说明。普通终端无需 AI；模型账号只在使用 Agent 时需要。
+1. 用户打开 mcpy App 并授权作品目录后，App 默认开启开发连接；主动暂停后在「开发」页恢复连接。页面直接显示连接地址、配对码和有效期，可以复制配对码、标准命令，或可选的 AI 说明。普通终端无需 AI；模型账号只在使用 Agent 时需要。
 2. 开发环境安装 Python、Git 和正式 `mcpywrap`。Minis 的 PRoot 使用 Alpine；优先使用其包管理器提供的 Python，再按标准 pip/uv 安装。解释器与虚拟环境放在该应用私有 Linux 目录，不能放在共享存储上。
 3. 让用户将内部存储 `mcpy` 目录挂载为可读写目录。Minis 1.14 在设置 → Mount External Folders 中选择目录，并授予 Minis 自身的“所有文件访问”；仅有文件夹选择授权仍可能看不到其他 App 写入的文件。常见路径为 `/var/minis/mounts/mcpy`，以实际探针结果为准；不能把同名私有副本当作共享目录。
 4. 完整安装技能并配对：
 
 ```sh
 mcpy skill install --directory /var/minis/skills/mcpywrap
-mcpy host pair --url http://127.0.0.1:17653 --code <App给出的短时配对码> --workspace <实际挂载路径> --label Minis
+mcpy host pair --url http://<App地址>:17653 --code <App给出的短时配对码> --workspace <实际挂载路径> --label Minis
 mcpy --project <挂载路径>/projects/<作品> host status --json
 ```
+
+`--url` 接受任意主机地址，默认 `http://127.0.0.1:17653`。开发环境与 App 在同一系统内时使用 `127.0.0.1`；跨容器（例如鸿蒙 PC 原生终端连接兼容容器中的 App，如 `http://172.17.1.2:17653`）或局域网联调时，使用 App 页面给出、从开发环境实际可达的地址。
 
 已有技能更新使用 `skill install --replace`。配对会验证双向读写，并等待用户通过临时确认卡、通知动作或 App 页面允许连接。有悬浮权限时可直接在开发工具上方确认，无权限时使用通知；不需要常驻悬浮图标。命令将长期凭据保存到私有配置，不打印到对话；不要读取或复制该配置中的 token。
 
@@ -68,13 +68,13 @@ mcpy --project <作品目录> logs --session <sid> --follow --filter '[组件前
 
 `--filter` 是区分大小写的字面匹配，不是正则表达式。先筛选，再取 `tail`；`--summary` 统计扫描范围内完全相同的消息，客户端和服务端分开计数。统计模式不与持续跟随同用。每源每次最多扫描 512 KiB，响应提供 `available/scanned_lines/matched_lines/scan_truncated`；摘要超过 `tail` 时有 `summary_truncated`。无匹配只能说明该范围内没找到，不能证明模组正常。时间筛选不猜测缺少时间戳的消息，排除数量见 `excluded_without_timestamp`。持续读取按原始文件游标推进，未匹配记录也会推进游标。
 
-宿主在 `log_query` 中声明筛选能力，旧 App 缺失能力时明确要求升级，不静默忽略参数。桌面本地也支持字面过滤和统计，快照扫描 512 KiB，持续跟随首次历史读取为 256 KiB；Windows 旧 HTTP 服务继续使用原接口，由客户端筛选最近 10000 行，并明确返回该扫描范围。端侧与毫秒时间筛选需要支持结构化日志的宿主，不能从桌面原始文本猜测。
+宿主在 `log_query` 中声明筛选能力，未声明所需能力时明确报错并提示升级 App，不静默忽略参数。桌面本地也支持字面过滤和统计，快照扫描 512 KiB，持续跟随首次历史读取为 256 KiB；Windows HTTP 服务未声明筛选能力时，由客户端筛选最近 10000 行，并明确返回该扫描范围。端侧与毫秒时间筛选需要支持结构化日志的宿主，不能从桌面原始文本猜测。
 
 `restart` 返回新 `session`、`previous_session` 和 `session_changed=true`。立即更新后续日志、截图、Python 调试的目标；旧会话仍用于历史查询。等待用户恢复的重启请求同样携带会话交接信息。
 
 ## 启动证据与等待策略
 
-App 的 `run/restart --launch-timeout <秒>` 配置进程及画中画的确认等待，默认 45 秒，范围 5–120 秒；须由 `launch_options.ack_timeout` 声明支持。世界加载使用独立的 300 秒限制，超过确认等待不会自动重放启动、重新构建或新建世界。桌面及旧 Windows 服务未声明此参数时明确拒绝，保持原启动策略。
+App 的 `run/restart --launch-timeout <秒>` 配置进程及画中画的确认等待，默认 45 秒，范围 5–120 秒；须由 `launch_options.ack_timeout` 声明支持。世界加载使用独立的 300 秒限制，超过确认等待不会自动重放启动、重新构建或新建世界。桌面及 Windows 服务未声明此参数时明确拒绝，保持原启动策略。
 
 `status.launch_timeline` 返回已记录的部署、Activity、引擎及游戏阶段，各项有 `observed_at/age_ms/elapsed_ms/since_previous_ms`，保留有界历史并报告 `truncated`。旧会话只返回真实存在的记录，不补造阶段。`clientReady/serverReady` 描述宿主调试初始化证据，不证明任何业务系统或 UI 正常。
 

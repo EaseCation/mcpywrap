@@ -79,8 +79,10 @@ class MobileHostTests(unittest.TestCase):
     def test_paths_are_mount_relative(self):
         self.assertEqual(profiles.project_path(self.record,self.project),'projects/demo')
         with self.assertRaises(ValueError):profiles.project_path(self.record,self.root.parent/'outside')
-    def test_only_loopback_endpoints(self):
-        for url in ('http://192.168.1.1:17653','https://example.org','http://127.0.0.1:17653/unsafe','http://user:pass@127.0.0.1:17653'):
+    def test_endpoint_accepts_any_host(self):
+        for url in ('http://127.0.0.1:17653','http://172.17.1.2:17653/','http://192.168.1.1:17653'):
+            self.assertEqual(profiles.endpoint(url),url.rstrip('/'))
+        for url in ('ftp://127.0.0.1:17653','https://example.org','http://127.0.0.1:17653/unsafe','http://user:pass@127.0.0.1:17653'):
             with self.assertRaises(ValueError):profiles.endpoint(url)
     def test_host_distribution_provider_replaces_process_metadata(self):
         from mcpywrap_core.host import distribution
