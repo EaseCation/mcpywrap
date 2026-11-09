@@ -28,13 +28,15 @@ PySide6 在 Linux 是可选依赖（aarch64 wheel 需要 glibc 2.39+）。未安
 
 | 能力 | 当前边界 |
 |---|---|
-| 本地世界 / 世界参数 / 游戏 Python / JSON UI 重载 | 与 macOS 0.4.8 运行包相同的协议；Map 尚未接入 |
+| 本地世界 / 世界参数 / 游戏 Python / JSON UI 重载 | 与 macOS 0.4.8 运行包相同的协议；JSON UI 修改后重建界面已验证生效（规则同 macOS：重载后须重新创建界面）；Map 尚未接入 |
 | 网络隔离 | 离线世界由运行包进程内网络守卫约束游戏代码，只放行回环；无认证联机额外放行解析出的服务器 UDP 端点。不是内核沙箱，不覆盖直接系统调用 |
 | 无认证网络 | network_connect_protocol=1；服务器须允许开发客户端 |
 | 游戏截图 | screenshot_protocol=1，按需读取游戏帧，与窗口系统无关 |
-| 后台窗口 | background_window_protocol=1；Wayland 由合成器决定焦点，不能保证新窗口不被激活 |
+| 后台窗口 | background_window_protocol=1：启动器不主动聚焦、不抢占指针。Wayland 由合成器决定焦点，实测 labwc 仍会激活新开的游戏窗口；需要完全不打扰当前桌面时使用独立会话或无头合成器 |
 | Tracy | 仅 127.0.0.1:8086；运行包默认关闭 perf 系统采样（TRACY_NO_SYS_TRACE=1）。linux-arm64 工具包发布前，用仓库 native/tracy_tools/build.py 在本机构建，再 `profile install --from <zip>` 导入（校验包内版本、协议、平台与逐文件摘要，status 标记 source=local-import）；采集与报告用法同[性能分析](profiling.md) |
 | Shader 热更 | 返回 unsupported，重新部署并重载世界 |
 | 本地主客机、MCS 身份、MCEditor、录屏、原始设备输入 | 不支持 |
 
 画面、音量和输入偏好保存在资源根 `preferences/linux`。
+
+已实机验证：树莓派 5（Debian 13、16 KiB 页、V3D、Wayland）与 Ubuntu 22.04（glibc 2.35、4 KiB 页、X11、Mesa llvmpipe 软件渲染）。其他 GPU 驱动与带窗口管理器的 X11 桌面未验证，遇到问题时先看 engine.log 的 `[GL] Renderer` 与 glfwInit 错误原因。
