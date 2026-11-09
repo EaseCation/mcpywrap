@@ -19,6 +19,7 @@ Skill 文件夹、CLI、正在运行的 worker、macOS 原生运行包分别更�
 | 宿主项目脚本 | bootstrap `--require-capability project-scripts`；`script --help` |
 | 依赖消费者准备 | bootstrap `--require-capability consumer-prepare`；`script list --effective --json` |
 | 本地 macOS 世界 | bootstrap `--local --require-capability macos-local-worlds`，再 `engine doctor --json` |
+| 本地 AArch64 Linux 世界 | bootstrap `--local --require-capability linux-local-worlds`，再 `engine doctor --json`（含显示会话诊断） |
 | Windows 服务 | Windows bootstrap `--local --require-capability serve` |
 | 远程游戏调试 | bootstrap `--remote <endpoint> --require-capability remote-client --require-capability network-sessions --require-capability py` |
 | 游戏内统一输入 | 调用端 bootstrap `--require-capability unified-input`，目标会话 `runtime input capabilities` |
@@ -40,8 +41,8 @@ Skill 文件夹、CLI、正在运行的 worker、macOS 原生运行包分别更�
 | 本地世界 run、实例管理、restart、runtime reload/watch | 本机；显式 --local。macOS 仅 Addon 世界 |
 | 配置 server 的 run、connect、status/logs/stop、runtime py | 按游戏路由；远程只支持网络单会话 |
 | runtime install/input、旧 ui/player | 调用端封装，作用于所选会话的游戏通道；原始 Windows 设备后端另查执行端能力 |
-| screenshot | Windows 或兼容 Launcher 的 macOS 本机会话；远程仅 Windows |
-| record、旧桌面输入 | Windows 本机或 Windows 服务；macOS 本地不支持 |
+| screenshot | Windows 或兼容 Launcher 的 macOS/Linux 本机会话；远程仅 Windows |
+| record、旧桌面输入 | Windows 本机或 Windows 服务；macOS/Linux 本地不支持 |
 | ui | 本机人工 PySide6 项目页 |
 | serve / edit | Windows 本机；edit 不支持远程 MCEditor |
 
@@ -51,7 +52,7 @@ Skill 文件夹、CLI、正在运行的 worker、macOS 原生运行包分别更�
 
 Windows 先 `mcpy --local doctor --json` 检查 MC Studio 引擎，缺失时由用户在 MC Studio 准备；登录任务还检查 `doctor --mcs-auth --json`。Git/源码安装可能缺少发布构建附带的原生组件，按实际诊断处理，不用旧版本替换新功能来“修复”。
 
-macOS 首次 run 可自动准备资源；安装、版本固定和升级见 [macOS 平台](macos-local.md)。首次配置 Windows HTTP 服务才读 [远程执行端](remote-testing.md)。不要为了本机离线打包而安装游戏或启动服务。
+macOS/Linux 首次 run 可自动准备资源；安装、版本固定和升级见 [macOS 平台](macos-local.md)，Linux 差异见 [Linux 平台](linux-local.md)。首次配置 Windows HTTP 服务才读 [远程执行端](remote-testing.md)。不要为了本机离线打包而安装游戏或启动服务。
 
 ## Windows 引擎发现与覆盖
 

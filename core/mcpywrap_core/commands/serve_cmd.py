@@ -17,7 +17,7 @@ def serve_cmd(host, port, data_dir, no_token, **engine_overrides):
     if json_output():
         raise click.UsageError('serve 是持续服务，不支持 --json')
     if os.name != 'nt':
-        raise click.ClickException('serve 只能在 Windows 交互桌面启动；macOS 请配置 --remote')
+        raise click.ClickException('serve 只能在 Windows 交互桌面启动；其他平台请配置 --remote')
     token = None if no_token else os.environ.get('MCPY_REMOTE_TOKEN')
     if not no_token and not token:
         raise click.ClickException('serve 需要 MCPY_REMOTE_TOKEN；远程服务允许在游戏客户端执行 Python。可信网络可显式使用 --no-token')

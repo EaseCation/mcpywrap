@@ -20,18 +20,38 @@ from http.client import HTTPException
 import uuid
 import zipfile
 
-from .host import EngineError, describe, require_macos
+from .host import EngineError, describe, require_native
+from .platforms import LINUX, MACOS, PLATFORMS, default_home, is_native
 
 CATALOG_ENV = 'MCPY_RUNTIME_CATALOG'
 DEFAULT_CATALOG = ('https://github.com/EaseCation/mcpelauncher-manifest/releases/download/'
                    'mcpy-runtime-v0.4.8/catalog.json')
+# 每个平台独立的不可变发布目录；Linux 首个运行包随 0.5.0 发布。
+DEFAULT_CATALOGS = {
+    MACOS.backend: DEFAULT_CATALOG,
+    LINUX.backend: ('https://github.com/EaseCation/mcpelauncher-manifest/releases/download/'
+                    'mcpy-runtime-v0.5.0/catalog-linux-arm64.json'),
+}
 # Public constant from the official ApkDownload component, verified 2026-10-05.
 # https://mcdev.webapp.163.com/static/js/4.05713153ba17aea6db53.js
 CDN_CONSTANT = 'mEE7Cot48r9j2AvEL2N6jpXEc'
 
 
 def home():
-    return Path(os.environ.get('MCPY_ENGINE_HOME', '~/Library/Application Support/mcpy')).expanduser().resolve()
+    configured = os.environ.get('MCPY_ENGINE_HOME')
+    return (Path(configured).expanduser() if configured else default_home()).resolve()
+
+
+def target_platform(target=None):
+    """显式平台优先；否则取宿主原生平台，非原生宿主沿用 macOS 布局（仅用于诊断）。"""
+    if target is not None:
+        return target
+    backend = describe()['backend']
+    return PLATFORMS[backend] if is_native(backend) else MACOS
+
+
+def platform_of_runtime(app):
+    return LINUX if Path(app).name == LINUX.archive_root else MACOS
 
 
 def digest(path):
@@ -77,15 +97,16 @@ def _scheme(value):
     return '' if os.path.isabs(str(value)) else urlsplit(str(value)).scheme
 
 
-def catalog(location=None):
+def catalog(location=None, target=None):
+    target = target_platform(target)
     location = location or os.environ.get(CATALOG_ENV)
     if not location:
         pending = home()/'install-plan.json'
         current = read_json(pending) if pending.is_file() else selected()
         if current:
-            validate_catalog(current['catalog'])
+            validate_catalog(current['catalog'], target)
             return current['catalog'], current['catalog_base']
-        location = DEFAULT_CATALOG
+        location = DEFAULT_CATALOGS[target.backend]
     scheme = _scheme(location)
     if scheme == 'https':
         try:
@@ -102,19 +123,20 @@ def catalog(location=None):
         data, base = read_json(path), str(path)
     else:
         raise EngineError('发布目录须为本地文件或 HTTPS 地址', 'invalid_catalog')
-    validate_catalog(data)
+    validate_catalog(data, target)
     return data, base
 
 
-def validate_catalog(data):
+def validate_catalog(data, target=None):
+    target = target_platform(target)
     try:
         runtime, profile = data['runtime'], data['profile']
         if data.get('apk_source') not in (None, 'netease-pe'): raise ValueError('不支持的 APK 发现来源')
-        if data['schema'] != 1 or runtime['platform'] != 'darwin-arm64':
+        if data['schema'] != 1 or runtime['platform'] != target.catalog_platform:
             raise ValueError('平台或 schema 不兼容')
         if not re.fullmatch('[A-Za-z0-9_.-]{1,100}', runtime['id']) or runtime['id'] in ('.', '..'):
             raise ValueError('运行包 ID 无效')
-        if runtime['archive_root'] != 'McpyRuntime.app' or not _hash(runtime['sha256']):
+        if runtime['archive_root'] != target.archive_root or not _hash(runtime['sha256']):
             raise ValueError('运行包清单无效')
         if profile['package_name'] != 'com.netease.mctest' or not _hash(profile['apk']['sha256']):
             raise ValueError('开发者 APK 身份无效')
@@ -131,9 +153,9 @@ def validate_catalog(data):
             raise ValueError('资源文件数无效')
         if not isinstance(runtime['url'], str) or not runtime['url']:
             raise ValueError('缺少运行包下载地址')
-        if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){0,2}', runtime['minimum_macos']):
+        if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){0,2}', runtime[target.minimum_key]):
             raise ValueError('最低系统版本无效')
-        _version(runtime['minimum_macos'])
+        _version(runtime[target.minimum_key])
     except (KeyError, TypeError, ValueError) as error:
         raise EngineError('无效的发布目录：' + str(error), 'invalid_catalog') from None
 
@@ -340,6 +362,7 @@ def official_apk_url(profile):
 
 def verify_runtime(app, integrity, profile=None):
     app = Path(app)
+    target = platform_of_runtime(app)
     files = read_json(integrity)['files']
     if not files:
         raise EngineError('运行包缺少文件清单', 'integrity_error')
@@ -351,18 +374,17 @@ def verify_runtime(app, integrity, profile=None):
         path = app/name
         if path.is_symlink() or not _hash(expected) or digest(path) != expected:
             raise EngineError('运行包文件损坏：' + name, 'integrity_error')
-    meta = read_json(app/'Contents/Resources/runtime.json')
-    if meta.get('platform') != 'darwin-arm64' or meta.get('launch_protocol') != 1 or meta.get('client_python_protocol') != 1:
+    meta = read_json(target.metadata(app))
+    if meta.get('platform') != target.catalog_platform or meta.get('launch_protocol') != 1 or meta.get('client_python_protocol') != 1:
         raise EngineError('运行包不支持当前启动协议', 'runtime_incompatible')
     contract = meta.get('game_compatibility') or {}
     if profile is not None and meta.get('game_profile') != profile:
         if (contract.get('elf_rules_schema') != 1 or contract.get('package_name') != profile.get('package_name')
                 or contract.get('abi') != 'arm64-v8a'):
             raise EngineError('运行包与 APK 兼容配置不匹配', 'runtime_incompatible')
-    exe = app/'Contents/MacOS/mcpelauncher-client'
-    with exe.open('rb') as stream:
-        if struct.unpack('<II', stream.read(8)) != (0xfeedfacf, 0x100000c):
-            raise EngineError('启动器不是原生 arm64 Mach-O', 'runtime_incompatible')
+    exe = target.client(app)
+    if not target.native_executable(exe):
+        raise EngineError('启动器不是 %s 原生 arm64 可执行文件' % target.system, 'runtime_incompatible')
     if os.name != 'nt' and not os.access(exe, os.X_OK):
         raise EngineError('启动器没有执行权限', 'integrity_error')
     return meta
@@ -385,7 +407,7 @@ def preflight_runtime(app, game, profile, metadata, runtime_id):
         cached = read_json(report)
         if cached.get('schema') == 1 and cached.get('elf_sha256') == expected and cached.get('rules_sha256') == rules_hash:
             return str(report)
-    script = app/'Contents/Resources/launcher/analyze_developer_binary.py'
+    script = platform_of_runtime(app).launcher(app)/'analyze_developer_binary.py'
     try:
         process = subprocess.run([sys.executable, '-B', str(script), str(game/'lib/arm64-v8a/libminecraftpe.so'),
                                   '--output', str(report)], capture_output=True, text=True, encoding='utf-8', timeout=120)
@@ -469,13 +491,14 @@ def extract_apk(apk, stage, profile, progress=None):
     verify_game(stage, profile, installed=False)
 
 
-def diagnose(check_files=False):
+def diagnose(check_files=False, target=None):
     host = describe()
     data = {'ok': False, 'host': host, 'backend': host['backend'], 'state': 'unsupported_platform',
             'home': str(home()), 'runtime': None, 'game': None}
-    if host['backend'] != 'macos-arm64':
+    if not is_native(host['backend']) or (target is not None and host['backend'] != target.backend):
         data['hint'] = 'Windows 使用 MC Studio；其他平台可配置 Windows 远程服务。'
         return data
+    target = PLATFORMS[host['backend']]
     try:
         current = selected()
     except (OSError, ValueError) as error:
@@ -485,27 +508,35 @@ def diagnose(check_files=False):
         data.update(state='setup_required', hint='运行 mcpy engine install，或在终端执行 mcpy run 获取引导。')
         return data
     try:
-        cat = current['catalog']; validate_catalog(cat)
+        cat = current['catalog']; validate_catalog(cat, target)
         runtime = cat['runtime']; profile = cat['profile']
-        app = home()/'runtimes'/runtime['id']/'McpyRuntime.app'
+        app = home()/'runtimes'/runtime['id']/target.archive_root
         game = home()/'engines'/profile['apk']['sha256']/'game'
         data.update(runtime=str(app), game=str(game), runtime_id=runtime['id'], engine_version=profile['apk']['version'],
-                    profile=profile, minimum_macos=runtime['minimum_macos'])
-        if _version(host['macos_version']) < _version(runtime['minimum_macos']):
-            raise EngineError('macOS 版本低于运行包要求', 'os_too_old')
-        if not (app/'Contents/Resources/runtime.json').is_file():
+                    profile=profile, minimum_system=runtime[target.minimum_key])
+        data[target.minimum_key] = runtime[target.minimum_key]
+        if _version(host[target.host_version_key]) < _version(runtime[target.minimum_key]):
+            raise EngineError(target.system + ' 版本低于运行包要求', 'os_too_old')
+        if not target.metadata(app).is_file():
             raise EngineError('尚未安装所选运行包', 'runtime_missing')
-        metadata = read_json(app/'Contents/Resources/runtime.json')
+        metadata = read_json(target.metadata(app))
         data['cppconfig_protocol'] = metadata.get('cppconfig_protocol', 0)
         if not (game/'installed.json').is_file():
             raise EngineError('尚未安装所选 APK 资源', 'game_missing')
         if check_files:
             verify_runtime(app, app.parent/'McpyRuntime.integrity.json', profile)
             verify_game(game, profile)
+        if target is LINUX:
+            from .linux import display_diagnostics
+            data['display'] = display_diagnostics()
+            if not data['display']['ok']:
+                raise EngineError(data['display']['error'], 'display_unavailable')
         data.update(ok=True, state='ready', hint=None)
     except (OSError, ValueError, KeyError) as error:
-        data.update(state=getattr(error, 'code', 'installation_invalid'), error=str(error),
-                    hint='运行 mcpy engine install 修复；世界不会被删除。')
+        code = getattr(error, 'code', 'installation_invalid')
+        data.update(state=code, error=str(error),
+                    hint=(data.get('display') or {}).get('hint') if code == 'display_unavailable'
+                    else '运行 mcpy engine install 修复；世界不会被删除。')
     return data
 
 
@@ -574,13 +605,15 @@ def _phase(progress, label):
         callback(label)
 
 
-def install(location=None, apk=None, progress=None):
-    host = require_macos()
+def install(location=None, apk=None, progress=None, target=None):
+    target = target_platform(target)
+    host = require_native(target)
     _phase(progress, '获取版本信息')
-    cat, base = catalog(location); validate_catalog(cat)
+    cat, base = catalog(location, target); validate_catalog(cat, target)
     runtime, profile = cat['runtime'], cat['profile']
-    if _version(host['macos_version']) < _version(runtime['minimum_macos']):
-        raise EngineError('此运行包要求 macOS ' + runtime['minimum_macos'] + ' 或更新版本', 'os_too_old')
+    minimum = runtime[target.minimum_key]
+    if _version(host[target.host_version_key]) < _version(minimum):
+        raise EngineError('此运行包要求 %s %s 或更新版本' % (target.system, minimum), 'os_too_old')
     root = home(); root.mkdir(parents=True, exist_ok=True)
     from ..remote.service import directory_lock
     with directory_lock(root/'install-lock'):
@@ -596,7 +629,8 @@ def install(location=None, apk=None, progress=None):
         if marker.is_file() and read_json(marker)['sha256'] != runtime['sha256']:
             raise EngineError('同一运行包 ID 的内容发生变化，拒绝覆盖。', 'release_changed', '发行方应为每次构建使用新的不可变版本号。')
         _phase(progress, '检查本地资源')
-        runtime_valid = _valid(verify_runtime, destination/'McpyRuntime.app', destination/'McpyRuntime.integrity.json', profile)
+        app_root = target.archive_root
+        runtime_valid = _valid(verify_runtime, destination/app_root, destination/'McpyRuntime.integrity.json', profile)
         game_valid = _valid(verify_game, game, profile)
         if not runtime_valid: _require_idle(destination)
         if not game_valid: _require_idle(game)
@@ -619,12 +653,13 @@ def install(location=None, apk=None, progress=None):
             try:
                 _phase(progress, '校验并安装启动器')
                 extract_runtime(source, stage)
-                meta = verify_runtime(stage/'McpyRuntime.app', stage/'McpyRuntime.integrity.json', profile)
-                if meta['minimum_macos'] != runtime['minimum_macos']:
+                meta = verify_runtime(stage/app_root, stage/'McpyRuntime.integrity.json', profile)
+                if meta.get(target.minimum_key) != minimum:
                     raise EngineError('运行包系统要求与发布目录不一致', 'runtime_incompatible')
-                signing = subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(stage/'McpyRuntime.app')], capture_output=True)
-                if signing.returncode:
-                    raise EngineError('运行包签名校验失败', 'integrity_error')
+                if target.is_macos:
+                    signing = subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(stage/app_root)], capture_output=True)
+                    if signing.returncode:
+                        raise EngineError('运行包签名校验失败', 'integrity_error')
                 write_json(stage/'release.json', runtime)
                 _replace(stage, destination)
             finally:
@@ -652,12 +687,13 @@ def install(location=None, apk=None, progress=None):
                 _replace(stage, game)
             finally:
                 if stage.exists(): shutil.rmtree(stage)
-        from .macos_icons import optional_icons
-        _phase(progress, '准备游戏图标')
-        optional_icons(game, profile, apk_path)
+        if target.is_macos:
+            from .macos_icons import optional_icons
+            _phase(progress, '准备游戏图标')
+            optional_icons(game, profile, apk_path)
         _phase(progress, '检查运行兼容性')
-        metadata = verify_runtime(destination/'McpyRuntime.app', destination/'McpyRuntime.integrity.json', profile)
-        preflight_runtime(destination/'McpyRuntime.app', game, profile, metadata, runtime['id'])
+        metadata = verify_runtime(destination/app_root, destination/'McpyRuntime.integrity.json', profile)
+        preflight_runtime(destination/app_root, game, profile, metadata, runtime['id'])
         write_json(root/'current.json', {'catalog': cat, 'catalog_base': base})
         (root/'install-plan.json').unlink(missing_ok=True)
     result = diagnose()

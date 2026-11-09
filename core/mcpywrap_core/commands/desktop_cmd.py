@@ -34,7 +34,7 @@ class KeyCommand(OperationCommand):
 @click.option('--output', help='本机 PNG 路径，默认保存到作品 captures/，不覆盖已有文件')
 @click.option('--background-only', is_flag=True, help='仅后台捕获；失败不激活游戏或回退到前台')
 def screenshot_cmd(session, output, background_only=False):
-    """保存游戏 PNG；macOS 由 Launcher 按需读帧，远程模式下载 Windows 截图。"""
+    """保存游戏 PNG；macOS/Linux 由 Launcher 按需读帧，远程模式下载 Windows 截图。"""
     from ..mcstudio.screenshot import capture
     path = output_path(output)
     result = capture(project_dir(), session, background_only)

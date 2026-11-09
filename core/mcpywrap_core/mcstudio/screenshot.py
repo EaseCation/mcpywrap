@@ -13,7 +13,7 @@ from .launcher_control import LauncherControl
 from .processes import checked_process
 
 MAX_PIXELS = 16 * 1024 * 1024
-UPGRADE_HINT = '需要 screenshot_protocol=1 的 macOS 运行包；更新运行包后使用新建实例。已有实例仍固定原版本。'
+UPGRADE_HINT = '需要 screenshot_protocol=1 的原生运行包；更新运行包后使用新建实例。已有实例仍固定原版本。'
 
 
 def supported(data):
@@ -21,10 +21,11 @@ def supported(data):
     if data.get('backend', 'windows') == 'windows':
         return True
     runtime = data.get('launch', {}).get('runtime')
-    if data.get('backend') != 'macos-arm64' or not runtime:
+    from ..engines.platforms import is_native, metadata_path
+    if not is_native(data.get('backend')) or not runtime:
         return False
     try:
-        metadata = json.loads((Path(runtime)/'Contents/Resources/runtime.json').read_text())
+        metadata = json.loads(metadata_path(runtime).read_text())
         return metadata.get('screenshot_protocol') == 1
     except (OSError, ValueError):
         return False
@@ -36,7 +37,8 @@ def capture(project, session, background_only=False):
     if data.get('backend', 'windows') == 'windows':
         from .window import operate
         return operate(project, session, 'screenshot', {'background_only': True} if background_only else None)
-    if data.get('backend') != 'macos-arm64':
+    from ..engines.platforms import is_native
+    if not is_native(data.get('backend')):
         raise EngineError('此会话后端不支持截图', 'unsupported_feature')
     if not supported(data):
         raise EngineError('此实例的运行包不支持原生截图', 'capability_missing', UPGRADE_HINT)

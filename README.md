@@ -9,7 +9,7 @@ mcpywrap 使用 `pyproject.toml` 管理开发侧依赖，复用本地 Addon 的�
 
 ## 安装
 
-需要 Python 3.9 或更高版本。Windows 使用 MC Studio 引擎；Apple Silicon macOS 13.0+ 使用预构建启动器和开发者 APK，支持离线 Addon 世界。两端共用 PySide6 项目界面；MCEditor 仅支持 Windows。参见 [Qt6 开发界面](docs/qt6-development.md) 和 [GUI 依赖许可说明](THIRD_PARTY_NOTICES.md)。
+需要 Python 3.9 或更高版本。Windows 使用 MC Studio 引擎；Apple Silicon macOS 13.0+ 与 AArch64 Linux（glibc，Wayland/X11 + GLES 3）使用预构建启动器和开发者 APK，支持离线 Addon 世界与无认证联机。各端共用 PySide6 项目界面（Linux 上为可选依赖）；MCEditor 仅支持 Windows。参见 [Qt6 开发界面](docs/qt6-development.md) 和 [GUI 依赖许可说明](THIRD_PARTY_NOTICES.md)。
 
 推荐通过 [uv](https://docs.astral.sh/uv/) 安装：
 
@@ -103,7 +103,7 @@ Git 项目使用 `[[tool.mcpywrap.git_dependencies]]` 声明，支持 Addon 与�
 - 启动、实例、停止与共享部署：[本地生命周期](skills/mcpywrap/references/local-development.md)。
 - 已有会话的 Python、资源重载、监控：[运行时调试](skills/mcpywrap/references/runtime-debug.md)。
 - 两名玩家、成员选择、组更新与重试：[双客户端联调](skills/mcpywrap/references/dual-clients.md)。
-- 资源发现与平台差异：[安装与路由](skills/mcpywrap/references/setup.md)、[macOS 平台](skills/mcpywrap/references/macos-local.md)。
+- 资源发现与平台差异：[安装与路由](skills/mcpywrap/references/setup.md)、[macOS 平台](skills/mcpywrap/references/macos-local.md)、[Linux 平台](skills/mcpywrap/references/linux-local.md)。
 
 ### 性能分析
 

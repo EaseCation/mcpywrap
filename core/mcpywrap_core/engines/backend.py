@@ -19,7 +19,7 @@ class GameBackend:
     id = None
     label = '此平台'
     capabilities = ()
-    setup_description = '本机运行支持 Windows 和 Apple Silicon macOS；也可配置 Windows 远程服务。'
+    setup_description = '本机运行支持 Windows、Apple Silicon macOS 和 AArch64 Linux；也可配置 Windows 远程服务。'
     managed_install = False
 
     def unsupported(self, feature):
@@ -130,6 +130,9 @@ def get_backend(backend_id=None):
     if selected == 'macos-arm64':
         from .macos import MacOSBackend
         return MacOSBackend()
+    if selected == 'linux-arm64':
+        from .linux import LinuxBackend
+        return LinuxBackend()
     if backend_id is not None:
         raise EngineError('未知运行后端：' + backend_id, 'unknown_backend')
     return GameBackend()

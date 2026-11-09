@@ -39,6 +39,8 @@ def platform_tag():
         return 'macos-arm64'
     if os.name == 'nt' and machine in ('amd64', 'x86_64'):
         return 'windows-x64'
+    if sys.platform.startswith('linux') and machine == 'aarch64':
+        return 'linux-arm64'
     raise SystemExit('不支持的构建平台：%s %s' % (sys.platform, machine))
 
 
@@ -90,6 +92,10 @@ def build_target(source, work, name):
                  '-DFT_DISABLE_HARFBUZZ=ON', '-DBUILD_SHARED_LIBS=OFF',
                  # CMake 4 拒绝 freetype 2.13.2 等依赖声明的过旧最低版本；CMake 3 忽略此项
                  '-DCMAKE_POLICY_VERSION_MINIMUM=3.5']
+    if sys.platform.startswith('linux'):
+        # 静态链接 libstdc++/libgcc，不依赖目标系统的 GCC 运行库版本；并行 STL 需要 TBB，关闭以免引入动态依赖。
+        # 分析器界面使用 Tracy 默认的 Wayland 后端（libwayland/libEGL/libxkbcommon 由系统提供）。
+        configure += ['-DNO_PARALLEL_STL=ON', '-DCMAKE_EXE_LINKER_FLAGS=-static-libstdc++ -static-libgcc']
     if os.name == 'nt':
         # 静态链接 MSVC 运行库，不依赖目标机的 VC++ 可再发行组件版本（如 MSVCP140_ATOMIC_WAIT.dll）；
         # 依赖子项目的最低版本较旧，需同时把 CMP0091 默认设为 NEW，保证全部目标一致

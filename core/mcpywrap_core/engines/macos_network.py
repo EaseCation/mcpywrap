@@ -5,32 +5,35 @@ import uuid
 
 import click
 from . import install
-from .host import EngineError, require_macos
+from .host import EngineError, require_native
+from .platforms import MACOS
 
 
 def connect(target, *, project_dir=None, packs=(), engine_overrides=None, detach=False,
-            session_id=None, group=None, role=None, player=None, background=False):
+            session_id=None, group=None, role=None, player=None, background=False, platform=None):
     from ..command_context import project_dir as current_project, json_output
     from ..mcstudio import sessions
     from ..remote.service import directory_lock
     from .macos import ensure_runtime, pinned_runtime
-    require_macos()
+    platform = platform or MACOS
+    require_native(platform)
+    system = platform.system
     if json_output() and not detach:
         raise click.UsageError('网络运行 --json 需要 --detach；使用 status/logs/stop 管理返回的会话')
     overrides = engine_overrides or {}
     if target.auth != 'none' or overrides.get('game_executable_path') or overrides.get('mcs_download_path'):
-        raise EngineError('macOS 服务器连接仅支持无认证模式；MC Studio 身份和 EXE 参数仅适用于 Windows。',
+        raise EngineError(system + ' 服务器连接仅支持无认证模式；MC Studio 身份和 EXE 参数仅适用于 Windows。',
                           'unsupported_option')
     root = Path(project_dir or current_project()).resolve()
     with directory_lock(install.home()/'install-lock'):
-        state = pinned_runtime({'installation': ensure_runtime()})
+        state = pinned_runtime({'installation': ensure_runtime(platform)}, platform)
         from ..runtime.window_policy import require_native_background
         require_native_background(state, background)
         if state.get('network_connect_protocol') != 1:
-            raise EngineError('此 macOS 运行包尚不支持连接服务器。', 'runtime_incompatible',
-                              '请执行 mcpy engine install --catalog ' + install.DEFAULT_CATALOG + '，再重试；已有世界保留原绑定。')
+            raise EngineError('此 %s 运行包尚不支持连接服务器。' % system, 'runtime_incompatible',
+                              '请执行 mcpy engine install --catalog ' + install.DEFAULT_CATALOGS[platform.backend] + '，再重试；已有世界保留原绑定。')
         if player is not None and state.get('developer_identity_protocol') != 1:
-            raise EngineError('此 macOS 运行包不能为两个客户端分配不同开发身份。', 'runtime_incompatible',
+            raise EngineError('此 %s 运行包不能为两个客户端分配不同开发身份。' % system, 'runtime_incompatible',
                               '需要支持双客户端身份的运行包；已有单客户端会话可继续使用。')
         version = state['profile']['apk']['version']
         requested = overrides.get('engine_version')
@@ -48,7 +51,7 @@ def connect(target, *, project_dir=None, packs=(), engine_overrides=None, detach
             from ..runtime.profiles import directory as player_directory
             profile = player_directory(root, group, role)
             plan.update(data=str(profile/'data'), cache=str(profile/'cache'))
-        data = sessions.start(root, backend='macos-arm64', session_id=session, launch=plan,
+        data = sessions.start(root, backend=platform.backend, session_id=session, launch=plan,
                               group=group, role=role, background=background,
                               network={'target': asdict(target), 'engine': {'version': version},
                                        'player': player,

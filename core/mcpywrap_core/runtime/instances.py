@@ -12,7 +12,8 @@ from ..utils.locks import directory_lock
 
 
 def world_path(project, level_id, backend='windows', config_path=None):
-    if backend == 'macos-arm64':
+    from ..engines.platforms import is_native
+    if is_native(backend):
         return Path(config_path).parent/'data/minecraftWorlds'/level_id
     from ..mcstudio.mcs import get_mcs_game_engine_data_path
     root = get_mcs_game_engine_data_path()
@@ -41,7 +42,8 @@ def list_instances(project):
     for level_id, path in paths.items():
         try:
             meta = storage.read(record_path(project, level_id), {})
-            if meta.get('backend') == 'macos-arm64':
+            from ..engines.platforms import is_native
+            if is_native(meta.get('backend')):
                 continue
             config = storage.read(path, {})
             info = config.get('world_info') or {}

@@ -46,7 +46,7 @@ def setup_wizard():
 @click.group(name='engine', invoke_without_command=True)
 @click.pass_context
 def engine_cmd(ctx):
-    """管理 macOS 本地运行资源；Windows 引擎由 MC Studio 管理。"""
+    """管理 macOS / AArch64 Linux 本地运行资源；Windows 引擎由 MC Studio 管理。"""
     if ctx.invoked_subcommand is None:
         if human_interaction(): return setup_wizard()
         raise click.UsageError('请指定 engine doctor 或 engine install；此处不读取非交互输入')

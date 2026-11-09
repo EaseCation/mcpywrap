@@ -116,7 +116,9 @@ class PreferenceFile:
 
 
 class NativePreferences:
-    def __init__(self, project, data, root):
+    def __init__(self, project, data, root, target=None):
+        from .platforms import MACOS
+        self.target = target or MACOS
         self.root = Path(root)
         data = Path(data)
         self.data = data
@@ -131,7 +133,7 @@ class NativePreferences:
         with preference_lock(self.root):
             for file in self.files:
                 relative = file.local.relative_to(self.data)
-                candidates = sorted((self.project/'.runtime/macos/instances').glob('*/data/' + relative.as_posix()),
+                candidates = sorted(self.target.instances_root(self.project).glob('*/data/' + relative.as_posix()),
                                     key=lambda p: p.stat().st_mtime_ns, reverse=True)
                 file.prepare(candidates)
         return self

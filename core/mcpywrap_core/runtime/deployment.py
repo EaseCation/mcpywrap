@@ -16,6 +16,7 @@ from ..dependencies import DependencyService, read_project
 from ..engines.host import EngineError
 from ..utils.locks import directory_lock
 from ..utils.paths import is_link
+from ..engines.platforms import is_native
 
 _writing = ContextVar('deployment_writes', default=())
 
@@ -172,7 +173,7 @@ def readers(project, target, exclude=()):
         if deployed:
             selected = deployed['path']
         elif data.get('mode', 'local') == 'local':
-            selected = (Path(data['config_path']).parent/'assembled' if data.get('backend') == 'macos-arm64'
+            selected = (Path(data['config_path']).parent/'assembled' if is_native(data.get('backend'))
                         else Path(project)/'.mcpy/runtime/assembled')
         else:
             continue
@@ -192,7 +193,7 @@ def matches_source(project, data):
     try:
         target = (data.get('deployment') or {}).get('path')
         if not target:
-            target = (Path(data['config_path']).parent/'assembled' if data.get('backend') == 'macos-arm64'
+            target = (Path(data['config_path']).parent/'assembled' if is_native(data.get('backend'))
                       else Path(project)/'.mcpy/runtime/assembled')
         builder = runtime_builder(project, target)
         builder.initialize()
@@ -529,7 +530,7 @@ class Deployment:
 
 def refresh(project, data, allowed_sessions=None):
     target = (data.get('deployment') or {}).get('path')
-    if target is None and data.get('backend') == 'macos-arm64':
+    if target is None and is_native(data.get('backend')):
         target = Path(data['config_path']).parent/'assembled'
     deployment = Deployment(project, target)
     from contextlib import nullcontext

@@ -129,7 +129,8 @@ def reload(project, group, kind, target=None, source=None, side='client'):
         reload_code(kind, target, source)
         allowed = tuple(data['session'] for data in member_data)
         pack = refresh(project, host, allowed_sessions=allowed)
-        if host['backend'] == 'macos-arm64':
+        from ..engines.platforms import is_native
+        if is_native(host['backend']):
             get_backend(host['backend']).sync_runtime_packs(host, pack)
         results = []
         for member, data, selected in actions:

@@ -22,7 +22,7 @@ class InstallerTests(unittest.TestCase):
         self.env = patch.dict(os.environ, {'MCPY_ENGINE_HOME': str(self.root/'home'), 'MCPY_RUNTIME_CATALOG': ''})
         self.env.start(); self.addCleanup(self.env.stop)
         host = {'backend': 'macos-arm64', 'macos_version': '14.0'}
-        for name in ('describe', 'require_macos'):
+        for name in ('describe', 'require_native'):
             mock = patch.object(installer, name, return_value=host)
             mock.start(); self.addCleanup(mock.stop)
         signing = patch.object(installer.subprocess, 'run', return_value=Mock(returncode=0))

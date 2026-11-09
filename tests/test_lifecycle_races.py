@@ -68,7 +68,7 @@ class LifecycleRaces(unittest.TestCase):
         pending = {'session': 'a'*32, 'state': 'starting', 'game': None}
         ready = dict(pending, state='running', game={'pid': 10})
         item = {'level_id': 'world', 'state': 'ready'}
-        with patch.object(macos, 'require_macos'), patch.object(macos, 'instances', return_value=[item]), \
+        with patch.object(macos, 'require_native'), patch.object(macos, 'instances', return_value=[item]), \
                 patch.object(macos, 'active_session', return_value=pending), \
                 patch.object(sessions, 'wait_started', return_value=ready) as wait, \
                 patch.object(sessions, 'handoff', return_value={'session': ready['session']}) as handoff, \

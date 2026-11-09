@@ -23,7 +23,7 @@ def validate_background(value):
 def require_native_background(metadata, background):
     if background and metadata.get('background_window_protocol') != 1:
         from ..engines.host import EngineError
-        raise EngineError('此 macOS 运行包不支持后台窗口启动。', 'background_window_unavailable',
+        raise EngineError('此原生运行包不支持后台窗口启动。', 'background_window_unavailable',
                           '安装支持 background_window_protocol=1 的运行包并新建实例；'
                           '允许游戏聚焦时可显式使用 --foreground。')
 

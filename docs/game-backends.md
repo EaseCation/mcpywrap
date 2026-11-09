@@ -1,6 +1,6 @@
 # 本地运行后端
 
-CLI、TUI 和 session worker 使用 `engines.backend.GameBackend`，由 `get_backend()` 在一个位置选择 Windows、Apple Silicon macOS 或不支持的平台。远程路由仍先于本地回调执行，远程失败不会自动改为本地启动。会话记录保存后端 ID，恢复/停止已有会话不重新猜测它的平台。
+CLI、TUI 和 session worker 使用 `engines.backend.GameBackend`，由 `get_backend()` 在一个位置选择 Windows、Apple Silicon macOS、AArch64 Linux 或不支持的平台。远程路由仍先于本地回调执行，远程失败不会自动改为本地启动。会话记录保存后端 ID，恢复/停止已有会话不重新猜测它的平台。
 
 接口边界：
 
@@ -13,7 +13,7 @@ CLI、TUI 和 session worker 使用 `engines.backend.GameBackend`，由 `get_bac
 | refresh / handoff | 后端就绪判断和附加诊断 | status/会话交接，不按平台分支 |
 | capabilities / reload_restriction / ui_reload_code | 声明入口和版本限制、提供 UI 重载代码 | doctor 和 runtime capabilities 查询；CLI/Qt 共用 reload_session、结果处理 |
 
-WindowsBackend 调用原有 MC Studio 发现、cppconfig 和 Safaia 流程，保留现有引擎实现。Qt6 项目界面、日志视图、模板和热更监控由两端共用，详见 [Qt6 开发界面](qt6-development.md)。macOSBackend 用同一 AddonProjectBuilder、sessions 和 RuntimeControlServer，内部负责 APK 资源、打包启动适配器和 LauncherPythonChannel。服务端 Python 仍通过 Safaia；新增原生通道只负责客户端。
+WindowsBackend 调用原有 MC Studio 发现、cppconfig 和 Safaia 流程，保留现有引擎实现。macOS 与 Linux 共用 `engines.macos.NativeApkBackend`（APK 资源、实例、启动适配器与 LauncherPythonChannel），平台差异只由 `engines.platforms.RuntimePlatform` 描述：运行包布局、可执行格式、最低系统版本、资源根目录和实例目录（`.runtime/macos` / `.runtime/linux`）。Qt6 项目界面、日志视图、模板和热更监控由两端共用，详见 [Qt6 开发界面](qt6-development.md)。macOSBackend 用同一 AddonProjectBuilder、sessions 和 RuntimeControlServer，内部负责 APK 资源、打包启动适配器和 LauncherPythonChannel。服务端 Python 仍通过 Safaia；新增原生通道只负责客户端。
 
 调用端通常只需要 run/status/logs/stop/runtime py。启动器位置、游戏库路径和底层 socket 是后端细节；`backend` 字段供诊断，业务代码应按 capability 和公共状态判断。`running` 表示进程启动，macOS 的 `world_ready` 才表示已观察到 HUD；Mod 是否正常还要核对实际游戏日志和玩法效果。
 
@@ -59,3 +59,11 @@ Windows 本地双端的自动加入、运行映像端口定位、菜单控制与
 转换结果在每个引擎的 `game` 同级 `icons` 目录保存为透明 PNG 与多尺寸 ICNS（16–1024 像素及 Retina 表示），记录 APK 摘要、资源路径、原始尺寸与输出摘要。保留宽高比和透明度；放大不会增加原始图像细节。已有安装在下一次启动时可从匹配的 APK 缓存自动补全，不需要重装游戏。缓存已删除时可执行 `mcpy engine install --apk <匹配的原 APK>`；缺少图标不会阻止游戏启动。
 
 游戏启动前，在安装锁内按原生运行包和图标摘要创建 `runtimes/<id>/applications/<摘要>/Minecraft China.app` 本地副本，设置中文应用名、`CFBundleIconFile`，重新进行 ad-hoc 签名并验证。之后复用副本，每次启动检查签名。原始运行包的文件、发行完整性清单和签名不变；本地副本只用于实际游戏进程，实例固定的原生运行版本、游戏资源、数据目录和控制协议仍保持原绑定。图标转换或签名失败时向 stderr 记录原因，继续使用原始运行包。无需 Xcode、Android SDK、Pillow 或重新编译原生启动器。
+
+## AArch64 Linux
+
+`linux-arm64` 后端要求 glibc 的 AArch64 主机（`host.describe()` 用 `platform.libc_ver()` 识别；musl 与 x86_64 返回不支持）。运行包布局为 `McpyRuntime/{bin,share,resources}`，安装时校验 ELF AArch64 启动器与 SHA-256 清单，不调用 codesign、不生成应用图标。发布目录按平台独立：`catalog-linux-arm64.json` 声明 `minimum_glibc`，低于该版本时安装和启动前拒绝。资源根默认为 `$XDG_DATA_HOME/mcpy`。
+
+`engine doctor` 额外返回 `display`：检查 WAYLAND_DISPLAY（相对 XDG_RUNTIME_DIR 的套接字）或 DISPLAY（本地 X11 套接字），只读检查，不连接显示服务器。缺少显示会话时状态为 `display_unavailable`，run 在创建进程前拒绝；没有可访问的 `/dev/dri/renderD*` 只作为警告。PySide6 在 Linux 为可选依赖（aarch64 wheel 需要 glibc 2.39+），未安装时后端不声明 project-ui，交互式 run 使用终端视图。
+
+运行包没有 seatbelt。启动适配器在离线世界和无认证联机时传入进程内网络守卫：游戏代码只能访问回环地址，联机额外放行解析出的服务器 UDP 端点；Safaia 与 Launcher 控制通道仍在宿主网络命名空间中按进程核对端口。能力边界、显示会话与无头测试见[内置 Skill](../skills/mcpywrap/references/linux-local.md)，运行包实现见 EaseCation/mcpelauncher-manifest 的 `docs/linux-runtime.md`。

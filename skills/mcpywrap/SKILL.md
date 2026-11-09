@@ -39,6 +39,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 | 截图、录制视频、下载、逐帧检查 | [画面采集](references/capture.md) | 需要操作玩家时才读输入协议 |
 | 卡顿、帧率、脚本或操作耗时 | [性能分析](references/profiling.md) | 构造场景时再读输入页 |
 | macOS 安装/升级运行包、能力与引擎限制 | [macOS 平台](references/macos-local.md) | 不为普通运行每次重读安装细节 |
+| AArch64 Linux 显示会话、网络守卫与平台差异 | [Linux 平台](references/linux-local.md) | 安装与升级规则同 macOS 页 |
 | 已有明确错误或结果未知 | [故障定位](references/troubleshooting.md) | 先按错误定位，再读相应操作页 |
 
 ## 当前工作方式的关键变化

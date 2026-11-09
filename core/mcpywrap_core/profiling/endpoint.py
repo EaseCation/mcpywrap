@@ -83,6 +83,8 @@ def session_endpoint(project, session):
         hint = '游戏启动后需要数秒才开始监听；稍后重试。'
         if data.get('backend') == 'macos-arm64':
             hint += 'macOS 需要运行包 0.4.7 及以上，旧实例请更新运行包后用 run --new 新建。'
+        elif data.get('backend') == 'linux-arm64':
+            hint += 'Linux 运行包的 Tracy 仅监听本机 127.0.0.1。'
         raise EngineError('游戏进程没有监听 Tracy 端口', 'profiler_unavailable', hint, session=session)
     return {'session': session, 'pid': process.pid, 'port': ports[0], 'backend': data.get('backend', 'windows')}
 

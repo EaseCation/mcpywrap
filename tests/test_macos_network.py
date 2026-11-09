@@ -24,8 +24,8 @@ class MacOSNetworkTests(unittest.TestCase):
                       'profile': {'apk': {'version': '3.10'}}, 'network_connect_protocol': 1,
                       'background_window_protocol': 1}
         for name, value in [('mcpywrap_core.engines.backend.get_backend', self.backend),
-                            ('mcpywrap_core.engines.macos.require_macos', {}),
-                            ('mcpywrap_core.engines.macos_network.require_macos', {}),
+                            ('mcpywrap_core.engines.macos.require_native', {}),
+                            ('mcpywrap_core.engines.macos_network.require_native', {}),
                             ('mcpywrap_core.engines.macos.ensure_runtime', self.state),
                             ('mcpywrap_core.engines.macos.pinned_runtime', self.state),
                             ('mcpywrap_core.engines.install.home', self.root/'resources')]:

@@ -1,4 +1,7 @@
-"""macOS Addon backend. Reuses project builders, sessions and the shipped launcher helper."""
+"""APK 原生运行包后端（macOS / Linux 共用）。复用项目构建、会话与运行包自带的启动适配器。
+
+模块名沿用 macos 以保持既有导入；平台差异由 platforms.RuntimePlatform 描述。
+"""
 import json
 from pathlib import Path
 import shutil
@@ -8,14 +11,15 @@ import time
 import uuid
 
 import click
-from .host import EngineError, require_macos
+from .host import EngineError, require_native
+from .platforms import MACOS, for_backend, metadata_path
 from .backend import GameBackend, LaunchedGame
 from . import install
 from ..mcstudio.launcher_control import LauncherProcessMismatch
 
 
-def instances(project):
-    root = Path(project)/'.runtime/macos/instances'
+def instances(project, target=MACOS):
+    root = target.instances_root(project)
     found = []
     for path in root.glob('*/instance.json'):
         item = install.read_json(path)
@@ -32,11 +36,11 @@ def instances(project):
     return sorted(found, key=lambda x: x['created_at'], reverse=True)
 
 
-def active_session(project, level_id):
+def active_session(project, level_id, target=MACOS):
     from ..mcstudio import sessions
     from ..runtime import occupancy
     for record in occupancy.active(project):
-        if record.get('backend') == 'macos-arm64' and record.get('level_id') == level_id:
+        if record.get('backend') == target.backend and record.get('level_id') == level_id:
             data = sessions.read(project, record['session'])
             if data['state'] in ('starting', 'running'):
                 return data
@@ -52,26 +56,33 @@ def _match(items, prefix):
     return matches[0]
 
 
-def ensure_runtime():
-    state = install.diagnose()
+def ensure_runtime(target=MACOS):
+    state = install.diagnose(target=target)
     if state['ok']:
         return state
-    raise EngineError('macOS 本地运行资源尚未就绪。', 'setup_required',
+    if state.get('state') == 'display_unavailable':
+        raise EngineError(state.get('error') or '没有可用的图形显示会话。', 'display_unavailable',
+                          state.get('hint'), setup=state)
+    raise EngineError(target.system + ' 本地运行资源尚未就绪。', 'setup_required',
                       '先执行 mcpy engine install --catalog <发布目录> [--apk <本地 APK>]，再重试 run。',
                       setup=state, next_commands=['mcpy engine doctor --json', 'mcpy engine install --help'])
 
 
-def pinned_runtime(item):
+def pinned_runtime(item, target=MACOS):
     plan = item['installation']
-    app = install.home()/'runtimes'/plan['runtime_id']/'McpyRuntime.app'
+    app = install.home()/'runtimes'/plan['runtime_id']/target.archive_root
     game = install.home()/'engines'/plan['profile']['apk']['sha256']/'game'
     meta = install.verify_runtime(app, app.parent/'McpyRuntime.integrity.json', plan['profile'])
-    if install._version(require_macos()['macos_version']) < install._version(meta['minimum_macos']):
-        raise EngineError('当前系统低于此实例的最低 macOS 要求', 'os_too_old')
+    host = require_native(target)
+    if install._version(host[target.host_version_key]) < install._version(meta[target.minimum_key]):
+        raise EngineError('当前系统低于此实例的最低 %s 要求' % target.system, 'os_too_old')
     install.verify_game(game, plan['profile'])
     compatibility = install.preflight_runtime(app, game, plan['profile'], meta, plan['runtime_id'])
-    from .macos_icons import optional_runtime_application
-    application = optional_runtime_application(app, game)
+    if target.is_macos:
+        from .macos_icons import optional_runtime_application
+        application = optional_runtime_application(app, game)
+    else:
+        application = app
     return {'runtime': str(app), 'application': str(application), 'game': str(game), 'profile': plan['profile'], 'runtime_id': plan['runtime_id'],
             'compat_report': compatibility, 'cppconfig_protocol': meta.get('cppconfig_protocol'),
             'network_connect_protocol': meta.get('network_connect_protocol'),
@@ -81,8 +92,9 @@ def pinned_runtime(item):
 
 
 def run(project, *, new=False, listing=False, delete=None, clean_all=False, force=False,
-        instance_prefix=None, detach=False, mcs_auth=False, overrides=None, world_config=None, background=False):
-    require_macos()
+        instance_prefix=None, detach=False, mcs_auth=False, overrides=None, world_config=None, background=False,
+        target=MACOS):
+    require_native(target)
     from ..dependencies import read_project
     from ..command_context import json_output, human_interaction
     from ..mcstudio import sessions
@@ -95,49 +107,49 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
     overrides = overrides or {}
     if mcs_auth or overrides.get('game_executable_path') or overrides.get('mcs_download_path'):
         raise EngineError('MC Studio 身份、EXE 和下载目录参数仅适用于 Windows。', 'unsupported_option',
-                          'macOS 当前使用开发者 APK 的离线模式；资源由 mcpy engine 管理。')
+                          target.system + ' 当前使用开发者 APK 的离线模式；资源由 mcpy engine 管理。')
     config = read_project(project)
     if not (listing or delete or clean_all):
         from ..mcstudio.network import configured_target, prepare_project
-        target = configured_target(config)
-        if target is not None:
+        server = configured_target(config)
+        if server is not None:
             if new or instance_prefix or world_config is not None:
                 raise click.UsageError('网络模式不支持 --new 或本地世界实例 ID')
             packs = prepare_project(project, config)
             from .macos_network import connect
-            return connect(target, project_dir=project, packs=packs, engine_overrides=overrides, detach=detach,
-                           background=background)
+            return connect(server, project_dir=project, packs=packs, engine_overrides=overrides, detach=detach,
+                           background=background, platform=target)
     if config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
-        raise EngineError('macOS 首版支持 Addon 测试，Map 项目尚未接入。', 'unsupported_feature',
+        raise EngineError(target.system + ' 首版支持 Addon 测试，Map 项目尚未接入。', 'unsupported_feature',
                           '地图项目请在 Windows 本机运行。')
-    items = instances(project)
+    items = instances(project, target)
     if listing:
-        return {'backend': 'macos-arm64', 'instances': items}
+        return {'backend': target.backend, 'instances': items}
     if delete or clean_all:
         targets = [_match(items, delete)] if delete else items
         if not force:
             if not human_interaction() or not click.confirm('永久删除所选测试实例及其世界？', default=False):
                 raise click.Abort()
         for item in targets:
-            if active_session(project, item['level_id']):
+            if active_session(project, item['level_id'], target):
                 raise EngineError('实例正在运行，请先 stop。', 'busy')
         for item in targets:
             directory = Path(item['config_path']).parent
-            if directory.is_symlink() or directory.parent != Path(project)/'.runtime/macos/instances':
+            if directory.is_symlink() or directory.parent != target.instances_root(project):
                 raise EngineError('实例路径无效', 'instance_invalid')
             shutil.rmtree(directory)
-        return {'deleted': [item['level_id'] for item in targets], 'backend': 'macos-arm64'}
+        return {'deleted': [item['level_id'] for item in targets], 'backend': target.backend}
     if json_output() and not detach:
         raise click.UsageError('run --json 需要 --detach；通过 status/logs/stop 管理会话')
-    with directory_lock(Path(project)/'.runtime/macos'):
-        items = instances(project)
+    with directory_lock(Path(project)/'.runtime'/target.state_dir):
+        items = instances(project, target)
         available = [item for item in items if item['state'] in ('ready', 'legacy_existing')]
         if items and not new and not instance_prefix and not available:
             raise EngineError('没有成功进入过世界的可用实例。', 'instance_not_ready',
                               '使用 run ' + items[0]['level_id'] + ' 重试，或 --new 新建。')
         item = _match(items, instance_prefix) if instance_prefix else (available[0] if available and not new else None)
         if item:
-            current = active_session(project, item['level_id'])
+            current = active_session(project, item['level_id'], target)
             if current:
                 from ..runtime.deployment import matches_source
                 if current['state'] == 'starting':
@@ -149,13 +161,13 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                             hint='已复用运行中的实例；未执行预处理，修改 Mod 后请先 stop，再 run 以重新部署。')
             state = item['installation']
         else:
-            state = ensure_runtime()
+            state = ensure_runtime(target)
         with directory_lock(install.home()/'install-lock'):
-            state = pinned_runtime({'installation': state})
+            state = pinned_runtime({'installation': state}, target)
             from ..runtime.window_policy import require_native_background
             require_native_background(state, background)
             version = state['profile']['apk']['version']
-            requested = overrides.get('engine_version') or config.get('tool', {}).get('mcpywrap', {}).get('macos', {}).get('engine_version')
+            requested = overrides.get('engine_version') or config.get('tool', {}).get('mcpywrap', {}).get(target.state_dir, {}).get('engine_version')
             if requested and requested != version:
                 raise EngineError('当前实例／资源固定为 ' + version, 'engine_version_mismatch',
                                   '选择匹配的运行包；旧实例不自动升级，需要升级时显式 --new。')
@@ -165,10 +177,10 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                                   '安装支持 cppconfig_protocol=1 的运行包，并创建新实例。')
             if item is None:
                 identity = uuid.uuid4().hex
-                directory = Path(project)/'.runtime/macos/instances'/identity
+                directory = target.instances_root(project)/identity
                 directory.mkdir(parents=True)
                 item = {'level_id': identity, 'name': config.get('project', {}).get('name', '开发测试'),
-                        'created_at': time.time(), 'backend': 'macos-arm64',
+                        'created_at': time.time(), 'backend': target.backend,
                         'installation': {'runtime_id': state['runtime_id'], 'profile': state['profile']},
                         'config_path': str(directory/'world.cppconfig')}
                 install.write_json(directory/'instance.json', {k: v for k, v in item.items() if k != 'config_path'})
@@ -186,7 +198,7 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                 from ..runtime.storage import read
                 plan['prepare_world']['settings'] = read(records.record_path(project, item['level_id']), {}).get('creation_settings')
             data = sessions.start(project, str(config_path), item['level_id'],
-                                  backend='macos-arm64', launch=plan, background=background)
+                                  backend=target.backend, launch=plan, background=background)
     result = sessions.handoff(data)
     if detach: return result
     sessions.show_configuration(result)
@@ -203,21 +215,24 @@ def launch_session(data):
             SimpleNamespace(version=plan['engine_version'], download_dir=plan['game']),
             ServerTarget(**data['network']['target']), data['network'].get('player'))
         install.write_json(Path(plan['cppconfig']), config)
+    target = for_backend(data.get('backend', MACOS.backend))
     app = Path(plan['runtime'])
-    helper = app/'Contents/Resources/launcher/run_netease_dev.py'
+    helper = target.launcher(app)/'run_netease_dev.py'
     if not helper.is_file():
         raise EngineError('运行包缺少启动适配器，请重新安装。', 'runtime_incompatible')
     display_app = plan.get('application') or app
     command = [sys.executable, str(helper), '--runtime', str(display_app), '--game-dir', plan['game'],
-               '--data-dir', plan['data'], '--cache-dir', plan['cache'], '--angle-backend', 'metal',
-               '--debug-loopback', '--exec-client', '--log', data['engine_log_path']]
+               '--data-dir', plan['data'], '--cache-dir', plan['cache']]
+    if target.is_macos:
+        command += ['--angle-backend', 'metal']
+    command += ['--debug-loopback', '--exec-client', '--log', data['engine_log_path']]
     if plan.get('cppconfig'):
         command += ['--cppconfig', plan['cppconfig']]
     else:
         command += ['--world-id', plan['world_id'], '--world-name', plan['world_name'], '--source-addon', plan['packs']]
     if plan.get('compat_report'):
         command += ['--compat-report', plan['compat_report']]
-    metadata = install.read_json(app/'Contents/Resources/runtime.json')
+    metadata = install.read_json(target.metadata(app))
     from ..runtime.window_policy import require_native_background
     require_native_background(metadata, data.get('background', False))
     if data.get('background', False):
@@ -239,16 +254,16 @@ def launch_session(data):
     raise EngineError('启动器交接超时；已请求取消。', 'launch_timeout')
 
 
-class MacOSBackend(GameBackend):
-    id = 'macos-arm64'
-    label = 'macOS · Apple Silicon · Metal'
-    capabilities = ('local-worlds', 'macos-local-worlds', 'engine-install', 'macos-engine-install',
-                    'status', 'logs', 'stop', 'py', 'runtime', 'runtime-ui', 'runtime-player',
-                    'client-python-requests', 'project-ui', 'reload', 'watch', 'network-sessions')
+COMMON_CAPABILITIES = ('local-worlds', 'engine-install', 'status', 'logs', 'stop', 'py', 'runtime', 'runtime-ui',
+                       'runtime-player', 'client-python-requests', 'project-ui', 'reload', 'watch', 'network-sessions')
+
+
+class NativeApkBackend(GameBackend):
+    """运行网易开发者 APK 的原生运行包；子类只声明平台与平台限定的提示。"""
+    platform = MACOS
     managed_install = True
-    setup_description = ('在 Apple Silicon Mac 上运行本地 Addon 测试。\n'
-                         '首次运行会自动下载原生启动器和网易开发者版资源，并在本机完成安装。\n'
-                         '需下载约 2.3 GB，请预留至少 7 GB 可用空间。')
+    graphics_path = 'GLES'
+    id = MACOS.backend
 
     def world_option_restrictions(self):
         return {'cheat_info.' + key: reason for key, reason in (
@@ -264,14 +279,14 @@ class MacOSBackend(GameBackend):
             if settings.get(group, {}).get(key):
                 raise EngineError(reason, 'unsupported_world_option', field=field)
         options.pop('no_gui', None)
-        return run(project, **options)
+        return run(project, target=self.platform, **options)
 
     def connect(self, target, **options):
         from .macos_network import connect
-        return connect(target, **options)
+        return connect(target, platform=self.platform, **options)
 
     def prepare_guest(self, host):
-        raise EngineError('当前 macOS 运行包尚未完成本地卡片加入适配，未启动联调组。',
+        raise EngineError('当前 %s 运行包尚未完成本地卡片加入适配，未启动联调组。' % self.platform.system,
                           'local_join_unavailable',
                           '单客户端和已支持的外部服务器连接仍可使用；需要具备本地菜单联机能力的运行包。')
 
@@ -279,7 +294,7 @@ class MacOSBackend(GameBackend):
         return Path(data['config_path']).parent/'assembled'
 
     def instances(self, project):
-        return [dict(item, creation_time=item['created_at']) for item in instances(project)]
+        return [dict(item, creation_time=item['created_at']) for item in instances(project, self.platform)]
 
     def deploy(self, project, data):
         from ..runtime.deployment import refresh
@@ -322,7 +337,7 @@ class MacOSBackend(GameBackend):
         if kind == 'ui':
             runtime = launch.get('runtime')
             try:
-                metadata = install.read_json(Path(runtime)/'Contents/Resources/runtime.json') if runtime else {}
+                metadata = install.read_json(metadata_path(runtime)) if runtime else {}
             except (OSError, ValueError):
                 metadata = {}
             if metadata.get('json_ui_reload_protocol') != 1:
@@ -335,10 +350,10 @@ class MacOSBackend(GameBackend):
                 if not isinstance(report.get('ui'), dict):
                     return '此引擎的 JSON UI 接口未通过结构识别；请重新部署并重载世界，或反馈兼容性诊断。'
             return None
-        # A new APK version does not establish support for unverified Metal APIs.
+        # A new APK version does not establish support for unverified renderer APIs.
         return {
             'material': '当前材质热更包装接口缺失，底层入口尚未验证可用；请重新部署并重载世界。',
-            'shader': '当前 Metal 运行路径尚未验证 Shader 热更；暂不调用动态重编译，请重新部署并重载世界。',
+            'shader': '当前 %s 运行路径尚未验证 Shader 热更；暂不调用动态重编译，请重新部署并重载世界。' % self.graphics_path,
         }.get(kind)
 
     def ui_reload_code(self):
@@ -352,29 +367,29 @@ else:
 """
 
     def diagnose(self, project=None, overrides=None, mcs_auth=False, check_files=False):
-        data = install.diagnose(check_files=check_files)
+        data = install.diagnose(check_files=check_files, target=self.platform)
         if mcs_auth:
             data.update(ok=False, state='unsupported_option',
-                        hint='macOS 当前使用离线开发模式。')
+                        hint=self.platform.system + ' 当前使用离线开发模式。')
             data['mcs_auth'] = {'component_available': False, 'error': 'MC Studio 身份仅适用于 Windows'}
         return data
 
     def install(self, catalog=None, apk=None, progress=None):
-        return install.install(catalog, apk, progress)
+        return install.install(catalog, apk, progress, target=self.platform)
 
     def check_updates(self):
         from .official import check_updates
         return check_updates()
 
     def installation_choice(self):
-        cat, _ = install.catalog()
+        cat, _ = install.catalog(target=self.platform)
         return cat['runtime']['id'] + ' / ' + cat['profile']['apk']['version']
 
     def launch(self, data, receiver, auth_context=None):
         from .preferences import NativePreferences
         if data.get('mode') == 'local':
             self.preferences = NativePreferences(data['project'], data['launch']['data'],
-                                                 install.home()/'preferences/macos').prepare()
+                                                 install.home()/'preferences'/self.platform.state_dir, self.platform).prepare()
             from ..runtime.native import launch_world
             return launch_world(data, launch_session)
         from contextlib import ExitStack
@@ -387,7 +402,7 @@ else:
                 guard.enter_context(profile.lease())
                 profile.prepare()
             self.preferences = NativePreferences(data['project'], data['launch']['data'],
-                                                 install.home()/'preferences/macos').prepare()
+                                                 install.home()/'preferences'/self.platform.state_dir, self.platform).prepare()
             sessions.require_launch_requested(data['project'], data['session'])
             data['phase'] = 'prepared'
             sessions.save(sessions.session_path(data['project'], data['session'])/'session.json', data)
@@ -490,3 +505,14 @@ else:
         return dict(super().handoff(data), engine_version=data['launch']['engine_version'],
                     instance=data['level_id'], client_python_transport='launcher-jni',
                     world_ready=data.get('world_ready', False))
+
+
+class MacOSBackend(NativeApkBackend):
+    platform = MACOS
+    id = MACOS.backend
+    label = 'macOS · Apple Silicon · Metal'
+    graphics_path = 'Metal'
+    capabilities = COMMON_CAPABILITIES + ('macos-local-worlds', 'macos-engine-install')
+    setup_description = ('在 Apple Silicon Mac 上运行本地 Addon 测试。\n'
+                         '首次运行会自动下载原生启动器和网易开发者版资源，并在本机完成安装。\n'
+                         '需下载约 2.3 GB，请预留至少 7 GB 可用空间。')

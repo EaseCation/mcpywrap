@@ -65,6 +65,8 @@ def platform_tag():
         return 'macos-arm64' if machine == 'arm64' else None
     if os.name == 'nt' and machine in ('amd64', 'x86_64'):
         return 'windows-x64'
+    if sys.platform.startswith('linux') and machine == 'aarch64':
+        return 'linux-arm64'
     return None
 
 
@@ -85,7 +87,7 @@ def _entry(data):
     entry = data['platforms'].get(tag) if tag else None
     if not entry:
         raise EngineError('当前平台暂无 Tracy %s 工具包' % data['tracy_version'], 'unsupported_platform',
-                          '支持 Apple Silicon macOS 与 Windows x64；其他平台可用同版本源码自行构建后通过 --from 导入。')
+                          '已发布 Apple Silicon macOS 与 Windows x64 工具包；其他平台可用同版本源码自行构建后通过 --from 导入。')
     return tag, entry
 
 
