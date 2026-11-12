@@ -225,13 +225,35 @@ class UnbundledDependencies(unittest.TestCase):
 
     def test_unbundled_prepare_is_diagnosed_and_not_executed(self):
         helper = self.helper('helper')
-        self.config(helper, consumer_prepare={'python':'prepare.py'})
+        self.config(helper, consumer_prepare={'format': 1, 'python': 'prepare.py', 'requires_python': '>=3.9'})
         self.service.add_local('../helper', unbundled=True)
         with self.assertRaisesRegex(ValueError, 'unbundled 依赖暂不支持'):
             PreparationPlan(self.main)
         plan = PreparationPlan(self.main, purpose='release')
         self.assertEqual(plan.providers, [])
         self.assertEqual(self.invoke('package', '--json').exit_code, 0)
+
+    def test_unbundled_path_to_non_transitive_prepare_is_skipped(self):
+        # 主项目 → helper（unbundled）→ framework（helper 的普通依赖，导出非传递 consumer_prepare）
+        framework = self.helper('framework')
+        (framework/'prepare.py').write_text('raise SystemExit("must not run")\n')
+        self.config(framework, consumer_prepare={'format': 1, 'python': 'prepare.py', 'requires_python': '>=3.9'})
+        helper = self.helper('helper')
+        self.config(helper, local_dependencies=['../framework'])
+        self.service.add_local('../helper', unbundled=True)
+        plan = PreparationPlan(self.main)
+        self.assertEqual([(p['name'], p['state'], p['direct']) for p in plan.providers], [('framework', 'not_transitive', False)])
+        self.assertEqual(plan.issues, [])
+
+    def test_unbundled_path_to_transitive_prepare_is_still_diagnosed(self):
+        framework = self.helper('framework')
+        (framework/'prepare.py').write_text('raise SystemExit("must not run")\n')
+        self.config(framework, consumer_prepare={'format': 1, 'python': 'prepare.py', 'requires_python': '>=3.9', 'transitive': True})
+        helper = self.helper('helper')
+        self.config(helper, local_dependencies=['../framework'])
+        self.service.add_local('../helper', unbundled=True)
+        with self.assertRaisesRegex(ValueError, 'unbundled 依赖暂不支持'):
+            PreparationPlan(self.main)
 
     def test_active_dev_output_lease_rejects_other_thread_and_releases(self):
         output = self.main/'build'

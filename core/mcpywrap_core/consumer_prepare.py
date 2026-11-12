@@ -274,8 +274,6 @@ class PreparationPlan:
                         'direct': key in direct, 'state': 'invalid', 'events': list(EVENTS)}
             self.providers.append(provider)
             try:
-                if all(getattr(alias, 'unbundled', False) for alias in nodes[key]):
-                    raise PrepareError(node.name + ': unbundled 依赖暂不支持 consumer_prepare；请将生成资源作为普通打包依赖提供，避免临时内容残留到发布包。')
                 spec = _declaration(raw, node.name)
                 provider['spec'] = spec
                 disabled = any(all(provider['source'].get(k) == v for k, v in selector.items())
@@ -283,7 +281,10 @@ class PreparationPlan:
                 provider['state'] = ('disabled' if disabled else
                                      'enabled' if key in direct or spec['transitive'] else 'not_transitive')
                 if provider['state'] != 'enabled':
+                    # 不会对本根执行的入口（非直接且非传递、或已停用）与打包方式无关，不因经 unbundled 可达而判为无效。
                     continue
+                if all(getattr(alias, 'unbundled', False) for alias in nodes[key]):
+                    raise PrepareError(node.name + ': unbundled 依赖暂不支持 consumer_prepare；请将生成资源作为普通打包依赖提供，避免临时内容残留到发布包。')
                 folder = node.descriptor_root
                 provider.update(root=str(folder), entry=str(_file(folder, spec['python'])))
                 # Git 读取原始描述，避免注册时重写过的目录与项目名成为工具契约。
