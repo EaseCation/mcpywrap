@@ -136,6 +136,75 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(error.exception.code, 'deployment_modified')
         self.assertTrue(extra.is_file())
 
+    def test_engine_created_empty_directories_are_not_external_writes(self):
+        # 网易引擎启动时会在开发行为包里补建空的 entities/；嵌套空目录同样放行。
+        deployment, _ = self.publish()
+        record = deployment.record
+        (deployment.target/'behavior_pack/entities').mkdir()
+        (deployment.target/'resource_pack/a/b/c').mkdir(parents=True)
+        with patch('mcpywrap_core.runtime.deployment._replace_with_retry',
+                   side_effect=AssertionError('unexpected write')):
+            second, _ = self.publish()
+        self.assertEqual(second.record['id'], record['id'])
+        self.assertTrue((deployment.target/'behavior_pack/entities').is_dir())
+        # 源码变化后的完整替换照常进行，旧目录随事务副本清理。
+        (self.project/'behavior_pack/main.py').write_text('VALUE = 2\n')
+        third, pack = self.publish()
+        self.assertNotEqual(third.record['id'], record['id'])
+        self.assertEqual((Path(pack.behavior_pack_dir)/'main.py').read_text(), 'VALUE = 2\n')
+        self.assertFalse((deployment.target/'behavior_pack/entities').exists())
+
+    def assert_modified(self, deployment, expected):
+        with deployment.lock(), self.assertRaises(EngineError) as error:
+            deployment.prepare()
+        self.assertEqual(error.exception.code, 'deployment_modified')
+        self.assertIn(expected, error.exception.details['changes'])
+
+    def test_unrecorded_non_empty_directories_are_external_writes(self):
+        cases = {
+            'file': ('behavior_pack/entities/zombie.json', 'behavior_pack/entities/'),
+            'nested file': ('behavior_pack/a/b/c.json', 'behavior_pack/a/b/c.json'),
+            'python cache only': ('behavior_pack/entities/cache.pyc', 'behavior_pack/entities/'),
+        }
+        for label, (relative, expected) in cases.items():
+            with self.subTest(label):
+                deployment, _ = self.publish()
+                path = deployment.target/relative
+                path.parent.mkdir(parents=True)
+                path.write_bytes(b'{}')
+                self.assert_modified(deployment, expected)
+                self.assertEqual(path.read_bytes(), b'{}')
+                import shutil
+                shutil.rmtree(deployment.target/'behavior_pack'/Path(relative).parts[1])
+
+    def test_unrecorded_directory_with_link_is_an_external_write(self):
+        deployment, _ = self.publish()
+        outside = self.root/'outside-file'
+        outside.write_text('owned elsewhere')
+        (deployment.target/'behavior_pack/entities').mkdir()
+        try:
+            os.symlink(outside, deployment.target/'behavior_pack/entities/link.json')
+        except OSError:
+            self.skipTest('symlink privilege unavailable')
+        with deployment.lock(), self.assertRaises(EngineError) as error:
+            deployment.prepare()
+        self.assertEqual(error.exception.code, 'deployment_modified')
+        self.assertEqual(outside.read_text(), 'owned elsewhere')
+
+    def test_changed_or_removed_recorded_content_is_an_external_write(self):
+        deployment, _ = self.publish()
+        main = deployment.target/'behavior_pack/main.py'
+        main.write_bytes(b'VALUE = 99\r\n')
+        self.assert_modified(deployment, 'behavior_pack/main.py')
+        self.assertEqual(main.read_bytes(), b'VALUE = 99\r\n')
+        main.write_bytes(b'VALUE = 1\r\n')
+        main.unlink()
+        self.assert_modified(deployment, 'behavior_pack/main.py')
+        main.write_bytes(b'VALUE = 1\r\n')
+        (deployment.target/'behavior_pack/entities').mkdir()
+        # 还原后只剩引擎空目录，再次放行。
+        self.publish()
+
     def test_owned_links_are_reused_and_unknown_copy_is_preserved(self):
         deployment, pack = self.publish()
         links = ManagedLinks(self.root/'engine', self.project)

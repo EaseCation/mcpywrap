@@ -85,6 +85,43 @@ def inventory(root):
     return result
 
 
+def _empty_tree(path):
+    """目录树内没有任何文件、链接或其他条目，只有（可嵌套的）空目录。"""
+    try:
+        with os.scandir(path) as entries:
+            for entry in entries:
+                if is_link(entry.path) or not entry.is_dir(follow_symlinks=False):
+                    return False
+                if not _empty_tree(entry.path):
+                    return False
+    except OSError:
+        return False
+    return True
+
+
+def _runtime_directory(root, name, *recorded):
+    """引擎运行时在开发包里自建的空目录（如网易引擎补建的 entities/）。
+
+    只放行所有记录里都不存在、且磁盘上整棵树为空的目录；任何文件（包括
+    inventory 忽略的 .pyc）、链接或已记录的目录都不在此列。
+    """
+    return (name.endswith('/') and all(name not in files for files in recorded)
+            and _empty_tree(Path(root)/name))
+
+
+def unexpected_changes(root, recorded, current=None):
+    """返回运行目录相对部署记录的改动；引擎自建的空目录不算外部改写。"""
+    current = inventory(root) if current is None else current
+    return [name for name in sorted(current.keys() | recorded.keys())
+            if current.get(name) != recorded.get(name)
+            and not (name not in recorded and _runtime_directory(root, name, recorded))]
+
+
+def _modified(target, changes, hint):
+    return EngineError('运行包已被外部程序改写，已保留现场。', 'deployment_modified', hint,
+                       path=str(target), changes=changes[:20])
+
+
 def _dependency_declarations(project):
     config = read_project(project)
     settings = config.get('tool', {}).get('mcpywrap', {})
@@ -223,9 +260,9 @@ class Deployment:
     def preflight(self):
         self.recover()
         previous = storage.read(self.record_path)
-        if previous and inventory(self.target) != previous['files']:
-            raise EngineError('运行包已被外部程序改写，已保留现场。', 'deployment_modified',
-                              '退出相关游戏并检查运行目录。', path=str(self.target))
+        changes = unexpected_changes(self.target, previous['files']) if previous else []
+        if changes:
+            raise _modified(self.target, changes, '退出相关游戏并检查运行目录。')
 
     def prepare(self, session=None, allowed_sessions=()):
         self.preflight()
@@ -239,9 +276,9 @@ class Deployment:
         fingerprint, structure = source_fingerprint(self.builder)
         previous = storage.read(self.record_path)
         using = readers(self.project, self.target, exclude=(session,) if session else ())
-        if previous and inventory(self.target) != previous['files']:
-            raise EngineError('运行包已被外部程序改写，已保留现场。', 'deployment_modified',
-                              '退出相关游戏并检查运行目录；不要清理其他项目的包。', path=str(self.target))
+        changes = unexpected_changes(self.target, previous['files']) if previous else []
+        if changes:
+            raise _modified(self.target, changes, '退出相关游戏并检查运行目录；不要清理其他项目的包。')
         if previous and previous['fingerprint'] == fingerprint:
             self.record = previous
             return self.builder.target_addon
@@ -429,6 +466,8 @@ class Deployment:
             previous = self.journal['previous']['files']
             applied = set(self.journal['applied'])
             for name in current.keys() | previous.keys() | expected.keys():
+                if _runtime_directory(self.target, name, previous, expected):
+                    continue  # 游戏运行期间自建的空目录不是发布后的外部改动，回滚时保留。
                 permitted = ((previous.get(name), expected.get(name)) if name in applied or name.endswith('/')
                              else (previous.get(name),))
                 if current.get(name) not in permitted:
@@ -459,12 +498,13 @@ class Deployment:
                 else:
                     dest.unlink(missing_ok=True)
             expected_dirs = {name for name in self.journal['previous']['files'] if name.endswith('/')}
-            for name in sorted(inventory(self.target), reverse=True):
-                if name.endswith('/') and name not in expected_dirs:
-                    try:
-                        (self.target/name).rmdir()
-                    except OSError:
-                        pass
+            # 只撤销本次发布新建的目录；未登记的空目录（引擎自建或外部创建）保留原样。
+            published_dirs = {name for name in self.journal['published_files'] if name.endswith('/')}
+            for name in sorted(published_dirs - expected_dirs, reverse=True):
+                try:
+                    (self.target/name).rmdir()
+                except OSError:
+                    pass
             for name in expected_dirs:
                 (self.target/name).mkdir(parents=True, exist_ok=True)
         elif backup.exists():

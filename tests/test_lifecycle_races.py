@@ -262,16 +262,38 @@ class LifecycleRaces(unittest.TestCase):
         self.assertEqual(file.read_text(), 'EXTERNAL_EDIT=True\n')
         self.assertTrue(deployment.journal_path.exists())
 
-    def test_incremental_rollback_preserves_an_external_empty_directory(self):
+    def test_incremental_rollback_keeps_an_external_empty_directory(self):
+        # 游戏运行中自建的空目录（如引擎补建的 entities/）不阻塞回滚，也不被回滚删除。
         deployment = self.publish()
+        before = inventory(deployment.target)
         (self.project/'behavior_pack/new-empty-directory').mkdir()
+        (self.project/'behavior_pack/main.py').write_text('VALUE=2\n')
         with deployment.lock(), patch('mcpywrap_core.runtime.deployment.readers', return_value=[{'session': 'reader'}]):
             deployment.prepare(allowed_sessions=('reader',))
-            external = deployment.target/'external-empty-directory'
+            self.assertTrue((deployment.target/'behavior_pack/new-empty-directory').is_dir())
+            external = deployment.target/'behavior_pack/entities'
+            (external/'nested').mkdir(parents=True)
+            deployment.rollback()
+        self.assertTrue((external/'nested').is_dir())
+        self.assertFalse((deployment.target/'behavior_pack/new-empty-directory').exists())
+        after = inventory(deployment.target)
+        self.assertEqual({k: v for k, v in after.items() if 'entities/' not in k}, before)
+        self.assertFalse(deployment.journal_path.exists())
+
+    def test_incremental_rollback_preserves_an_external_non_empty_directory(self):
+        deployment = self.publish()
+        (self.project/'behavior_pack/main.py').write_text('VALUE=2\n')
+        with deployment.lock(), patch('mcpywrap_core.runtime.deployment.readers', return_value=[{'session': 'reader'}]):
+            deployment.prepare(allowed_sessions=('reader',))
+            external = deployment.target/'behavior_pack/entities'
             external.mkdir()
-            with self.assertRaises(EngineError):
+            (external/'zombie.json').write_text('{}')
+            with self.assertRaises(EngineError) as error:
                 deployment.rollback()
-        self.assertTrue(external.is_dir())
+        self.assertEqual(error.exception.code, 'recovery_required')
+        self.assertEqual((external/'zombie.json').read_text(), '{}')
+        self.assertEqual((deployment.target/'behavior_pack/main.py').read_text(), 'VALUE=2\n')
+        self.assertTrue(deployment.journal_path.exists())
 
     def test_file_to_directory_change_requires_restart_before_any_write(self):
         source = self.project/'behavior_pack/slot'
