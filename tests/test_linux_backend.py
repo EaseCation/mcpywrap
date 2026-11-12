@@ -230,5 +230,35 @@ class LinuxLaunchTests(unittest.TestCase):
             self.assertEqual(tools.platform_tag(), 'linux-arm64')
 
 
+class LinuxDeploymentTests(unittest.TestCase):
+    """Linux 实例的组装目录与 macOS 一样走共享部署比对（含引擎自建空目录放行）。"""
+    def setUp(self):
+        from test_runtime_deployment import fixture
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        self.project = fixture(Path(tmp.name).resolve(), 'linux-addon')
+        config = LINUX.instances_root(self.project)/'world'/'world.cppconfig'
+        config.parent.mkdir(parents=True)
+        self.data = {'backend': 'linux-arm64', 'config_path': str(config), 'session': 's'*32}
+        self.target = config.parent/'assembled'
+
+    def test_refresh_targets_instance_assembly_and_allows_engine_empty_directories(self):
+        from mcpywrap_core.runtime import deployment
+        first = deployment.refresh(self.project, self.data)
+        self.assertEqual(Path(first.behavior_pack_dir).parent, self.target)
+        record = deployment.storage.read(deployment.metadata_path(self.project, self.target))
+        # 网易引擎启动时在开发行为包里补建的空 entities/ 不算外部改写。
+        (self.target/'behavior_pack/entities').mkdir()
+        with patch.object(deployment, '_replace_with_retry', side_effect=AssertionError('unexpected write')):
+            deployment.refresh(self.project, self.data)
+        self.assertEqual(deployment.storage.read(deployment.metadata_path(self.project, self.target))['id'],
+                         record['id'])
+        # 目录里一旦出现文件仍然拦截。
+        (self.target/'behavior_pack/entities/zombie.json').write_text('{}')
+        with self.assertRaises(EngineError) as error:
+            deployment.refresh(self.project, self.data)
+        self.assertEqual(error.exception.code, 'deployment_modified')
+        self.assertIn('behavior_pack/entities/', error.exception.details['changes'])
+
+
 if __name__ == '__main__':
     unittest.main()
