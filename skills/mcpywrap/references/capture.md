@@ -23,7 +23,7 @@ macOS 从 Launcher 按需读取下一帧，不需要屏幕录制授权或 runtim
 
 Windows 本机或远程 Windows，以及 Apple Silicon macOS 本机（CLI 0.8.0+）都提供同一组 `record` 命令。录制任务先检查执行端 `record` 和 `record-frames` 能力；bootstrap 可重复传入 `--require-capability`。新版 Skill 不代表旧 CLI 或旧原生组件支持录制。视频文件在执行端临时目录持续写入，下载到调用端；无需安装 FFmpeg。
 
-macOS 使用随 CLI 安装的 ScreenCaptureKit 辅助程序（开发签名），游戏窗口可留在后台或被遮挡，不激活窗口、不移动光标；最小化、关闭或改变窗口尺寸会结束录像（`end_reason`）。首次使用需在“系统设置 > 隐私与安全性 > 屏幕录制”中允许运行 mcpy 的终端或宿主应用，并重启该应用；未授权时 `doctor --capabilities` 的 `media.screen_capture_permission=false`、`record_available=false` 并给出原因，工具不弹窗、不绕过授权。
+macOS 使用随 CLI 安装的 ScreenCaptureKit 辅助程序（开发签名），游戏窗口可留在后台或被遮挡，不激活窗口、不移动光标；画面为不含标题栏的客户区（与 Windows 一致）；最小化、关闭或改变窗口尺寸会结束录像（`end_reason`）。首次使用需在“系统设置 > 隐私与安全性 > 屏幕录制”中允许运行 mcpy 的终端或宿主应用，并重启该应用；未授权时 `doctor --capabilities` 的 `media.screen_capture_permission=false`、`record_available=false` 并给出原因，工具不弹窗、不绕过授权。
 
 ```bash
 mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record start --session <sid> --duration 10 --fps 30 --json

@@ -64,7 +64,7 @@ mcpy --local --project <项目> runtime input stop --session <sid> --json
 | ui.click/slide | node、snapshot；click可带keys；slide用fraction | 单个当前快照的节点交互；按角色预检，自动抬起 |
 | ui.scroll | node、snapshot、percent | 设置滚动容器百分比；不是原始滚轮边沿 |
 | ui.set_control_value | node、snapshot、value | 仅控件赋值，不声称键入、IME或提交 |
-| pointer.down/up/move/relative/wheel | button，x/y，dx/dy或delta | 原始设备输入，首版仅显式windows-sendinput后端 |
+| pointer.down/up/move/relative/wheel | button，x/y，dx/dy或delta | 原始设备输入，仅显式设备后端：Windows `windows-sendinput`，macOS `macos-cgevent` |
 
 统一字段为 `action/at_ms/delay_ms/duration_ms`。JSON 组合必须是有序数组；只在人工快捷命令中允许 `CTRL+W` 字符串：
 
@@ -94,15 +94,17 @@ mcpy runtime input key "CTRL+W" --duration-ms 500 --session <sid> --json
 
 游戏不推进或调试通道不能处理命令时，查询/取消/释放可能延后；返回unknown/unavailable，不宣称当场已释放。恢复回调先检查墙钟上限，不补发过期操作。Windows worker的cancel/stop可能先返回cancel_requested；继续查询原操作到终态，不把请求接受当作清理已完成。
 
-## Windows 特殊后端与 macOS
+## 系统键鼠后端（Windows / macOS）
 
-需要原始设备路径时显式在计划顶层设置 `"backend":"windows-sendinput"`。同一个run/status/cancel协议；实际执行器由目标会话worker持有，远程不在调用端操作设备。支持key、边沿、wait及pointer.*；不执行player.*或ui.*语义动作。
+需要原始设备路径时显式在计划顶层设置执行端对应的后端：Windows 为 `"backend":"windows-sendinput"`，Apple Silicon macOS（CLI 0.8.0+）为 `"backend":"macos-cgevent"`；在另一平台提交会以 not_supported 拒绝，不自动换后端。同一个run/status/cancel协议；实际执行器由目标会话worker持有，远程不在调用端操作设备。支持key、边沿、wait及pointer.*；不执行player.*或ui.*语义动作。
 
 原始指针计划提供width/height参考客户区；坐标移动、滚轮及点击核验窗口尺寸和焦点/遮挡。VK/SC/E0、明确左右/扩展键仅在能保留语义的设备后端使用。普通game中不把RCTRL悄悄映射CTRL、不把NUMPAD_ENTER悄悄映射ENTER。常用规范名及旧别名集中映射，具体支持键以capabilities为准。
 
-Windows特殊后端会激活并占用游戏前台，因此后台启动会话拒绝该后端和旧桌面键鼠入口；需使用 game，只有允许占用前台时才用 --foreground 重新启动。统一调度器记录SendInput调用边界；不承诺0–20ms硬实时或游戏消费间隔。旧顶层input-sequence仍保持原有批量提交与调度行为，见[兼容输入参考](input-writing.md)。
+两个系统后端都会激活并占用游戏前台，因此后台启动会话拒绝这些后端和旧桌面键鼠入口；需使用 game，只有允许占用前台时才用 --foreground 重新启动。统一调度器记录SendInput调用边界；不承诺0–20ms硬实时或游戏消费间隔。旧顶层input-sequence仍保持原有批量提交与调度行为，见[兼容输入参考](input-writing.md)。
 
-macOS 使用同一游戏协议，时钟能力取决于实例固定的原生包。missing_monotonic_clock 的升级与旧实例规则见[macOS 平台](macos-local.md#游戏输入与资源重载)，不自动换后端或用 CPU/墙钟替代；pointer/text 缺能力仍明确拒绝。
+macOS 系统后端经随 CLI 安装的原生辅助程序向 HID 事件流投递事件：先把游戏切到前台，指针坐标为不含标题栏的客户区像素（与录制画面一致，Retina 下为点数×2），滚轮按 120 为一格换算为行；按下前核验前台与指针位于未遮挡的游戏客户区，释放事件即使失去前台也会发送以免残留按下状态。首次使用需在“系统设置 > 隐私与安全性 > 辅助功能”中允许运行 mcpy 的终端或宿主应用并重启该应用，未授权返回 permission_missing。时钟为 time.monotonic（mach 主机时钟，与录制 source_time 同源）。键名映射到 macOS 虚拟键码，不接受 VK/SC 写法；具体支持键以 capabilities 为准。
+
+macOS 的 game 后端使用同一游戏协议，时钟能力取决于实例固定的原生包。missing_monotonic_clock 的升级与旧实例规则见[macOS 平台](macos-local.md#游戏输入与资源重载)，不自动换后端或用 CPU/墙钟替代；pointer/text 缺能力仍明确拒绝。
 
 ## Python 与兼容入口
 

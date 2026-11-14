@@ -157,6 +157,10 @@ def check_field(value, schema, name):
         for item in value: check_field(item, schema['items'], name)
 
 
+# 系统级键鼠后端：都要求游戏位于前台，由会话 worker 的设备执行器处理。
+DEVICE_BACKENDS = ('windows-sendinput', 'macos-cgevent')
+
+
 def input_signature(value):
     return json.dumps(value, ensure_ascii=True, allow_nan=False, sort_keys=True, separators=(',', ':'))
 
@@ -167,7 +171,7 @@ def normalize_input_plan(plan):
     input_require(type(plan['schema_version']) in input_integer_types and plan['schema_version'] == 1,
                   'invalid_plan', 'schema_version 必须为 1')
     backend = plan.get('backend', 'game')
-    input_require(backend in ('game', 'windows-sendinput'), 'not_supported', '未知输入后端')
+    input_require(backend in ('game',) + DEVICE_BACKENDS, 'not_supported', '未知输入后端')
     maximum = plan.get('max_lateness_ms')
     input_require(maximum is None or type(maximum) in input_integer_types and maximum >= 0,
                   'invalid_plan', 'max_lateness_ms 必须是非负整数或 null')
@@ -196,14 +200,14 @@ def normalize_input_plan(plan):
             if down: held.add(identity)
             else: held.remove(identity)
         if name.startswith('player.'):
-            input_require(backend == 'game', 'not_supported', 'Windows 设备后端不执行玩家语义动作')
+            input_require(backend == 'game', 'not_supported', '设备后端不执行玩家语义动作')
             if 'expect' in step: validate_input_expect(step['expect'])
         if name.startswith('ui.'):
             input_require(backend == 'game' and len(steps) == 1, 'invalid_plan', 'UI 节点计划每次一个动作，页面变化后重新观察')
             if 'keys' in step:
                 input_require(all(k in ('CTRL', 'SHIFT', 'ALT') for k in step['keys']), 'not_supported', 'UI 点击只支持通用 CTRL/SHIFT/ALT 修饰键')
         if name.startswith('pointer.'):
-            input_require(backend == 'windows-sendinput', 'not_supported', '当前游戏后端没有经过验证的原始指针能力')
+            input_require(backend in DEVICE_BACKENDS, 'not_supported', '当前游戏后端没有经过验证的原始指针能力')
         if name == 'player.move':
             input_require(bool(step['forward'] or step['right']) and (not step['sprint'] or step['forward'] > 0),
                           'invalid_plan', '移动方向或疾跑条件不合法')
