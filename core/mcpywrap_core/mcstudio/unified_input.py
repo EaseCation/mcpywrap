@@ -23,9 +23,9 @@ def execute(project, session, action, parameters=None):
         path = session_path(project, session)/'control.json'
         metadata = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
         worker = metadata.get('unified_input_worker', False)
-    windows = action == 'run' and parameters['plan']['backend'] == 'windows-sendinput'
-    if windows and not worker:
-        return {'ok': False, 'code': 'not_supported', 'error': '该会话 worker 未提供统一 Windows 输入；更新工具后重启会话，不改用游戏输入'}
+    device = action == 'run' and parameters['plan']['backend'] != 'game'
+    if device and not worker:
+        return {'ok': False, 'code': 'not_supported', 'error': '该会话 worker 未提供系统键鼠输入；更新工具后重启会话，不改用游戏输入'}
     # 旧 worker 的 game 传输仍可复用；这不是输入后端降级。
     if not worker:
         return game_execute(project, session, action, parameters, family='input')

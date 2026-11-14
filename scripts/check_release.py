@@ -14,6 +14,7 @@ def check_native_payload(archive, folder):
         'bridge_payload': {'manifest.json', 'Injector.exe', 'Loader.dll', 'McpyMcsAuth.dll', 'publisher.cer'},
         'window_capture': {'manifest.json', 'mcpy-window-capture.exe'},
         'window_activation': {'manifest.json', 'mcpy-window-activation.dll'},
+        'macos_capture': {'manifest.json', 'mcpy-macos-capture'},
     }[folder]
     prefix = 'mcpywrap_assets/' + folder + '/'
     packaged = {name[len(prefix):] for name in archive.namelist() if name.startswith(prefix)}
@@ -21,6 +22,9 @@ def check_native_payload(archive, folder):
     source = ROOT/'desktop/mcpywrap_assets'/folder
     for name in required:
         assert archive.read(prefix + name) == (source/name).read_bytes(), 'Stale native payload: ' + name
+    if folder == 'macos_capture':
+        # macOS 可执行文件必须带执行位进入 wheel，pip 安装时据此恢复权限。
+        assert (archive.getinfo(prefix + 'mcpy-macos-capture').external_attr >> 16) & 0o111, 'macOS helper is not executable'
 
 
 def check(outdir, require_native=False):
@@ -59,7 +63,7 @@ def check(outdir, require_native=False):
                 assert 'mcpy = mcpywrap_core.__main__:main' in entries
                 assert not any(n.startswith('mcpywrap/') for n in files), 'Legacy import package must not be shipped'
                 if require_native:
-                    for folder in ('bridge_payload','window_capture','window_activation'):
+                    for folder in ('bridge_payload','window_capture','window_activation','macos_capture'):
                         check_native_payload(archive, folder)
             for path in files:
                 assert not any(p in ('.local-notes','__pycache__','.runtime','.git') for p in Path(path).parts), path

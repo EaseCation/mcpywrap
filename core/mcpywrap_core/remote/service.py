@@ -26,7 +26,7 @@ def capabilities():
     media = inspect_media()
     extra = (['record'] if media['record_available'] else []) + (['record-frames'] if media['frames_available'] else [])
     result = {'protocol_version': PROTOCOL, 'version': __version__,
-            'capabilities': ACTIONS + ['mcs-auth'] + extra if windows else ['project', 'package', 'remote-client'],
+            'capabilities': ACTIONS + ['mcs-auth'] + extra if windows else ['project', 'package', 'remote-client'] + extra,
             'media': media,
             'desktop': desktop_state(),
             'mcs_auth': inspect_bridge() if windows else {'component_available': False},

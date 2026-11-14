@@ -21,7 +21,9 @@ macOS 从 Launcher 按需读取下一帧，不需要屏幕录制授权或 runtim
 
 ## 视频录制与逐帧分析
 
-**macOS 本地不支持录屏和视频提帧。** Mac 可作为客户端调用远程 Windows。录制任务先检查执行端 `record` 和 `record-frames` 能力；bootstrap 可重复传入 `--require-capability`。新版 Skill 不代表旧 CLI 或旧原生组件支持录制。视频文件在 Windows 临时目录持续写入，下载到调用端；无需安装 FFmpeg。
+Windows 本机或远程 Windows，以及 Apple Silicon macOS 本机（CLI 0.8.0+）都提供同一组 `record` 命令。录制任务先检查执行端 `record` 和 `record-frames` 能力；bootstrap 可重复传入 `--require-capability`。新版 Skill 不代表旧 CLI 或旧原生组件支持录制。视频文件在执行端临时目录持续写入，下载到调用端；无需安装 FFmpeg。
+
+macOS 使用随 CLI 安装的 ScreenCaptureKit 辅助程序（开发签名），游戏窗口可留在后台或被遮挡，不激活窗口、不移动光标；画面为不含标题栏的客户区（与 Windows 一致）；最小化、关闭或改变窗口尺寸会结束录像（`end_reason`）。首次使用需在“系统设置 > 隐私与安全性 > 屏幕录制”中允许运行 mcpy 的终端或宿主应用，并重启该应用；未授权时 `doctor --capabilities` 的 `media.screen_capture_permission=false`、`record_available=false` 并给出原因，工具不弹窗、不绕过授权。
 
 ```bash
 mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record start --session <sid> --duration 10 --fps 30 --json
@@ -35,7 +37,7 @@ mcpy --remote <endpoint> --project "<调用端项目>" --non-interactive record 
 
 时长为整数 1–300 秒，帧率为整数 1–60 FPS，默认 10 秒／30 FPS，无音频。每个会话一次录制。固定视频帧可能重复源画面或跳过游戏呈现画面，不能据此保证完整捕获游戏每一帧；PNG 是编码后画面。检查清单中的 `frame/time/source_time/repeated`，查看下载的 PNG，再结合日志判断逻辑是否通过。
 
-`time` 是视频内的秒数；`source_time` 是 Windows 单调时钟秒数，不是 Unix 时间，原始值保留在 `source_time_100ns`。高分辨率／高帧率可能超过机器编码能力，`encoder_too_slow` 时降低帧率或使用较小游戏窗口，不通过隐藏丢帧将失败当作完成。
+`time` 是视频内的秒数；`source_time` 是执行端单调时钟秒数（Windows 为 WGC 帧时间，macOS 为 ScreenCaptureKit 帧的 mach 主机时钟，与 `runtime input` 的 `launcher.steady_clock` 同源），不是 Unix 时间，原始值保留在 `source_time_100ns`。macOS 以 1/120 秒的最小间隔采集游戏渲染的每一帧，再按源帧时间挑选最接近每个输出时刻的画面；`frames_captured` 只统计内容有变化的源画面，`source_frames_skipped` 为未写入视频的源画面数。高分辨率／高帧率可能超过机器编码能力，`encoder_too_slow` 时降低帧率或使用较小游戏窗口，不通过隐藏丢帧将失败当作完成。
 
 提帧 `--frame` 从 0 开始，可重复，单次最多 100 个；也可改用重复的 `--at <秒>`，取 `floor(秒 × fps)`，两者互斥。输出目录及 MP4 路径必须不存在。需要连续分析时分批选择帧，避免一次提供全部图片。
 
