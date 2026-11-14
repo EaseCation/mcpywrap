@@ -49,7 +49,7 @@ mcpy --local --project <项目目录> logs --group <组ID> --source game --tail 
 
 先查询平台声明的本地双端能力。Windows 提供自动加入和手动模式；macOS 尚未接入同等适配，会在启动前拒绝本地双客户端。外部服务器连接是独立能力，仍使用 `connect <host> --port <port>`；平台网络条件见[网络会话](network-sessions.md)。不要猜测本地联机端口或另开独立世界替代第二名玩家。
 
-冷启动等待超时后，游戏可能仍在加载。先用 `status --group` 重新核验；如果两名玩家已经就绪，不必重开游戏。macOS 双客户端需要支持独立开发身份的原生运行包；旧运行包会明确拒绝此操作。
+冷启动等待超时后，游戏可能仍在加载。先用 `status --group` 重新核验；如果两名玩家已经就绪，不必重开游戏。macOS 外服双客户端需要运行包 0.4.9+（developer_identity_protocol=1），两名玩家使用不同的匿名开发身份；旧运行包会明确拒绝此操作，升级命令见[macOS 平台](macos-local.md)。
 
 使用 `scripts/smoke.py --game --clients 2` 验收时会等待自动加入和玩家校验；旧工具或已有手动组仍需点击卡片。用 `--timeout` 留出初始化与资源下载时间，例如 600 秒。验收脚本结束会清理本次创建的游戏，日常保留会话使用普通 run/status 流程。
 
