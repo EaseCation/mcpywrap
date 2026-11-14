@@ -40,6 +40,10 @@ PyPI 不提供两个包的原子发布。`scripts/pypi_release.py` 对重试逐�
 
 用户当前操作统一见 [内置 Skill](skills/mcpywrap/SKILL.md)。发布验证记录、候选核查和跨仓库推进计划放在被忽略的 `.local-notes/`，不随源码包分发；长期发行规则维护在本页。候选 CI 的未签名桥接不用于验证正式签名登录流程。
 
+## macOS 录制辅助程序
+
+`native/macos_capture/macos_capture.swift` 由 `release.yml` 的 `macos-native` 任务在 Apple Silicon runner 上用 `scripts/build_macos_capture.py` 编译为 arm64、最低 macOS 13 的 `mcpy-macos-capture`，并以 ad-hoc 开发签名（无 Developer ID/公证）。经 pip 安装的文件不带隔离属性，不触发 Gatekeeper 下载检查。`scripts/check_macos_capture.py` 校验源码摘要、可执行文件摘要、Mach-O arm64 及签名；artifact 下载后需恢复执行位，`check_release.py --require-native` 要求桌面 wheel 中该文件带执行位。运行时按清单摘要校验后才调用，屏幕录制授权由用户在系统设置中授予。
+
 ## Tracy 分析工具包
 
 `mcpy profile` 使用的 Tracy 0.11.1 工具单独构建发布，不进入 wheel。构建与发布步骤见 [native/tracy_tools](native/tracy_tools/README.md)；新的工具包发布后，把 `platforms.json` 写入 `core/mcpywrap_core/profiling/tools.json` 再随 mcpywrap 版本发布。

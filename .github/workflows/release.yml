@@ -138,7 +138,23 @@ jobs:
           PYTHONIOENCODING: gbk
       - run: python -m compileall -q core desktop tests
 
+  macos-native:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build and ad-hoc sign the ScreenCaptureKit recording helper
+        run: python3 scripts/build_macos_capture.py
+      - run: python3 scripts/check_macos_capture.py
+      - name: Probe the helper protocol on the runner
+        run: desktop/mcpywrap_assets/macos_capture/mcpy-macos-capture --capabilities
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-capture
+          path: desktop/mcpywrap_assets/macos_capture
+          if-no-files-found: error
+
   macos:
+    needs: macos-native
     runs-on: macos-latest
     env:
       QT_QPA_PLATFORM: offscreen
@@ -149,12 +165,22 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: macos-capture
+          path: desktop/mcpywrap_assets/macos_capture
+      # artifact 不保留可执行位；打包前恢复，wheel 会记录该权限。
+      - run: chmod +x desktop/mcpywrap_assets/macos_capture/mcpy-macos-capture
+      - run: python3 scripts/check_macos_capture.py
       - run: python -m pip install ./core .
       - run: python -m unittest discover -s tests -p 'test_core*.py' -v
       - run: python -m unittest discover -s tests -p test_host_services.py -v
       - run: python -m unittest discover -s tests -p test_distribution_layout.py -v
       - run: python -m unittest discover -s tests -p test_lock_storage.py -v
       - run: python -m pip check
+      - name: Verify the installed recording helper answers the media protocol
+        run: python -c "from mcpywrap_core.mcstudio.recordings import macos_helper; import subprocess, json; info = json.loads(subprocess.run([str(macos_helper()), '--capabilities'], capture_output=True, check=True).stdout); assert info['protocol'] == 1 and info['sck'] and info['h264_encoder'], info"
+      - run: python -m unittest discover -s tests -p test_macos_recording.py -v
       - name: Verify Qt6 availability and lazy CLI imports
         run: python -c "import sys; import mcpywrap_core.cli; assert not any(k.startswith('PySide6') for k in sys.modules); import PySide6.QtCore"
       - run: python -m unittest discover -s tests -p test_modsdk_environment.py -v
@@ -217,7 +243,7 @@ jobs:
       - run: python -m unittest discover -s tests -p test_skill_workflows.py -v
 
   build:
-    needs: [test, native, macos, linux]
+    needs: [test, native, macos-native, macos, linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -238,6 +264,12 @@ jobs:
         with:
           name: window-activation
           path: desktop/mcpywrap_assets/window_activation
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: macos-capture
+          path: desktop/mcpywrap_assets/macos_capture
+      - run: chmod +x desktop/mcpywrap_assets/macos_capture/mcpy-macos-capture
+      - run: python scripts/check_macos_capture.py
       - run: python -m pip install build twine
       - run: python scripts/check_window_activation.py
       - name: Check release version and main ancestry

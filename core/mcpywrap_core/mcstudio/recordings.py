@@ -16,6 +16,8 @@ import zipfile
 from . import sessions
 from .processes import background_options, checked_process
 
+MACOS_HELPER = 'mcpy-macos-capture'
+
 CHUNK = 1024 * 1024
 MAX_VIDEO = 2 * 1024 ** 3
 RETENTION = 24 * 60 * 60
@@ -91,15 +93,69 @@ def digest(path):
 
 
 def helper():
+    if sys.platform == 'darwin':
+        return macos_helper()
     from .window import GameWindow
     return GameWindow._background_helper(None)
+
+
+def macos_helper():
+    """Locate the bundled ScreenCaptureKit helper and verify it against its manifest."""
+    from ..host_assets import asset_directory
+    path = asset_directory('macos_capture') / MACOS_HELPER
+    if not path.is_file():
+        raise ValueError('macOS recording helper is not installed')
+    try:
+        manifest = json.loads(path.with_name('manifest.json').read_text(encoding='utf-8'))
+        expected = manifest['executable_sha256']
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ValueError('macOS recording helper manifest is invalid: ' + str(exc)) from None
+    if digest(path) != expected:
+        raise ValueError('macOS recording helper integrity check failed')
+    if not os.access(path, os.X_OK):
+        # 某些安装方式会丢失执行位；内容已按清单核对，只补回执行权限。
+        path.chmod(path.stat().st_mode | 0o755)
+    return path
+
+
+def inspect_macos(result):
+    result.update(sck=False, screen_capture_permission=False)
+    try:
+        import platform
+        if platform.machine() != 'arm64':
+            raise ValueError('macOS recording requires Apple Silicon (arm64)')
+        executable = helper()
+        manifest = json.loads(executable.with_name('manifest.json').read_text(encoding='utf-8'))
+        if manifest.get('media_protocol') != 1:
+            raise ValueError('Native helper does not support recording protocol 1')
+        result['component_available'] = True
+        probe = subprocess.run([str(executable), '--capabilities'], stdin=subprocess.DEVNULL,
+                               capture_output=True, timeout=5)
+        if probe.returncode:
+            raise ValueError('macOS media capability probe failed')
+        info = json.loads(probe.stdout)
+        if info.get('protocol') != 1:
+            raise ValueError('Unsupported native media protocol')
+        for key in ('sck', 'h264_encoder', 'h264_decoder', 'screen_capture_permission'):
+            result[key] = info.get(key) is True
+        result['record_available'] = result['sck'] and result['h264_encoder'] and result['screen_capture_permission']
+        result['frames_available'] = result['h264_decoder']
+        if not result['screen_capture_permission']:
+            # 屏幕录制授权记在启动 mcpy 的终端/宿主应用上，由用户在系统设置中授予，工具不弹窗、不绕过。
+            result['reason'] = ('Screen Recording permission is required: System Settings > Privacy & Security > '
+                                'Screen Recording, allow the terminal or host app that runs mcpy, then restart it')
+    except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+        result['reason'] = str(exc)
+    return result
 
 
 def inspect_media():
     result = {'component_available': False, 'wgc': False, 'h264_encoder': False,
               'h264_decoder': False, 'record_available': False, 'frames_available': False}
+    if sys.platform == 'darwin':
+        return inspect_macos(result)
     if os.name != 'nt':
-        result['reason'] = 'Recording execution requires Windows'
+        result['reason'] = 'Recording execution requires Windows or Apple Silicon macOS'
         return result
     try:
         executable = helper()
@@ -191,8 +247,25 @@ def status(project, session, recording=None):
             for p in sorted(directory(project, session).glob('*.json'))]}
 
 
+def recording_game(project, session):
+    """The session's live game process; the macOS helper locates its window by PID."""
+    data = sessions.read(project, session)
+    if data.get('backend') != 'macos-arm64':
+        from .window import session_game
+        return session_game(project, session)
+    game = data.get('game')
+    try:
+        live = bool(game) and checked_process(game) is not None
+    except ValueError:
+        live = False
+    if (data.get('state') != 'running' or not live or
+            Path(game.get('executable', '')).name != 'mcpelauncher-client' or
+            Path(data.get('project', project)).resolve() != Path(project).resolve()):
+        raise RecordingError('Session has no running macOS game process', 'session_unavailable')
+    return game
+
+
 def start(project, session, duration=10, fps=30, request_id=None, timeout=15):
-    from .window import session_game
     validate_parameters(duration, fps)
     request_id = identifier(request_id or uuid.uuid4().hex)
     project = Path(project).resolve()
@@ -206,8 +279,8 @@ def start(project, session, duration=10, fps=30, request_id=None, timeout=15):
         else:
             media = inspect_media()
             if not media['record_available']:
-                raise RecordingError(media.get('reason') or 'WGC/software H.264 encoder unavailable', 'capability_missing')
-            game = session_game(project, session)
+                raise RecordingError(media.get('reason') or 'Window capture/H.264 encoder unavailable', 'capability_missing')
+            game = recording_game(project, session)
             for item in directory(project, session).glob('*.json'):
                 if read(project, session, item.stem)['state'] in ACTIVE:
                     raise RecordingError('This session already has an active recording', 'busy', status=409)

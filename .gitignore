@@ -29,6 +29,7 @@ var/
 /desktop/mcpywrap_assets/window_capture/*.exe
 /desktop/mcpywrap_assets/window_capture/manifest.json
 /desktop/mcpywrap_assets/window_activation/
+/desktop/mcpywrap_assets/macos_capture/
 *.pfx
 *.p12
 .venv/

@@ -1,5 +1,10 @@
 # 更新记录
 
+## 未发布
+
+- macOS（Apple Silicon）本机支持 `record start/status/stop/download/frames`，命令、结果字段与 Windows 一致。录制由随完整包安装的 ScreenCaptureKit 辅助程序完成（CI 构建、开发签名），游戏窗口可留在后台或被遮挡，不抢前台、不移动光标；以 1/120 秒最小间隔采集游戏渲染的每一帧，按源帧时间挑选最接近每个输出时刻的画面写入恒定帧率 H.264 MP4，`mapping` 中的 `source_time` 为 mach 主机时钟秒数。首次使用需为运行 mcpy 的终端开启“屏幕录制”权限，`doctor --capabilities` 的 `media` 报告授权状态与原因。
+- `doctor --capabilities` 在 macOS 上按辅助程序与授权情况报告 `record`、`record-frames`。
+
 ## 0.7.5
 
 - macOS 默认使用原生运行包 0.4.9：联机时采用 mcpy 为每个角色分配的匿名开发身份，`connect <服务器> --port <端口> --clients 2` 可让两个客户端以不同名称与 UUID 进入同一服务器。此前运行包固定以 `LocalDev` 进服，两名玩家同名同 UUID，会被服务器判为重复登录。单客户端仍以 `LocalDev` 进服，行为不变。
