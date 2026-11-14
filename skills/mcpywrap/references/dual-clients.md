@@ -23,6 +23,8 @@ mcpy --local --project <项目目录> --non-interactive run --clients 2 --no-gui
 mcpy --local --project <会话目录> --non-interactive connect <服务器> --port 19132 --clients 2 --detach --json
 ```
 
+需要指定玩家名时按成员顺序给两次 `--player-name`（如 `--player-name 甲 --player-name 乙`），名称属于角色，组重启与成员重试保持不变；规则见[自定义离线玩家名](local-development.md#自定义离线玩家名)。未指定时使用 `mcpy_<组前缀>_<序号>`。
+
 先保存返回的 `group` 和 `members`，再判断 `ok`。部分失败也可能已经启动主机；不要丢弃其会话 ID 或重新创建另一个世界。
 
 本地组角色是 `host`、`guest`；外服组是 `client1`、`client2`。每个成员有自己的 `session`。主机玩家还有服务端执行能力，客机和外服玩家只有客户端能力。

@@ -2,7 +2,7 @@
 from mcpywrap_core.runtime.deployment import Deployment
 
 
-def launch_world(project, config_path, level_id, overrides=None, auth_context=None):
+def launch_world(project, config_path, level_id, overrides=None, auth_context=None, plan=None):
     """Exercise the real worker launch service with only process start mocked by callers."""
     from pathlib import Path
     from types import SimpleNamespace
@@ -21,6 +21,8 @@ def launch_world(project, config_path, level_id, overrides=None, auth_context=No
             'level_id': level_id, 'engine_overrides': overrides or {}, 'state': 'starting',
             'mode': 'local', 'backend': 'windows', 'game': None, 'worker': None,
             'log_path': str(directory/'game.log'), 'engine_log_path': str(directory/'engine.log')}
+    if plan is not None:
+        data['launch'] = plan
     with patch('mcpywrap_core.runtime.windows.instances.world_path', return_value=project/'.test-worlds'/level_id), \
          patch('mcpywrap_core.mcstudio.mcs.get_mcs_game_engine_netease_data_path', return_value=str(project/'.test-global')):
         result = launch(data, SimpleNamespace(port=12345), auth_context)

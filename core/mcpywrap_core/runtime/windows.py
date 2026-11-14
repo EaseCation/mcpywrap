@@ -19,7 +19,7 @@ from ..utils.locks import directory_lock
 
 def run(project, *, new=False, listing=False, delete=None, force=False, clean_all=False,
         instance_prefix=None, no_gui=False, detach=False, mcs_auth=False, overrides=None,
-        auth_context=None, world_config=None, migration=None, background=False):
+        auth_context=None, world_config=None, migration=None, background=False, player=None):
     project = Path(project).resolve()
     config = read_project(project)
     if listing:
@@ -39,7 +39,7 @@ def run(project, *, new=False, listing=False, delete=None, force=False, clean_al
             raise click.UsageError('网络模式不支持 --new 或世界实例 ID')
         return run_network(replace(target, auth='mcs') if mcs_auth else target, project_dir=project,
                            packs=prepare_project(project, config), engine_overrides=overrides, detach=detach,
-                           background=background)
+                           background=background, player=player)
     from ..command_context import json_output
     if json_output() and not detach:
         raise click.UsageError('run --json 需要 --detach')
@@ -82,6 +82,10 @@ def run(project, *, new=False, listing=False, delete=None, force=False, clean_al
             if (mcs_auth != bool(current.get('mcs_auth')) or
                     any(not matches_override(k, v) for k, v in requested.items())):
                 raise EngineError('已有会话的引擎或登录方式与请求不同。', 'session_conflict')
+            if player and player != (current.get('launch') or {}).get('player'):
+                raise EngineError('已有会话使用不同的玩家身份。', 'session_conflict',
+                                  '先 stop --session ' + current['session'] + '，再用新的 --player-name 运行。',
+                                  session=current['session'])
             result = dict(sessions.handoff(current), already_running=True)
             result['source_matches'] = matches_source(project, current)
             result['hint'] = '已复用运行中的世界；本次未重新准备或部署素材。应用素材修改请重启会话，或 stop 后重新 run。'
@@ -97,7 +101,9 @@ def run(project, *, new=False, listing=False, delete=None, force=False, clean_al
         settings = storage.read(instances.record_path(project, item['level_id']), {}).get('creation_settings')
         data = sessions.start(project, item['config_path'], item['level_id'], overrides,
                               auth_context=auth_context, session_id=session, background=background,
-                              launch={'engine': asdict(engine), 'world_settings': settings, **({'migration': migration} if migration else {})})
+                              launch={'engine': asdict(engine), 'world_settings': settings,
+                                      **({'migration': migration} if migration else {}),
+                                      **({'player': player} if player else {})})
     result = sessions.handoff(data)
     if detach:
         return result
@@ -164,8 +170,10 @@ def launch(data, receiver, auth_context=None):
             else:
                 # Explicit offline developer identity, as used by ModPC's
                 # local test configuration. This is not an authenticated ID.
-                runtime['player_info'] = {'urs': '', 'user_id': 0,
-                                          'user_name': 'mcpy_' + data['session'][:8]}
+                player = plan.get('player')
+                runtime['player_info'] = ({'urs': '', 'user_id': player['user_id'], 'user_name': player['user_name']}
+                                          if player else
+                                          {'urs': '', 'user_id': 0, 'user_name': 'mcpy_' + data['session'][:8]})
             write_cppconfig(launch_path, runtime)
             sessions.require_launch_requested(project, data['session'])
             deployment.spawning()

@@ -654,6 +654,7 @@ def execute(
         no_gui=True,
         background=data.get("background", False),
         migration=migration,
+        player=(data.get("launch") or {}).get("player"),
     )
 
 

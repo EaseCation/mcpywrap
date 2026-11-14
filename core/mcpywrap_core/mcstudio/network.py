@@ -90,10 +90,9 @@ def unauthenticated_config(engine, target, player=None):
                   misc={'multiplayer_game_type': 100})
     config['room_info'].update(ip=target.host, port=target.port)
     if player is not None:
+        from ..runtime.player_identity import valid_name
         if (not isinstance(player, dict) or type(player.get('user_id')) is not int or
-                not 0 < player['user_id'] < 2**31 or
-                not isinstance(player.get('user_name'), str) or
-                not re.fullmatch(r'[A-Za-z0-9_]{1,16}', player['user_name'])):
+                not 0 < player['user_id'] < 2**31 or not valid_name(player.get('user_name'))):
             raise ValueError('无效的匿名开发玩家身份')
         config['player_info'] = {'user_id': player['user_id'], 'urs': '', 'user_name': player['user_name']}
     return config

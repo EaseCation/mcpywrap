@@ -28,10 +28,10 @@ mcpy --local engine check-updates --json
 
 此命令只发现网易 pe/pe_old 的真实版本和 URL，不下载；compatibility=not_checked 不能当作可运行。首次安装已会查询 pe，无需为了普通启动先检查更新。
 
-CLI 0.7.6 默认使用运行包 0.4.10，包含原生游戏截图、后台窗口协议、游戏内置 Tracy 所需的主机信息接口、开发服明文源码包加载、双客户端独立开发身份，以及游戏首启复制内置资源时的 APFS 克隆（各实例与会话不再各占约 400 MB）。全新安装直接 run 即可自动准备；已有安装保留所选来源，升级资源时明确指定：
+CLI 0.7.7 默认使用运行包 0.4.11，包含原生游戏截图、后台窗口协议、游戏内置 Tracy 所需的主机信息接口、开发服明文源码包加载、双客户端独立开发身份、游戏首启复制内置资源时的 APFS 克隆（各实例与会话不再各占约 400 MB），以及本地世界与连接服务器的自定义离线玩家名（含中文）。全新安装直接 run 即可自动准备；已有安装保留所选来源，升级资源时明确指定：
 
 ```text
-mcpy --local --non-interactive engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.10/catalog.json --json
+mcpy --local --non-interactive engine install --catalog https://github.com/EaseCation/mcpelauncher-manifest/releases/download/mcpy-runtime-v0.4.11/catalog.json --json
 ```
 
 此 catalog 仍按其来源规则发现 APK，不等于固定旧 APK。旧版本若不在官方频道无法下载时，报告缺失，不猜 URL。更新 CLI/Skill 或重新 runtime install 都不能替换原生包。
@@ -47,6 +47,7 @@ mcpy --local --non-interactive engine install --catalog https://github.com/EaseC
 | 开发服明文源码包 | 运行包 0.4.8+ 且 network_plain_source_protocol=1；见[网络会话](network-sessions.md#开发服下发明文源码包) |
 | 本地主客机 | 尚不支持；缺 local-dual-client-manual 时启动前拒绝 |
 | 双外服客户端 | 运行包 0.4.9+ 且 developer_identity_protocol=1；`connect --clients 2` 为两名玩家分配不同名称与 UUID，见[双客户端](dual-clients.md)。旧运行包启动前拒绝 |
+| 自定义玩家名 | 本地世界需 0.4.11+ 且 offline_identity_protocol=1；连接服务器英文名 0.4.9+、中文名 0.4.11+。见[自定义离线玩家名](local-development.md#自定义离线玩家名) |
 | MCS 身份 / MCEditor | macOS 不支持；MCS 网络身份可由 Windows 服务提供，编辑器必须 Windows 本机 |
 | 游戏截图 | 需要实例运行包 screenshot_protocol=1；按需获取游戏帧，见[画面采集](capture.md#截图) |
 | 后台窗口 | 需要 background_window_protocol=1；旧包明确拒绝，允许聚焦时显式 --foreground；运行包构建补丁见仓库 native/background_window |

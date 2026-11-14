@@ -35,13 +35,14 @@ class GameBackend:
         return self.run(project, delete=identity, clean_all=identity is None, force=True)
 
     def start_session(self, project, identity=None, auth_context=None, overrides=None, world_config=None, clients=1,
-                      background=False):
+                      background=False, player=None):
         from ..command_context import project_scope
         with project_scope(project):
             options = dict(new=identity is None, instance_prefix=identity, detach=True, no_gui=True, background=background,
                            **({'auth_context': auth_context} if auth_context else {}),
                            **({'overrides': overrides} if overrides else {}),
-                           **({'world_config': world_config} if world_config is not None else {}))
+                           **({'world_config': world_config} if world_config is not None else {}),
+                           **({'player': player} if player else {}))
             if clients == 2:
                 from ..runtime import groups
                 return groups.start_local(project, self, options)

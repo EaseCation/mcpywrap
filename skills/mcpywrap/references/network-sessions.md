@@ -29,6 +29,8 @@ port = 19132
 | Apple Silicon macOS | 只连接允许无认证开发客户端的服务器；运行包须支持网络协议，见[macOS 平台](macos-local.md) |
 | 两个本机客户端 | 读[双客户端](dual-clients.md)，不能把单会话参数或同一账号复制当多玩家支持 |
 
+无认证连接可用 `--player-name` 指定离线开发玩家名（含中文），规则、默认值和运行包要求见[自定义离线玩家名](local-development.md#自定义离线玩家名)；远端服务需声明 player-name 能力。
+
 `--mcs-auth` 是每次启动的游戏身份选择，不写入 server.auth。仅用户需要登录身份时使用；由用户在 Windows MC Studio 登录，先核对 `doctor --mcs-auth --json` 的组件/策略结果。MCPY_REMOTE_TOKEN 只保护 HTTP 服务访问，与游戏身份无关。
 
 组件存在不等于已登录，identity_provided 不等于服务器已接受认证。身份过期重新获取并新建会话；没有自动刷新，不通过复制账户文件或改设备身份解决。

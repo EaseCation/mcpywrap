@@ -29,9 +29,12 @@ def connect(target, *, project_dir=None, packs=(), engine_overrides=None, detach
         if state.get('network_connect_protocol') != 1:
             raise EngineError('此 macOS 运行包尚不支持连接服务器。', 'runtime_incompatible',
                               '请执行 mcpy engine install --catalog ' + install.DEFAULT_CATALOG + '，再重试；已有世界保留原绑定。')
-        if player is not None and state.get('developer_identity_protocol') != 1:
-            raise EngineError('此 macOS 运行包不能为两个客户端分配不同开发身份。', 'runtime_incompatible',
-                              '需要支持双客户端身份的运行包；已有单客户端会话可继续使用。')
+        from ..runtime.player_identity import ascii_name
+        if player is not None and (state.get('developer_identity_protocol') != 1 or (
+                not ascii_name(player['user_name']) and state.get('offline_identity_protocol') != 1)):
+            raise EngineError('此 macOS 运行包不支持自定义开发身份（双客户端或 --player-name）。', 'runtime_incompatible',
+                              '执行 mcpy engine install --catalog ' + install.DEFAULT_CATALOG + ' 升级运行包；'
+                              '不指定身份的单客户端连接可继续使用。')
         version = state['profile']['apk']['version']
         requested = overrides.get('engine_version')
         if requested and requested != version:

@@ -38,6 +38,25 @@ def world_options(function):
     return function
 
 
+def player_name_option(function):
+    return click.option('--player-name', 'player_names', multiple=True, metavar='NAME',
+                        help='离线开发身份的玩家名（1–16 个汉字、英文字母、数字或下划线），'
+                             '本地世界和连接服务器均适用；--clients 2 时按客户端顺序指定两次')(function)
+
+
+def take_players(player_names, clients, mcs_auth=False):
+    """把 --player-name 转换为每个客户端的离线身份；未指定时保持各平台默认身份。"""
+    if not player_names:
+        return None
+    if mcs_auth:
+        raise click.UsageError('--player-name 是离线开发身份，不与 --mcs-auth 同用')
+    from ..runtime.player_identity import requested_players
+    try:
+        return requested_players(player_names, clients)
+    except ValueError as error:
+        raise click.BadParameter(str(error), param_hint='--player-name') from None
+
+
 def take_world_options(arguments, cppconfig=None):
     info = creation_settings(cppconfig) if cppconfig else {}
     for key in tuple(arguments):
@@ -72,9 +91,10 @@ def take_world_options(arguments, cppconfig=None):
               help='本机玩家客户端数量；Windows 本地双客户端默认自动加入目标主机')
 @click.option('--join-mode', type=click.Choice(['auto','manual']), default=None,
               help='Windows 本地双客户端加入方式；auto 自动加入，manual 保留手动选择局域网卡片')
+@player_name_option
 @click.option('--launch-timeout', cls=HostOption, type=click.IntRange(5,120), default=None, help='App 宿主进程/画中画确认等待秒数；不含世界加载')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, clients=1, background=None, launch_timeout=None, join_mode=None, **engine_overrides):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, clients=1, background=None, launch_timeout=None, join_mode=None, player_names=(), **engine_overrides):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例。
@@ -91,6 +111,9 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         raise click.UsageError('run --json 需要 --detach')
     if clients != 1 and (list or delete or clean_all):
         raise click.UsageError('--clients 仅用于启动游戏')
+    if player_names and (list or delete or clean_all):
+        raise click.UsageError('--player-name 仅用于启动游戏')
+    players = take_players(player_names, clients, mcs_auth)
     if join_mode is not None and clients != 2:
         raise click.UsageError('--join-mode 仅用于 --clients 2 的本地联机')
     world_config = take_world_options(engine_overrides, cppconfig)
@@ -118,6 +141,8 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
                    instance_prefix=instance_prefix, no_gui=True, detach=detach or show_debug,
                    mcs_auth=mcs_auth, overrides=engine_overrides, world_config=world_config,
                    background=resolve_background(background, no_gui=no_gui, detach=detach))
+    if players and clients == 1:
+        options['player'] = players[0]
     def perform():
         if clients == 1:
             return backend.run(base_dir, **options)
@@ -132,8 +157,8 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
             if mcs_auth:
                 raise click.UsageError('双客户端进服暂不支持双账号认证')
             return groups.start_network(base_dir, backend, target, engine_overrides,
-                                        background=options['background'])
-        return groups.start_local(base_dir, backend, options, join_mode=join_mode)
+                                        background=options['background'], players=players)
+        return groups.start_local(base_dir, backend, options, join_mode=join_mode, players=players)
     recovered = False
     try:
         try:

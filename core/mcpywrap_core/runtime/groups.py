@@ -217,12 +217,15 @@ def list_groups(project):
     return [status(project, p.parent.name) for p in (Path(project)/'.runtime/groups').glob('*/group.json')]
 
 
-def _new(project, backend, kind, recipe):
+def _new(project, backend, kind, recipe, players=None):
     record = {'schema_version': 1, 'group': uuid.uuid4().hex, 'project': str(Path(project).resolve()),
               'backend': backend.id, 'kind': kind, 'recipe': recipe, 'created_at': time.time(),
               'members': [{'role': role, 'session': uuid.uuid4().hex, 'state': 'pending'}
                           for role in (('host', 'guest') if kind == 'local' else ('client1', 'client2'))],
               'connection_verified': False, 'error': None}
+    # --player-name 指定的身份属于角色；未指定时由 _connect_member 分配匿名默认身份。
+    for member, player in zip(record['members'], players or ()):
+        member['player'] = dict(player)
     save(record)
     return record
 
@@ -483,7 +486,7 @@ class GroupMonitor:
         self.thread.join(timeout=15)
 
 
-def start_local(project, backend, options, join_mode=None):
+def start_local(project, backend, options, join_mode=None, players=None):
     requested_join = join_mode
     join_mode = join_mode or ('auto' if 'local-dual-client-auto' in backend.capabilities else 'manual')
     if join_mode not in ('auto', 'manual') or (join_mode == 'auto' and backend.id != 'windows'):
@@ -492,13 +495,20 @@ def start_local(project, backend, options, join_mode=None):
         raise EngineError('双客户端联调目前使用无认证开发身份。', 'unsupported_auth')
     backend.prepare_guest(None)
     options = dict(options, detach=True, no_gui=True)
+    if players:
+        options['player'] = dict(players[0])
     # Start/reuse the host before creating a new group; failures remain normal
     # world failures and cannot leave a synthetic successful group behind.
     result = backend.run(project, **options)
     created = [] if result.get('already_running') else [result['session']]
     with directory_lock(Path(project)/'.runtime/group-registry-lock'):
         existing = membership(project, result['session'])
-        record = existing or _new(project, backend, 'local', {'options': options, 'overrides': options.get('overrides') or {}, 'join_mode': join_mode})
+        if existing and players and [m.get('player') for m in existing['members']] != players:
+            raise EngineError('运行中的联调组使用不同的玩家身份。', 'session_conflict',
+                              '先 stop --group ' + existing['group'] + '，再用新的 --player-name 启动。',
+                              group=existing['group'])
+        record = existing or _new(project, backend, 'local', {'options': options, 'overrides': options.get('overrides') or {}, 'join_mode': join_mode},
+                                  players)
         if not existing:
             record['members'][0].update(session=result['session'], state='running')
             save(record)
@@ -534,11 +544,11 @@ def start_local(project, backend, options, join_mode=None):
             return dict(_failure(record, error), owned_sessions=created)
 
 
-def start_network(project, backend, target, overrides=None, *, background=False):
+def start_network(project, backend, target, overrides=None, *, background=False, players=None):
     if target.auth != 'none':
         raise EngineError('双客户端进服尚不支持双账号认证。', 'unsupported_auth')
     record = _new(project, backend, 'network', {'target': asdict(target), 'overrides': overrides or {},
-                                             'background': background})
+                                             'background': background}, players)
     created = []
     with directory_lock(path(project, record['group']).parent/'lock'):
         try:
@@ -707,8 +717,10 @@ def restart(project, *, session=None, group=None, migration=None):
         if data['network'].get('join') in ('manual','auto'):
             raise EngineError('此客机的联调组记录缺失，不能按外服会话重启。', 'group_not_found')
         from ..mcstudio.network import ServerTarget
+        player = data['network'].get('player')
         return backend.connect(ServerTarget(**data['network']['target']), project_dir=project,
                                engine_overrides=data.get('engine_overrides'), detach=True,
-                               background=data.get('background', False))
+                               background=data.get('background', False), **({'player': player} if player else {}))
+    player = (data.get('launch') or {}).get('player')
     return backend.run(project, instance_prefix=data['level_id'], overrides=data.get('engine_overrides'), detach=True, no_gui=True,
-                       background=data.get('background', False))
+                       background=data.get('background', False), **({'player': player} if player else {}))

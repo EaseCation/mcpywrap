@@ -359,8 +359,10 @@ class SessionController(QObject):
             data = sessions.read(self.project, session)
             sessions.stop(self.project, session)
             overrides = self.engine_overrides or data.get('engine_overrides') or {}
+            player = (data.get('launch') or {}).get('player')
             return self.backend.start_session(self.project, data['level_id'],
-                                              **({'overrides': overrides} if overrides else {}))
+                                              **({'overrides': overrides} if overrides else {}),
+                                              **({'player': player} if player else {}))
         def finished(result):
             self.watcher = None; self.logs.finish(); self.attach(result)
         def failed():

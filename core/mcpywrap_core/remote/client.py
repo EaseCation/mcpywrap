@@ -193,6 +193,10 @@ def routed_command(name, parameters):
         if p.get('mcs_auth'):
             client.require('mcs-auth')
         data = {k: p[k] for k in ('host', 'port', 'mcs_auth', 'engine_version') if p.get(k) is not None}
+        if p.get('player_names'):
+            from ..commands.run_cmd import take_players
+            data['player_name'] = take_players(p['player_names'], 1, p.get('mcs_auth'))[0]['user_name']
+            client.require('player-name')
         from ..runtime.window_policy import resolve_background
         data['background'] = resolve_background(p.get('background'), no_gui=p.get('no_gui', False),
                                                 detach=p.get('detach', False))

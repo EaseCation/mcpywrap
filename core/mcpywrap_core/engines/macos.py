@@ -77,11 +77,13 @@ def pinned_runtime(item):
             'network_connect_protocol': meta.get('network_connect_protocol'),
             'network_plain_source_protocol': meta.get('network_plain_source_protocol'),
             'developer_identity_protocol': meta.get('developer_identity_protocol'),
+            'offline_identity_protocol': meta.get('offline_identity_protocol'),
             'background_window_protocol': meta.get('background_window_protocol')}
 
 
 def run(project, *, new=False, listing=False, delete=None, clean_all=False, force=False,
-        instance_prefix=None, detach=False, mcs_auth=False, overrides=None, world_config=None, background=False):
+        instance_prefix=None, detach=False, mcs_auth=False, overrides=None, world_config=None, background=False,
+        player=None):
     require_macos()
     from ..dependencies import read_project
     from ..command_context import json_output, human_interaction
@@ -106,7 +108,7 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
             packs = prepare_project(project, config)
             from .macos_network import connect
             return connect(target, project_dir=project, packs=packs, engine_overrides=overrides, detach=detach,
-                           background=background)
+                           background=background, player=player)
     if config.get('tool', {}).get('mcpywrap', {}).get('project_type', 'addon') != 'addon':
         raise EngineError('macOS 首版支持 Addon 测试，Map 项目尚未接入。', 'unsupported_feature',
                           '地图项目请在 Windows 本机运行。')
@@ -144,6 +146,9 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                     current = sessions.wait_started(project, current['session'])
                 if overrides.get('engine_version') and overrides['engine_version'] != current['launch']['engine_version']:
                     raise EngineError('已有会话的引擎与请求不同。', 'session_conflict')
+                if player and player != current['launch'].get('player'):
+                    raise EngineError('已有会话使用不同的玩家身份。', 'session_conflict',
+                                      '先 stop --session ' + current['session'] + '，再用新的 --player-name 运行。')
                 return dict(sessions.handoff(current), already_running=True,
                             source_matches=matches_source(project, current),
                             hint='已复用运行中的实例；未执行预处理，修改 Mod 后请先 stop，再 run 以重新部署。')
@@ -159,6 +164,10 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
             if requested and requested != version:
                 raise EngineError('当前实例／资源固定为 ' + version, 'engine_version_mismatch',
                                   '选择匹配的运行包；旧实例不自动升级，需要升级时显式 --new。')
+            if player and state.get('offline_identity_protocol') != 1:
+                raise EngineError('此实例的运行包不支持自定义离线玩家名。', 'runtime_incompatible',
+                                  '需要运行包 0.4.11+：新建实例前执行 mcpy engine install --catalog ' +
+                                  install.DEFAULT_CATALOG + '，再用 run --new 创建；已有实例保留原运行包。')
             supports_config = state.get('cppconfig_protocol') == 1
             if not supports_config and world_config is not None:
                 raise EngineError('此运行包尚不支持 cppconfig 世界设置。', 'runtime_incompatible',
@@ -179,6 +188,8 @@ def run(project, *, new=False, listing=False, delete=None, clean_all=False, forc
                     'compat_report': state.get('compat_report'),
                     'prepare_world': {'supports_config': supports_config, 'name': item['name'],
                                       'settings': world_config, 'package': config.get('project', {}).get('name', 'project')}}
+            if player:
+                plan['player'] = player
             config_path = directory/('world.cppconfig' if supports_config else 'instance.json')
             from ..runtime import instances as records
             records.attempt(project, dict(item, creation_time=item['created_at']), None, world_config)
@@ -218,6 +229,11 @@ def launch_session(data):
     if plan.get('compat_report'):
         command += ['--compat-report', plan['compat_report']]
     metadata = install.read_json(app/'Contents/Resources/runtime.json')
+    if data.get('mode') != 'network' and plan.get('player'):
+        # 网络会话的身份写在 cppconfig；本地世界的身份只属于本次会话，不写入实例配方。
+        if metadata.get('offline_identity_protocol') != 1:
+            raise EngineError('此运行包不支持自定义离线玩家名。', 'runtime_incompatible')
+        command += ['--player-name', plan['player']['user_name'], '--player-id', str(plan['player']['user_id'])]
     from ..runtime.window_policy import require_native_background
     require_native_background(metadata, data.get('background', False))
     if data.get('background', False):

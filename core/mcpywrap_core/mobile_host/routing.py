@@ -21,6 +21,8 @@ def route(ctx):
     params = dict(ctx.params)
     if params.get('clients', 1) != 1 or params.get('group'):
         raise click.UsageError('此宿主仅支持作品内的单游戏实例')
+    if params.pop('player_names', None):
+        raise click.UsageError('此宿主使用 App 自身的玩家身份，暂不支持 --player-name')
     if operation == 'status':
         if bool(params.get('session')) == bool(params.get('list_sessions')):
             raise click.UsageError('指定 --session 或 --list 中的一项')

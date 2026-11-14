@@ -30,6 +30,23 @@ mcpy --local --project <项目> --non-interactive runtime capabilities --session
 
 单会话 restart 返回 `previous_session` 与 `session_changed=true`，后续命令立即改用返回的新 `session`。restart 会产生新 session，世界 ID 和窗口策略保留；需要 MCS 身份的会话按提示重新 run 并提供本次身份。旧 session 可查历史，不能继续向它发送输入。实例是世界，session 是一次进程运行，group 是联调成员关系。
 
+## 自定义离线玩家名
+
+`run`、`connect` 和 `run --clients 2` 都接受 `--player-name <名称>`，本地世界和连接服务器共用同一规则：
+
+```text
+mcpy --local --project <项目> --non-interactive run --no-gui --detach --player-name 测试玩家 --json
+mcpy --local --project <目录> --non-interactive connect <服务器> --detach --player-name Steve_1 --json
+mcpy --local --project <项目> --non-interactive run --clients 2 --no-gui --detach --player-name 甲 --player-name 乙 --json
+```
+
+- 名称为 1–16 个汉字、英文字母、数字或下划线；双客户端按成员顺序各给一次（本地为 host、guest，外服为 client1、client2），不区分大小写时不能重名。
+- 这是离线开发身份，不是登录账号，不与 `--mcs-auth` 同用。user_id 由名称稳定派生：同名在不同会话和平台上是同一身份，换名则是另一名玩家。服务器按 ID 或名称保存的数据随之变化。
+- 未指定时保持原默认身份：macOS 本地世界与单客户端连接为 `LocalDev`，Windows 本地世界为 `mcpy_<会话前缀>`，双客户端为 `mcpy_<组前缀>_<序号>`。
+- 身份属于本次会话或联调组角色，不写入世界配方。restart、组重启与成员重试沿用原名称；复用已运行的会话时请求了不同名称会返回 session_conflict，需要先 stop。
+- 本地世界的房主背包等存档数据不随名称变化（macOS 已实测换名后物品保留）；服务端是否把新名称当作新玩家由服务器决定。
+- macOS 需要运行包 0.4.11+：本地世界要求 offline_identity_protocol=1，连接服务器的英文名称要求 0.4.9+、中文名称要求 0.4.11+；旧运行包启动前拒绝。已有实例固定原运行包，需要时升级资源后用 `--new` 新建实例。Windows 本机与 HTTP 服务（声明 player-name 能力）直接写入游戏配置；App 宿主使用自身的玩家身份，不接受此参数。
+
 ## 持续日志
 
 ```text

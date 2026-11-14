@@ -26,7 +26,7 @@ def capabilities():
     media = inspect_media()
     extra = (['record'] if media['record_available'] else []) + (['record-frames'] if media['frames_available'] else [])
     result = {'protocol_version': PROTOCOL, 'version': __version__,
-            'capabilities': ACTIONS + ['mcs-auth'] + extra if windows else ['project', 'package', 'remote-client'],
+            'capabilities': ACTIONS + ['mcs-auth', 'player-name'] + extra if windows else ['project', 'package', 'remote-client'],
             'media': media,
             'desktop': desktop_state(),
             'mcs_auth': inspect_bridge() if windows else {'component_available': False},
@@ -186,12 +186,21 @@ class GameService:
         return overrides
 
     def create(self, data):
-        fields(data, ('request_id', 'host', 'port', 'mcs_auth', 'engine_version', 'background'))
+        fields(data, ('request_id', 'host', 'port', 'mcs_auth', 'engine_version', 'background', 'player_name'))
         request_id = identifier(data.get('request_id'))
         if type(data.get('mcs_auth', False)) is not bool:
             raise RemoteError('mcs_auth 必须是布尔值', 'invalid_request')
         if type(data.get('background', True)) is not bool:
             raise RemoteError('background 必须是布尔值', 'invalid_request')
+        player = None
+        if data.get('player_name') is not None:
+            from ..runtime.player_identity import player_identity
+            if data.get('mcs_auth'):
+                raise RemoteError('player_name 是离线开发身份，不与 mcs_auth 同用', 'invalid_request')
+            try:
+                player = player_identity(data['player_name'])
+            except ValueError as error:
+                raise RemoteError(str(error), 'invalid_request') from None
         target = ServerTarget(data.get('host'), data.get('port', 19132), 'mcs' if data.get('mcs_auth') else 'none')
         overrides = self.overrides(data)
         request_path = self.requests/(request_id+'.json')
@@ -221,7 +230,8 @@ class GameService:
             result = sessions.start(self.root, auth_context=auth, session_id=request_id,
                                     origin='remote', request_id=request_id,
                                     background=data.get('background', True),
-                                    network={'target': asdict(target), 'engine': asdict(engine)})
+                                    network={'target': asdict(target), 'engine': asdict(engine),
+                                             **({'player': player} if player else {})})
             if self.closing.is_set():
                 sessions.stop(self.root, request_id)
                 raise RemoteError('服务正在停止，已请求清理会话', 'service_stopping', 503)

@@ -27,7 +27,7 @@ uv run --no-project --python 3.12 "<skill>/scripts/bootstrap.py" --remote http:/
 mcpy --remote http://192.168.1.20:18765 --non-interactive doctor --capabilities --json
 ```
 
-需要输入或截图时再要求 unified-input / screenshot，不给单纯日志任务强加无关能力。bootstrap --remote 只检测；每次独立调用明确 --remote，或确认当前进程继承 MCPY_REMOTE。`remote.ok=false` 时先处理服务问题，不回退本机。
+需要输入或截图时再要求 unified-input / screenshot，需要自定义玩家名时再要求 player-name（Windows 服务 0.7.7+），不给单纯日志任务强加无关能力。bootstrap --remote 只检测；每次独立调用明确 --remote，或确认当前进程继承 MCPY_REMOTE。`remote.ok=false` 时先处理服务问题，不回退本机。
 
 然后按[网络会话](network-sessions.md)启动和验证。游戏服务器必须从 Windows 可达；例如调用端的 localhost 不能自动成为 Windows 服务器地址。
 
