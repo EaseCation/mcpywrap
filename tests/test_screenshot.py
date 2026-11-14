@@ -161,21 +161,30 @@ class NativeScreenshotTests(unittest.TestCase):
                 self.assertFalse(list(self.root.glob('screenshot-*.rgba')))
                 self.assertEqual(self.calls[-1][1]['op'], 'release')
 
-    def test_macos_recording_remains_explicitly_unsupported(self):
+    def test_macos_recording_requires_the_bundled_helper(self):
         from mcpywrap_core.mcstudio import recordings
-        with patch.object(recordings, 'cleanup'), \
+        with patch.object(recordings, 'cleanup'), patch.object(recordings.sys, 'platform', 'darwin'), \
+             patch('platform.machine', return_value='arm64'), \
+             patch('mcpywrap_core.host_assets.asset_directory', return_value=self.root / 'missing'), \
              patch('mcpywrap_core.mcstudio.window.session_game', side_effect=AssertionError('Windows target selection')):
             with self.assertRaises(recordings.RecordingError) as caught:
                 recordings.start(self.root, 'a'*32)
         self.assertEqual(caught.exception.code, 'capability_missing')
-        self.assertIn('Windows', str(caught.exception))
+        self.assertIn('helper is not installed', str(caught.exception))
 
-    def test_host_capabilities_follow_selected_runtime_without_enabling_video(self):
+    def test_host_capabilities_follow_selected_runtime_and_media_helper(self):
         from types import SimpleNamespace
         from mcpywrap_core.remote.service import capabilities
         backend = SimpleNamespace(id='macos-arm64', capabilities=(), managed_install=True,
                                   diagnose=lambda: {'ok': True, 'runtime': str(self.root)})
-        with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend):
+        unavailable = {'record_available': False, 'frames_available': False, 'reason': 'helper missing'}
+        with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend), \
+             patch('mcpywrap_core.mcstudio.recordings.inspect_media', return_value=dict(unavailable,
+                   record_available=True, frames_available=True)):
+            self.assertIn('record', capabilities()['capabilities'])
+            self.assertIn('record-frames', capabilities()['capabilities'])
+        with patch('mcpywrap_core.engines.backend.get_backend', return_value=backend), \
+             patch('mcpywrap_core.mcstudio.recordings.inspect_media', return_value=unavailable):
             info = capabilities()
             self.assertIn('screenshot', info['capabilities'])
             self.assertNotIn('record', info['capabilities'])

@@ -1,5 +1,10 @@
 # 更新记录
 
+## 未发布
+
+- macOS（Apple Silicon）本机支持 `record start/status/stop/download/frames`，命令、结果字段与 Windows 一致。录制由随完整包安装的 ScreenCaptureKit 辅助程序完成（CI 构建、开发签名），游戏窗口可留在后台或被遮挡，不抢前台、不移动光标；以 1/120 秒最小间隔采集游戏渲染的每一帧，按源帧时间挑选最接近每个输出时刻的画面写入恒定帧率 H.264 MP4，`mapping` 中的 `source_time` 为 mach 主机时钟秒数。首次使用需为运行 mcpy 的终端开启“屏幕录制”权限，`doctor --capabilities` 的 `media` 报告授权状态与原因。
+- `doctor --capabilities` 在 macOS 上按辅助程序与授权情况报告 `record`、`record-frames`。
+
 ## 0.7.7
 
 - `run`、`connect` 和 `--clients 2` 新增 `--player-name`，可指定离线开发身份的玩家名，本地世界和连接服务器都适用；名称可用 1–16 个汉字、英文字母、数字或下划线。双客户端按成员顺序各指定一次，名称不能重复（不区分大小写）。user_id 由名称稳定派生，同名在不同会话和平台上保持同一身份。restart、组重启、成员重试和部署迁移都会沿用原名称。不指定时各平台默认身份不变。

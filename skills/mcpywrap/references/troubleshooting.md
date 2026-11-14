@@ -73,7 +73,7 @@ macOS 截图 capability_missing 检查实例运行包，而非授予屏幕录制
 
 ## 录制与提帧
 
-- capability_missing：检查执行端 media/原生组件，不通过安装 FFmpeg 修复 Windows 系统录制能力。
+- capability_missing：检查执行端 media/原生组件，不通过安装 FFmpeg 修复 Windows 系统录制能力。macOS 先看 `media.reason`：`screen_capture_permission=false` 需在系统设置为运行 mcpy 的终端开启屏幕录制并重启终端；辅助程序缺失或完整性失败需重新安装同版本 CLI；Intel Mac 不支持。
 - busy：同会话已有录像或产物处理中，先查原任务；录制不占输入操作锁。
 - recording_timeout：用错误返回 ID 或 record status --session <sid> --list 找回，不立刻再录。
 - truncated：核对 end_reason；短片封装完成不证明业务完成。

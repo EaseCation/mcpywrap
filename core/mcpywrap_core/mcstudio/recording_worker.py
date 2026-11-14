@@ -9,7 +9,7 @@ import threading
 import time
 
 from . import recordings as jobs, sessions
-from .processes import background_options, identity
+from .processes import background_options, checked_process, identity
 from .window import GameWindow, desktop_state
 
 
@@ -31,6 +31,61 @@ def receive(stream, events):
         events.put({'event': 'eof'})
 
 
+class WindowsTarget:
+    """Windows: a visible client window owned by the recorded game process."""
+
+    def __init__(self, game):
+        self.window = GameWindow(game)
+        self.pid = game['pid']
+        width, height, _ = self.window._client_area(require_foreground=False, require_uncovered=False)
+        if width * height > 16000000 or self.window.user.IsIconic(self.window.hwnd):
+            raise ValueError('Game window is unavailable for recording')
+
+    def arguments(self):
+        return ['--hwnd', str(int(self.window.hwnd))]
+
+    def check(self):
+        window = self.window
+        window.validate_process()
+        if window.owner(window.hwnd) != self.pid or not window.usable(window.hwnd):
+            raise ValueError('window_unavailable')
+        if window.user.IsIconic(window.hwnd):
+            raise ValueError('window_minimized')
+        if not desktop_state()['available']:
+            raise ValueError('desktop_unavailable')
+
+    def close(self):
+        self.window.close()
+
+
+class MacTarget:
+    """macOS: the helper locates the game window by PID and reports closed/minimized/resized windows itself."""
+
+    def __init__(self, game):
+        self.game = game
+
+    def arguments(self):
+        return ['--pid', str(int(self.game['pid']))]
+
+    def check(self):
+        try:
+            alive = checked_process(self.game) is not None
+        except ValueError:
+            alive = False
+        if not alive:
+            raise ValueError('window_unavailable')
+
+    def close(self):
+        pass
+
+
+def target_for(game):
+    # 按会话记录的游戏可执行文件选择后端：网易 Windows 客户端用窗口句柄，macOS 原生运行包按 PID 定位窗口。
+    if Path(game.get('executable', '')).name == 'mcpelauncher-client':
+        return MacTarget(game)
+    return WindowsTarget(game)
+
+
 def run(project, session, recording):
     path = jobs.record_path(project, session, recording)
     data = jobs.raw_record(project, session, recording)
@@ -49,12 +104,9 @@ def run(project, session, recording):
                 return 0
             folder = jobs.payload(project, session, recording)
             folder.mkdir(parents=True, exist_ok=False)
-            window = GameWindow(data['game'])
-            width, height, _ = window._client_area(require_foreground=False, require_uncovered=False)
-            if width * height > 16000000 or window.user.IsIconic(window.hwnd):
-                raise ValueError('Game window is unavailable for recording')
+            window = target_for(data['game'])
             with path.with_suffix('.native.log').open('wb') as errors:
-                process = subprocess.Popen([str(jobs.helper()), '--record', '--hwnd', str(int(window.hwnd)),
+                process = subprocess.Popen([str(jobs.helper()), '--record', *window.arguments(),
                     '--fps', str(data['fps']), '--duration', str(data['duration']),
                     '--output', str(folder / 'video.partial.mp4'), '--mapping', str(folder / 'mapping.jsonl'),
                     '--stop-file', str(stop_path)], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -70,13 +122,7 @@ def run(project, session, recording):
                 while True:
                     if data['state'] in ('starting', 'recording'):
                         try:
-                            window.validate_process()
-                            if window.owner(window.hwnd) != data['game']['pid'] or not window.usable(window.hwnd):
-                                raise ValueError('window_unavailable')
-                            if window.user.IsIconic(window.hwnd):
-                                raise ValueError('window_minimized')
-                            if not desktop_state()['available']:
-                                raise ValueError('desktop_unavailable')
+                            window.check()
                         except ValueError as exc:
                             stop_reason = str(exc)
                             stop_path.touch()
