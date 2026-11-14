@@ -224,6 +224,9 @@ def launch_session(data):
         command.append('--background')
     if metadata.get('addon_link_protocol') == 1:
         command.append('--link-source-addons')
+    # 启动器会把共享引擎的 vanilla.mcp 复制进每个数据目录；先放置写时复制克隆以免重复占用磁盘。
+    from .shared_assets import seed
+    seed(plan['game'], plan['data'])
     process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                stderr=subprocess.PIPE, start_new_session=True)
     from ..mcstudio.processes import identity
