@@ -1,12 +1,14 @@
-"""会话 worker 的统一 Windows 输入：一个调度线程，状态与幂等历史有界。"""
+"""会话 worker 的统一系统键鼠输入（Windows SendInput / macOS CGEvent）：一个调度线程，状态与幂等历史有界。"""
 import ctypes as C
 from ctypes import wintypes as W
 import os
+import sys
 import threading
 import time
 
 from ..input_executor import InputExecutor
-from ..input_plan import INPUT_ACTIONS, INPUT_LIMITS, input_action_schema, input_require, InputPlanError, input_signature
+from ..input_plan import (DEVICE_BACKENDS, INPUT_ACTIONS, INPUT_LIMITS, input_action_schema, input_require,
+                          InputPlanError, input_signature)
 
 
 class WindowsInputAdapter:
@@ -167,7 +169,13 @@ class HostInputManager:
         self.callback = self.when = None
         self.commands = []
         self.closed = False
-        self.executor = InputExecutor(WindowsInputAdapter(self))
+        if sys.platform == 'darwin':
+            from .macos_input import MacInputAdapter
+            adapter = MacInputAdapter(self)
+        else:
+            adapter = WindowsInputAdapter(self)
+        self.device_backend = adapter.input_path
+        self.executor = InputExecutor(adapter)
         self.thread = threading.Thread(target=self._loop, name='mcpy-input', daemon=True)
         self.thread.start()
 
@@ -214,9 +222,11 @@ class HostInputManager:
                       'invalid_request', '统一输入请求字段不支持')
         if method == 'run':
             input_require('plan' in parameters, 'invalid_plan', '缺少 plan')
-            if parameters['plan'].get('backend', 'game') == 'windows-sendinput':
+            backend = parameters['plan'].get('backend', 'game')
+            if backend == self.device_backend:
                 return self.executor.run(**parameters)
-            input_require(self.executor.active is None, 'busy', 'Windows 输入正在执行或清理未确认')
+            input_require(backend not in DEVICE_BACKENDS, 'not_supported', '该执行端没有 ' + backend + ' 设备后端')
+            input_require(self.executor.active is None, 'busy', '系统键鼠输入正在执行或清理未确认')
         operation = parameters.get('operation')
         if method in ('status', 'cancel') and operation in self.executor.operations:
             if method == 'status': return self.executor.status(**parameters)
@@ -238,16 +248,19 @@ class HostInputManager:
         if method == 'stop' and result.get('code') == 'not_installed':
             result = dict(self.executor.status(), game_installed=False)
         if method == 'capabilities':
-            descriptors = {}
-            for name, descriptor in INPUT_ACTIONS.items():
-                supported = os.name == 'nt' and not name.startswith(('player.', 'ui.'))
-                descriptors[name] = dict(descriptor, schema=input_action_schema(name), supported=supported,
-                                         reason=None if supported else 'not_supported')
-            windows = {'backend': 'windows-sendinput', 'actions': descriptors, 'limits': dict(INPUT_LIMITS),
-                       'clock_source': 'time.perf_counter', 'foreground_required': True}
+            devices = {}
+            for backend, available, clock in (('windows-sendinput', os.name == 'nt', 'time.perf_counter'),
+                                              ('macos-cgevent', sys.platform == 'darwin', 'time.monotonic')):
+                descriptors = {}
+                for name, descriptor in INPUT_ACTIONS.items():
+                    supported = available and not name.startswith(('player.', 'ui.'))
+                    descriptors[name] = dict(descriptor, schema=input_action_schema(name), supported=supported,
+                                             reason=None if supported else 'not_supported')
+                devices[backend] = {'backend': backend, 'actions': descriptors, 'limits': dict(INPUT_LIMITS),
+                                    'clock_source': clock, 'foreground_required': True}
             if result.get('code') == 'not_installed':
                 result = {'ok': True, 'installed': False, 'actions': {}, 'hint': '游戏后端先执行 runtime install'}
-            result['backends'] = {'game': {k: v for k, v in result.items() if k != 'transport'}, 'windows-sendinput': windows}
+            result['backends'] = {'game': {k: v for k, v in result.items() if k != 'transport'}, **devices}
         return result
 
     def close(self):

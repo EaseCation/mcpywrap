@@ -1,9 +1,11 @@
 // mcpy macOS 录制辅助程序：ScreenCaptureKit 窗口采集 + AVAssetWriter 恒定帧率 H.264 写盘。
 // 命令行协议与 Windows mcpy-window-capture.exe 一致（--capabilities / --record / --extract），
 // 区别只在于用 --pid 定位游戏窗口；source_time_100ns 为 mach 主机时钟（CLOCK_UPTIME_RAW）的 100ns 计数。
-// 游戏窗口保持在后台即可采集，不激活窗口、不移动光标、不发送任何输入。
+// 录制时游戏窗口保持在后台即可采集，不激活窗口、不移动光标、不发送任何输入。
+// --input 是独立的前台设备输入模式：激活游戏后经 HID 事件流发送键鼠事件，与 Windows SendInput 后端语义一致。
 import AVFoundation
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import CoreMedia
 import Foundation
@@ -114,6 +116,13 @@ func signature(_ buffer: CVPixelBuffer) -> UInt64 {
     return hash
 }
 
+/// 普通窗口的标题栏高度（点）；全屏窗口没有标题栏。与 Windows 客户区一致，录制和指针坐标都不含标题栏。
+func titleInset(_ frame: CGRect) -> CGFloat {
+    if NSScreen.screens.contains(where: { $0.frame.size == frame.size }) { return 0 }
+    let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
+    return frame.height - NSWindow.contentRect(forFrameRect: NSRect(origin: .zero, size: frame.size), styleMask: style).height
+}
+
 enum WindowState { case ok, unavailable, resized }
 
 func windowState(_ id: CGWindowID, size: CGSize) -> WindowState {
@@ -153,10 +162,12 @@ func record() async {
     let filter = SCContentFilter(desktopIndependentWindow: window)
     var scale = NSScreen.screens.first(where: { $0.frame.intersects(window.frame) })?.backingScaleFactor ?? 2
     if #available(macOS 14.0, *) { scale = CGFloat(filter.pointPixelScale) }
-    let clientWidth = Int(window.frame.width * scale), clientHeight = Int(window.frame.height * scale)
+    let inset = titleInset(window.frame)
+    let clientWidth = Int(window.frame.width * scale), clientHeight = Int((window.frame.height - inset) * scale)
     let width = (clientWidth + 1) & ~1, height = (clientHeight + 1) & ~1
     if width * height > maxPixels { fail("recording_resolution_limit") }
     let config = SCStreamConfiguration()
+    config.sourceRect = CGRect(x: 0, y: inset, width: window.frame.width, height: window.frame.height - inset)
     config.width = width
     config.height = height
     // 120Hz 显示器上最小间隔取 1/60 会与刷新节拍错位而丢帧；取 1/120 可拿到游戏渲染的每一帧，
@@ -296,6 +307,165 @@ func extract() {
     }
 }
 
+func uptimeNanos() -> UInt64 { clock_gettime_nsec_np(CLOCK_UPTIME_RAW) }
+
+/// 前台设备输入：stdin 每行一个 JSON 请求，stdout 每行一个响应；事件经 HID 事件流投递，需要“辅助功能”授权。
+final class DeviceInput {
+    let source = CGEventSource(stateID: .hidSystemState)
+    var pid: pid_t = 0
+
+    func window() -> (CGWindowID, CGRect)? {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return nil }
+        return list.compactMap { info -> (CGWindowID, CGRect)? in
+            guard (info[kCGWindowOwnerPID as String] as? pid_t) == pid, (info[kCGWindowLayer as String] as? Int) == 0,
+                  let id = info[kCGWindowNumber as String] as? CGWindowID,
+                  let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: bounds), rect.width >= 200, rect.height >= 200 else { return nil }
+            return (id, rect)
+        }.max(by: { $0.1.width * $0.1.height < $1.1.width * $1.1.height })
+    }
+
+    /// 客户区：全局坐标（点，左上角原点）与像素尺寸。
+    func client() -> (CGRect, CGFloat)? {
+        guard let (_, frame) = window() else { return nil }
+        let inset = titleInset(frame)
+        let flipped = CGRect(x: frame.minX, y: NSScreen.screens.first!.frame.height - frame.maxY, width: frame.width, height: frame.height)
+        let scale = NSScreen.screens.first(where: { $0.frame.intersects(flipped) })?.backingScaleFactor ?? 2
+        return (CGRect(x: frame.minX, y: frame.minY + inset, width: frame.width, height: frame.height - inset), scale)
+    }
+
+    func frontmost() -> pid_t {
+        // frontmostApplication 由主线程 run loop 上的系统通知更新；读取前先处理积压通知，避免拿到旧值。
+        RunLoop.main.run(until: Date())
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1
+    }
+
+    func ownerAt(_ point: CGPoint) -> pid_t {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return -1 }
+        for info in list where (info[kCGWindowLayer as String] as? Int) == 0 {
+            if let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+               let rect = CGRect(dictionaryRepresentation: bounds), rect.contains(point) {
+                return info[kCGWindowOwnerPID as String] as? pid_t ?? -1
+            }
+        }
+        return -1
+    }
+
+    func state(_ keys: [Int]) -> [String: Any] {
+        let cursor = CGEvent(source: nil)?.location ?? .zero
+        var result: [String: Any] = ["frontmost": frontmost(), "post_allowed": CGPreflightPostEventAccess(),
+                                     "buttons": [CGEventSource.buttonState(.hidSystemState, button: .left),
+                                                 CGEventSource.buttonState(.hidSystemState, button: .right),
+                                                 CGEventSource.buttonState(.hidSystemState, button: .center)],
+                                     "keys_down": keys.filter { CGEventSource.keyState(.hidSystemState, key: CGKeyCode($0)) }]
+        if let (rect, scale) = client() {
+            result["client"] = ["x": rect.minX, "y": rect.minY, "width": Int(rect.width * scale),
+                                "height": Int(rect.height * scale), "scale": scale]
+            result["cursor"] = ["x": Int(((cursor.x - rect.minX) * scale).rounded(.down)),
+                                "y": Int(((cursor.y - rect.minY) * scale).rounded(.down))]
+            result["cursor_inside"] = rect.contains(cursor) && ownerAt(cursor) == pid
+        }
+        return result
+    }
+
+    func post(_ event: CGEvent?) throws -> [String: Any] {
+        guard let event else { throw NSError(domain: "input", code: 1, userInfo: [NSLocalizedDescriptionKey: "event_unavailable"]) }
+        let started = uptimeNanos()
+        event.post(tap: .cghidEventTap)
+        return ["send_started_ns": started, "send_finished_ns": uptimeNanos(), "accepted": true]
+    }
+
+    func handle(_ request: [String: Any]) throws -> [String: Any] {
+        let op = request["op"] as? String ?? ""
+        if op == "prepare" {
+            guard let target = request["pid"] as? Int else { throw NSError(domain: "input", code: 2) }
+            pid = pid_t(target)
+            guard window() != nil, let app = NSRunningApplication(processIdentifier: pid) else {
+                return ["ok": false, "code": "window_unavailable", "error": "game window not found"]
+            }
+            if frontmost() != pid {
+                // macOS 14 起后台进程的 activate 请求会被协作式激活忽略；辅助功能授权下用 AX 设置前台并提升窗口。
+                let element = AXUIElementCreateApplication(pid)
+                AXUIElementSetAttributeValue(element, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+                var windowRef: CFTypeRef?
+                if AXUIElementCopyAttributeValue(element, kAXMainWindowAttribute as CFString, &windowRef) == .success,
+                   let window = windowRef {
+                    AXUIElementPerformAction(window as! AXUIElement, kAXRaiseAction as CFString)
+                }
+                if frontmost() != pid { app.activate(options: [.activateIgnoringOtherApps]) }
+            }
+            let deadline = Date().addingTimeInterval(1.5)
+            while frontmost() != pid && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+            return state(request["keys"] as? [Int] ?? []).merging(["ok": true]) { $1 }
+        }
+        if op == "state" { return state(request["keys"] as? [Int] ?? []).merging(["ok": true]) { $1 } }
+        let down = request["down"] as? Bool ?? false
+        // 释放事件始终投递，避免失去前台后在系统中残留按下状态；其余事件要求游戏仍在前台。
+        let release = (op == "key" || op == "button") && !down
+        guard pid != 0, release || frontmost() == pid else {
+            return ["ok": false, "code": "foreground_lost", "error": "game is not frontmost"]
+        }
+        let cursor = CGEvent(source: nil)?.location ?? .zero
+        switch op {
+        case "key":
+            guard let code = request["code"] as? Int else { throw NSError(domain: "input", code: 3) }
+            return try post(CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(code), keyDown: down)).merging(["ok": true]) { $1 }
+        case "button":
+            let button = request["button"] as? String ?? "left"
+            let (type, number): (CGEventType, CGMouseButton) = switch button {
+            case "right": (down ? .rightMouseDown : .rightMouseUp, .right)
+            case "middle": (down ? .otherMouseDown : .otherMouseUp, .center)
+            default: (down ? .leftMouseDown : .leftMouseUp, .left)
+            }
+            return try post(CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: cursor,
+                                    mouseButton: number)).merging(["ok": true]) { $1 }
+        case "move", "relative":
+            guard let (rect, scale) = client() else { return ["ok": false, "code": "window_unavailable", "error": "game window lost"] }
+            var point = cursor
+            if op == "move" {
+                point = CGPoint(x: rect.minX + CGFloat(request["x"] as? Int ?? 0) / scale,
+                                y: rect.minY + CGFloat(request["y"] as? Int ?? 0) / scale)
+            } else {
+                point.x += CGFloat(request["dx"] as? Int ?? 0) / scale
+                point.y += CGFloat(request["dy"] as? Int ?? 0) / scale
+            }
+            // 按住按键时发送拖动事件，否则为普通移动；相对移动同时携带原始位移供锁定光标的游戏读取。
+            let held: (CGEventType, CGMouseButton) =
+                CGEventSource.buttonState(.hidSystemState, button: .left) ? (.leftMouseDragged, .left) :
+                CGEventSource.buttonState(.hidSystemState, button: .right) ? (.rightMouseDragged, .right) : (.mouseMoved, .left)
+            let event = CGEvent(mouseEventSource: source, mouseType: held.0, mouseCursorPosition: point, mouseButton: held.1)
+            if op == "relative" {
+                event?.setIntegerValueField(.mouseEventDeltaX, value: Int64(request["dx"] as? Int ?? 0))
+                event?.setIntegerValueField(.mouseEventDeltaY, value: Int64(request["dy"] as? Int ?? 0))
+            }
+            return try post(event).merging(["ok": true]) { $1 }
+        case "wheel":
+            // Windows WHEEL_DELTA 为 120/格；macOS 以行为单位，正值向上。
+            let delta = request["delta"] as? Int ?? 0
+            let lines = delta == 0 ? 0 : (abs(delta) < 120 ? delta.signum() : delta / 120)
+            return try post(CGEvent(scrollWheelEvent2Source: source, units: .line, wheelCount: 1,
+                                    wheel1: Int32(lines), wheel2: 0, wheel3: 0)).merging(["ok": true]) { $1 }
+        default:
+            return ["ok": false, "code": "invalid_request", "error": "unknown op " + op]
+        }
+    }
+
+    func run() {
+        while let line = readLine(strippingNewline: true) {
+            var reply: [String: Any]
+            if let data = line.data(using: .utf8), let request = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                do { reply = try handle(request) } catch { reply = ["ok": false, "code": "invalid_request", "error": "\(error)"] }
+                reply["id"] = request["id"]
+            } else {
+                reply = ["ok": false, "code": "invalid_request", "error": "invalid json"]
+            }
+            emit(reply)
+        }
+    }
+}
+
 @main
 enum MacCapture {
     static func main() async {
@@ -303,6 +473,7 @@ enum MacCapture {
         let args = CommandLine.arguments
         if args.contains("--capabilities") { capabilities(); return }
         if args.contains("--extract") { extract(); return }
+        if args.contains("--input") { DeviceInput().run(); return }
         if args.contains("--record") {
             guard #available(macOS 13.0, *) else { fail("ScreenCaptureKit requires macOS 13") }
             await record()

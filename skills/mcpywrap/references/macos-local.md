@@ -52,7 +52,7 @@ mcpy --local --non-interactive engine install --catalog https://github.com/EaseC
 | 后台窗口 | 需要 background_window_protocol=1；旧包明确拒绝，允许聚焦时显式 --foreground；运行包构建补丁见仓库 native/background_window |
 | Tracy 性能分析 | 游戏内置 Tracy 由引擎自行启动，需要运行包 0.4.7+（补丁见仓库 native/tracy_profiler）；默认仅 127.0.0.1:8086（多实例顺延），不由启动器再次启动。用法见[性能分析](profiling.md) |
 | 录屏/视频提帧 | CLI 0.8.0+ 随附 ScreenCaptureKit 辅助程序，Apple Silicon 与屏幕录制授权；用法与 Windows 相同，见[画面采集](capture.md#视频录制与逐帧分析) |
-| 原始设备输入 | macOS 本地尚不支持；远程可针对 Windows 会话使用 |
+| 原始设备输入 | CLI 0.8.0+ 的 `macos-cgevent` 后端，与 Windows 一样占用前台，需要辅助功能授权，见[统一输入](runtime-input.md#系统键鼠后端windows--macos)；后台操作使用 game 后端 |
 
 网络使用与结果判断见[网络会话](network-sessions.md)。3.10.100.299889 曾在本机允许无认证的 Nemisys/SynapseAPI/Nukkit 测试栈验证进服，不能推及公开服务器。当前网络运行包对外 HTTP 资源包下载未完成验收；需要这类分发时不能宣称完整支持。
 
