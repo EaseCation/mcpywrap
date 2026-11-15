@@ -204,7 +204,7 @@ class MacOSHelper(unittest.TestCase):
 
     def test_sends_pid_and_size_and_returns_state(self):
         result, command = self.run_helper(b'{"ok": true, "width": 1280, "height": 720, "scale": 2}\n')
-        self.assertEqual(command, ['/helper', '--window', '--pid', '42', '--width', '1280', '--height', '720'])
+        self.assertEqual(command, [str(Path('/helper')), '--window', '--pid', '42', '--width', '1280', '--height', '720'])
         self.assertEqual(result['scale'], 2)
 
     def test_errors_carry_codes_and_actionable_hints(self):
