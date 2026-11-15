@@ -197,6 +197,9 @@ def routed_command(name, parameters):
             from ..commands.run_cmd import take_players
             data['player_name'] = take_players(p['player_names'], 1, p.get('mcs_auth'))[0]['user_name']
             client.require('player-name')
+        if p.get('window_size'):
+            data['window_size'] = list(p['window_size'])
+            client.require('window-size')
         from ..runtime.window_policy import resolve_background
         data['background'] = resolve_background(p.get('background'), no_gui=p.get('no_gui', False),
                                                 detach=p.get('detach', False))
@@ -255,6 +258,17 @@ def routed_command(name, parameters):
     if 'keys' in data:
         data['keys'] = list(data['keys'])
     return True, client.request('POST', path+'/'+name, data)
+
+
+def routed_window(action, parameters):
+    from ..command_context import project_dir, remote_url
+    client = Client(remote_url(), project_dir())
+    client.require('window-size')
+    path = '/sessions/' + identifier(parameters['session']) + '/window'
+    if action == 'info':
+        return client.request('GET', path)
+    width, height = parameters['size']
+    return client.request('POST', path, {'width': width, 'height': height}, timeout=30)
 
 
 def routed_recording(action, parameters):

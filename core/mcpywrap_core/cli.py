@@ -9,7 +9,7 @@ COMMANDS = {
     name: (name + '_cmd', name + '_cmd') for name in
     ('host', 'skill', 'modsdk', 'init', 'add', 'remove', 'build', 'dev', 'package', 'publish',
      'mod', 'run', 'deps', 'connect', 'edit', 'ui', 'doctor', 'engine', 'sync', 'serve', 'record', 'script', 'deployment',
-     'profile')
+     'profile', 'window')
 }
 COMMANDS.update({name: ('session_cmd', name + '_cmd') for name in ('status', 'logs', 'stop', 'restart')})
 COMMANDS.update({name: ('runtime_cmd', name + '_cmd') for name in ('runtime', 'py', 'reload')})

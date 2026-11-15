@@ -36,7 +36,7 @@ description: 使用 mcpywrap 管理《我的世界》中国版 Addon/地图、�
 | 已配对 Android 宿主或明确准备手机开发环境 | [本机 App 接入](references/application-host.md) | 普通桌面项目无需阅读；绑定工作区按宿主能力执行 |
 | 已有会话执行 Python、模块/资源热更、runtime watch | [运行时调试](references/runtime-debug.md) | 组操作转双客户端页；不必重读启动教程 |
 | 移动/攻击/操作 UI、观察节点 | [统一输入](references/runtime-input.md) | 能力/参数按目标会话查询，不猜旧协议 |
-| 截图、录制视频、下载、逐帧检查 | [画面采集](references/capture.md) | 需要操作玩家时才读输入协议 |
+| 截图、录制视频、下载、逐帧检查、固定分辨率/窗口尺寸 | [画面采集](references/capture.md) | 需要操作玩家时才读输入协议 |
 | 卡顿、帧率、脚本或操作耗时 | [性能分析](references/profiling.md) | 构造场景时再读输入页 |
 | macOS 安装/升级运行包、能力与引擎限制 | [macOS 平台](references/macos-local.md) | 不为普通运行每次重读安装细节 |
 | 已有明确错误或结果未知 | [故障定位](references/troubleshooting.md) | 先按错误定位，再读相应操作页 |

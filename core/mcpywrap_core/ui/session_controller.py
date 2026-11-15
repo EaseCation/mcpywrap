@@ -360,9 +360,11 @@ class SessionController(QObject):
             sessions.stop(self.project, session)
             overrides = self.engine_overrides or data.get('engine_overrides') or {}
             player = (data.get('launch') or {}).get('player')
-            return self.backend.start_session(self.project, data['level_id'],
-                                              **({'overrides': overrides} if overrides else {}),
-                                              **({'player': player} if player else {}))
+            from ..runtime.game_window import window_size_scope
+            with window_size_scope(data.get('window_size')):
+                return self.backend.start_session(self.project, data['level_id'],
+                                                  **({'overrides': overrides} if overrides else {}),
+                                                  **({'player': player} if player else {}))
         def finished(result):
             self.watcher = None; self.logs.finish(); self.attach(result)
         def failed():

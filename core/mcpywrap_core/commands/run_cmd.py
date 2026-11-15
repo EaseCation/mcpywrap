@@ -6,6 +6,7 @@ from ..mobile_host.options import HostOption
 from ..mcstudio.discovery import engine_options
 from ..mcstudio.runtime_cppconfig import creation_settings, RULE_LABELS
 from ..runtime.window_policy import window_options, resolve_background
+from ..runtime.game_window import size_option
 
 WORLD_CHOICES = {
     'world_type': {'infinite': 1, 'flat': 2},
@@ -92,9 +93,10 @@ def take_world_options(arguments, cppconfig=None):
 @click.option('--join-mode', type=click.Choice(['auto','manual']), default=None,
               help='Windows 本地双客户端加入方式；auto 自动加入，manual 保留手动选择局域网卡片')
 @player_name_option
+@size_option
 @click.option('--launch-timeout', cls=HostOption, type=click.IntRange(5,120), default=None, help='App 宿主进程/画中画确认等待秒数；不含世界加载')
 @click.argument('instance_prefix', required=False)
-def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, clients=1, background=None, launch_timeout=None, join_mode=None, player_names=(), **engine_overrides):
+def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach, mcs_auth=False, cppconfig=None, clients=1, background=None, launch_timeout=None, join_mode=None, player_names=(), window_size=None, **engine_overrides):
     """游戏实例运行与管理
     
     可直接运行 'mcpy run' 启动最新实例，或使用选项管理实例。
@@ -113,6 +115,8 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
         raise click.UsageError('--clients 仅用于启动游戏')
     if player_names and (list or delete or clean_all):
         raise click.UsageError('--player-name 仅用于启动游戏')
+    if window_size and (list or delete or clean_all):
+        raise click.UsageError('--window-size 仅用于启动游戏')
     players = take_players(player_names, clients, mcs_auth)
     if join_mode is not None and clients != 2:
         raise click.UsageError('--join-mode 仅用于 --clients 2 的本地联机')
@@ -160,27 +164,32 @@ def run_cmd(new, list, delete, force, clean_all, instance_prefix, no_gui, detach
                                         background=options['background'], players=players)
         return groups.start_local(base_dir, backend, options, join_mode=join_mode, players=players)
     recovered = False
-    try:
+    from ..runtime.game_window import window_size_scope, apply_to_running
+    with window_size_scope(window_size):
         try:
-            result = perform()
+            try:
+                result = perform()
+            except EngineError as error:
+                if error.code != 'setup_required' or not backend.managed_install: raise
+                from .engine_cmd import perform_install
+                click.echo('首次运行：自动下载并准备本地游戏环境…', err=True)
+                perform_install()
+                result = perform()
         except EngineError as error:
-            if error.code != 'setup_required' or not backend.managed_install: raise
-            from .engine_cmd import perform_install
-            click.echo('首次运行：自动下载并准备本地游戏环境…', err=True)
-            perform_install()
-            result = perform()
-    except EngineError as error:
-        from ..runtime.diagnostics import diagnostic
-        from .deployment_output import recover_run
-        result = recover_run(base_dir, diagnostic(error)) if not show_debug else None
-        if result is None:
-            raise
-        recovered = True
-    if isinstance(result, dict) and result.get('ok') is False and not show_debug and not recovered:
-        from .deployment_output import recover_run
-        retry = recover_run(base_dir, result)
-        if retry is not None:
-            result, recovered = retry, True
+            from ..runtime.diagnostics import diagnostic
+            from .deployment_output import recover_run
+            result = recover_run(base_dir, diagnostic(error)) if not show_debug else None
+            if result is None:
+                raise
+            recovered = True
+        if isinstance(result, dict) and result.get('ok') is False and not show_debug and not recovered:
+            from .deployment_output import recover_run
+            retry = recover_run(base_dir, result)
+            if retry is not None:
+                result, recovered = retry, True
+    if window_size and isinstance(result, dict) and result.get('already_running') and result.get('session'):
+        # 复用运行中的会话时不新建窗口，直接按请求调整现有窗口。
+        result['window'] = apply_to_running(base_dir, result['session'], window_size)
     if isinstance(result, dict) and result.get("dependency_selection"):
         from ..dependency_feedback import report_selection
         report_selection(result["dependency_selection"])

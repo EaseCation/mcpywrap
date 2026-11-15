@@ -66,9 +66,12 @@ def read(project, session):
 
 def start(project, config_path=None, level_id=None, overrides=None, timeout=30, auth_context=None,
           network=None, session_id=None, origin=None, request_id=None, backend=None, launch=None,
-          group=None, role=None, background=False):
+          group=None, role=None, background=False, window_size=None):
     from ..runtime.window_policy import validate_background
     validate_background(background)
+    from ..runtime.game_window import requested_window_size, validate_size
+    # 未显式传入时取调用方作用域（run/connect --window-size、restart 与联调组配方）。
+    window_size = list(validate_size(*window_size)) if window_size else requested_window_size()
     root = Path(project).resolve()
     session = session_id or uuid.uuid4().hex
     script_options = {}
@@ -88,6 +91,7 @@ def start(project, config_path=None, level_id=None, overrides=None, timeout=30, 
               'level_id': level_id, 'mode': 'network' if network else 'local',
               'network': network,
               'backend': backend or 'windows', 'launch': launch, 'background': background,
+              'window_size': window_size,
               'engine_overrides': overrides or {}, 'mcs_auth': auth_context is not None,
               'mcs_pid': auth_context.mcs_pid if auth_context else None}
     from .processes import identity
@@ -194,6 +198,10 @@ def handoff(data):
         result['scripts'] = data['scripts']
     if data.get('warnings'):
         result['warnings'] = list(data['warnings'])
+    if data.get('window_size'):
+        # 启动请求的尺寸在窗口出现后由 worker 应用；结果见 status 的 window.state。
+        result['window'] = data.get('window') or {'requested': dict(zip(('width', 'height'), data['window_size'])),
+                                                  'state': 'pending'}
     if data.get('mode', 'local') == 'local' and data.get('config_path'):
         result['instance'] = data.get('level_id')
         result['config_path'] = data['config_path']

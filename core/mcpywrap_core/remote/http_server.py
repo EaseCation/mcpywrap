@@ -158,6 +158,10 @@ class Handler(BaseHTTPRequestHandler):
                 elif action == 'stop' and self.command == 'POST':
                     fields(data, ())
                     result = service.stop(session)
+                elif action == 'window' and self.command == 'GET' and not query:
+                    result = service.window(session)
+                elif action == 'window' and self.command == 'POST':
+                    result = service.window(session, data)
                 elif action in ('screenshot', 'key', 'mouse', 'input-sequence') and self.command == 'POST':
                     allowed = {'screenshot': ('background_only',), 'key': ('keys', 'hold_ms'),
                                'mouse': ('action', 'x', 'y', 'width', 'height', 'to_x', 'to_y', 'dx', 'dy',

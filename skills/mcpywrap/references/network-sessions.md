@@ -31,6 +31,8 @@ port = 19132
 
 无认证连接可用 `--player-name` 指定离线开发玩家名（含中文），规则、默认值和运行包要求见[自定义离线玩家名](local-development.md#自定义离线玩家名)；远端服务需声明 player-name 能力。
 
+`connect --window-size 1280x720` 固定画面分辨率，运行中用 `window resize`；见[窗口尺寸](capture.md#窗口尺寸与画面分辨率)。
+
 `--mcs-auth` 是每次启动的游戏身份选择，不写入 server.auth。仅用户需要登录身份时使用；由用户在 Windows MC Studio 登录，先核对 `doctor --mcs-auth --json` 的组件/策略结果。MCPY_REMOTE_TOKEN 只保护 HTTP 服务访问，与游戏身份无关。
 
 组件存在不等于已登录，identity_provided 不等于服务器已接受认证。身份过期重新获取并新建会话；没有自动刷新，不通过复制账户文件或改设备身份解决。

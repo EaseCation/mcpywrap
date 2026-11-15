@@ -1,5 +1,12 @@
 # 更新记录
 
+## 0.8.1
+
+- 新增游戏窗口尺寸控制，尺寸为不含标题栏的客户区像素，即截图、录像和画面渲染的分辨率。`run`、`connect` 和 `--clients 2` 接受 `--window-size 1280x720`：会话 worker 在游戏窗口出现后经系统 API 设置，结果记录在 status 的 `window`（pending/applied/failed），失败不终止游戏；restart、组重启、成员重试和部署迁移沿用该尺寸；复用已运行的会话时直接调整其窗口。
+- 新增 `mcpy window info|resize --session <sid>`，查询或调整运行中窗口并核对实际尺寸；保持窗口位置，不激活窗口、不移动光标，录制中拒绝调整。手动调整后不再补设启动尺寸。
+- Windows 经 SetWindowPos（每显示器 DPI 感知，按物理像素）；Windows HTTP 服务新增 `window-size` 能力与 `/sessions/<sid>/window` 接口。macOS 由随附的原生辅助程序经辅助功能 API 调整，与运行包版本无关，需要辅助功能授权；`doctor --capabilities` 报告 `media.window_resize_permission`。App 宿主不接受这些参数。
+- 修复 macOS 录像和 `macos-cgevent` 指针坐标的客户区偏差：标题栏高度随游戏链接的 SDK 而不同（macOS 26 上旧 SDK 构建的游戏为 28 点，而非按新外观推算的 32 点），此前录像顶部少 8 像素、指针纵坐标偏 4 点。有辅助功能授权时改为按游戏窗口关闭按钮实测标题栏高度。
+
 ## 0.8.0
 
 - macOS（Apple Silicon）本机支持 `record start/status/stop/download/frames`，命令、结果字段与 Windows 一致。录制由随完整包安装的 ScreenCaptureKit 辅助程序完成（CI 构建、开发签名），游戏窗口可留在后台或被遮挡，不抢前台、不移动光标；以 1/120 秒最小间隔采集游戏渲染的每一帧，按源帧时间挑选最接近每个输出时刻的画面写入恒定帧率 H.264 MP4，`mapping` 中的 `source_time` 为 mach 主机时钟秒数。首次使用需为运行 mcpy 的终端开启“屏幕录制”权限，`doctor --capabilities` 的 `media` 报告授权状态与原因。

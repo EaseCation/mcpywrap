@@ -5,6 +5,7 @@ from ..command_context import OperationCommand
 from ..mcstudio.discovery import engine_options
 from ..mcstudio.network import ServerTarget
 from ..runtime.window_policy import window_options, resolve_background
+from ..runtime.game_window import size_option, window_size_scope
 from .run_cmd import player_name_option, take_players
 
 
@@ -17,9 +18,10 @@ from .run_cmd import player_name_option, take_players
 @click.option('--detach', is_flag=True, help='后台连接并返回游戏会话；JSON 必须指定')
 @click.option('--clients', type=click.IntRange(1, 2), default=1, show_default=True)
 @player_name_option
+@size_option
 @click.option('--request-id', help='远程启动的 32 位十六进制请求 ID，用于找回或重试同一请求')
 def connect_cmd(host, port, mcs_auth=False, detach=False, request_id=None, clients=1, background=None,
-                player_names=(), **engine_overrides):
+                player_names=(), window_size=None, **engine_overrides):
     """尝试连接服务器；前台采集日志，Ctrl+C 结束本次游戏。
 
     默认不读取登录身份；--mcs-auth 要求 MCS 已登录及本机桥接可用。
@@ -27,6 +29,11 @@ def connect_cmd(host, port, mcs_auth=False, detach=False, request_id=None, clien
     """
     if request_id:
         raise click.UsageError('--request-id 仅用于远程启动')
+    with window_size_scope(window_size):
+        return _connect(host, port, mcs_auth, detach, clients, background, player_names, engine_overrides)
+
+
+def _connect(host, port, mcs_auth, detach, clients, background, player_names, engine_overrides):
     players = take_players(player_names, clients, mcs_auth)
     from ..engines.backend import get_backend
     from ..engines.host import EngineError

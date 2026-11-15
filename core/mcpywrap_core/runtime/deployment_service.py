@@ -644,18 +644,21 @@ def execute(
     ):
         if selected.get(field):
             overrides[option] = selected[field]
-    return run(
-        project,
-        instance_prefix=data["level_id"],
-        overrides=overrides,
-        mcs_auth=bool(data.get("mcs_auth")),
-        world_config=None,
-        detach=True,
-        no_gui=True,
-        background=data.get("background", False),
-        migration=migration,
-        player=(data.get("launch") or {}).get("player"),
-    )
+    from .game_window import window_size_scope
+
+    with window_size_scope(data.get("window_size")):
+        return run(
+            project,
+            instance_prefix=data["level_id"],
+            overrides=overrides,
+            mcs_auth=bool(data.get("mcs_auth")),
+            world_config=None,
+            detach=True,
+            no_gui=True,
+            background=data.get("background", False),
+            migration=migration,
+            player=(data.get("launch") or {}).get("player"),
+        )
 
 
 def preserve_before_delete(project, root=None):

@@ -77,6 +77,8 @@ def run(project, session):
                                                  'python_reload_sides': ['client'] if guest else [] if data.get('mode') == 'network' else ['client', 'server'],
                                                  'client_python_queue': callable(getattr(debug_channel, 'submit', None))})
         data.update(state='running', game=identity(process.pid))
+        from ..runtime.game_window import LaunchSizer
+        window_sizer = LaunchSizer(data)
         sessions.save(path, data)
         if data.get('group') and data.get('role') in ('guest', 'client2'):
             from ..runtime.groups import GroupMonitor
@@ -86,6 +88,7 @@ def run(project, session):
                 process.terminate()
                 break
             changed = backend.refresh(data, debug_channel)
+            changed = window_sizer.poll(project, session, data) or changed
             connected = getattr(debug_channel, 'connected', None)
             if connected is not None and callable(getattr(connected, 'is_set', None)):
                 state = 'connected' if connected.is_set() else 'connecting'

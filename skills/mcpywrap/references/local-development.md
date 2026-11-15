@@ -47,6 +47,10 @@ mcpy --local --project <项目> --non-interactive run --clients 2 --no-gui --det
 - 本地世界的房主背包等存档数据不随名称变化（macOS 已实测换名后物品保留）；服务端是否把新名称当作新玩家由服务器决定。
 - macOS 需要运行包 0.4.11+：本地世界要求 offline_identity_protocol=1，连接服务器的英文名称要求 0.4.9+、中文名称要求 0.4.11+；旧运行包启动前拒绝。已有实例固定原运行包，需要时升级资源后用 `--new` 新建实例。Windows 本机与 HTTP 服务（声明 player-name 能力）直接写入游戏配置；App 宿主使用自身的玩家身份，不接受此参数。
 
+## 窗口尺寸
+
+需要固定画面分辨率时加 `--window-size 1280x720`（客户区像素）；运行中用 `window resize --session <sid> --size <宽x高>` 调整。规则、平台授权与失败码见[窗口尺寸与画面分辨率](capture.md#窗口尺寸与画面分辨率)。
+
 ## 持续日志
 
 ```text

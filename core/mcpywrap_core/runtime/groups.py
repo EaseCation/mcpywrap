@@ -9,6 +9,7 @@ from ..engines.backend import get_backend
 from ..engines.host import EngineError
 from ..mcstudio import sessions
 from ..utils.locks import directory_lock, LockBusy
+from .game_window import window_size_scope, requested_window_size
 
 PLAYER_PROBE = '''import mod.client.extraClientApi as api
 import gui
@@ -218,6 +219,8 @@ def list_groups(project):
 
 
 def _new(project, backend, kind, recipe, players=None):
+    # --window-size 属于联调组：两个客户端相同，组重启与成员重试沿用。
+    recipe = dict(recipe, window_size=requested_window_size())
     record = {'schema_version': 1, 'group': uuid.uuid4().hex, 'project': str(Path(project).resolve()),
               'backend': backend.id, 'kind': kind, 'recipe': recipe, 'created_at': time.time(),
               'members': [{'role': role, 'session': uuid.uuid4().hex, 'state': 'pending'}
@@ -421,12 +424,13 @@ def _connect_member(record, index, target=None, local_host=None, created=None):
                    role=member['role'], player=member['player'],
                    background=record['recipe'].get('background',
                               record['recipe'].get('options', {}).get('background', False)))
-    if local_host:
-        if record['backend'] == 'windows':
-            options['join_mode'] = record.get('recipe', {}).get('join_mode', 'manual')
-        result = backend.start_guest(host, **options)
-    else:
-        result = backend.connect(target, engine_overrides=overrides, detach=True, **options)
+    with window_size_scope(record['recipe'].get('window_size')):
+        if local_host:
+            if record['backend'] == 'windows':
+                options['join_mode'] = record.get('recipe', {}).get('join_mode', 'manual')
+            result = backend.start_guest(host, **options)
+        else:
+            result = backend.connect(target, engine_overrides=overrides, detach=True, **options)
     if result.get('engine_version'):
         record['recipe']['overrides'] = dict(overrides, engine_version=result['engine_version'])
     member.update(session=result['session'], state=result['state'])
@@ -657,7 +661,8 @@ def restart(project, *, session=None, group=None, migration=None):
                     options = dict(record['recipe']['options'], new=False, world_config=None, instance_prefix=host['level_id'])
                     if migration:
                         options['migration'] = migration
-                    result = backend.run(project, **options)
+                    with window_size_scope(record['recipe'].get('window_size')):
+                        result = backend.run(project, **options)
                     if not result.get('already_running'):
                         created.append(result['session'])
                     record['members'][0].update(session=result['session'], state='running')
@@ -718,9 +723,11 @@ def restart(project, *, session=None, group=None, migration=None):
             raise EngineError('此客机的联调组记录缺失，不能按外服会话重启。', 'group_not_found')
         from ..mcstudio.network import ServerTarget
         player = data['network'].get('player')
-        return backend.connect(ServerTarget(**data['network']['target']), project_dir=project,
-                               engine_overrides=data.get('engine_overrides'), detach=True,
-                               background=data.get('background', False), **({'player': player} if player else {}))
+        with window_size_scope(data.get('window_size')):
+            return backend.connect(ServerTarget(**data['network']['target']), project_dir=project,
+                                   engine_overrides=data.get('engine_overrides'), detach=True,
+                                   background=data.get('background', False), **({'player': player} if player else {}))
     player = (data.get('launch') or {}).get('player')
-    return backend.run(project, instance_prefix=data['level_id'], overrides=data.get('engine_overrides'), detach=True, no_gui=True,
-                       background=data.get('background', False), **({'player': player} if player else {}))
+    with window_size_scope(data.get('window_size')):
+        return backend.run(project, instance_prefix=data['level_id'], overrides=data.get('engine_overrides'), detach=True,
+                           no_gui=True, background=data.get('background', False), **({'player': player} if player else {}))

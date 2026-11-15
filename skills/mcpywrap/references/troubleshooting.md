@@ -67,7 +67,9 @@
 
 新输入的 unknown/busy/释放失败，按[统一输入](runtime-input.md#目标界面与清理)查原 operation_id，修复后 input stop 重试释放，不重发计划。后台截图失败按[画面采集](capture.md#截图)报告限制，不自动抢前台或替换后端。
 
-macOS 截图 capability_missing 检查实例运行包，而非授予屏幕录制权限；capture_timeout 表示未及时取得有效渲染帧。录屏和视频提帧在 macOS 本地始终不支持。
+macOS 截图 capability_missing 检查实例运行包，而非授予屏幕录制权限；capture_timeout 表示未及时取得有效渲染帧。
+
+窗口尺寸：permission_missing 在系统设置为终端开启辅助功能并重启终端；invalid_size 按 `window info` 的 scale 改用整数倍尺寸；window_fullscreen / window_state_conflict 先还原窗口；window_size_rejected 查看返回的实际尺寸，通常是超出屏幕可用区域；busy 表示正在录制。启动尺寸失败只记录在 status 的 `window`，不影响游戏，修正原因后用 `window resize` 补设。
 
 只有继续旧脚本时读[兼容输入](input-writing.md)或[旧编排失败处理](input-sequence.md#读结果与处理失败)。原始设备操作确实允许前台时，才处理焦点、窗口尺寸/遮挡；不能让调用端桌面工具恢复不可见的远端窗口。
 

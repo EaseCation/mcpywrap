@@ -138,6 +138,9 @@ def inspect_macos(result):
             raise ValueError('Unsupported native media protocol')
         for key in ('sck', 'h264_encoder', 'h264_decoder', 'screen_capture_permission'):
             result[key] = info.get(key) is True
+        if 'accessibility_permission' in info:
+            # 窗口尺寸调整（window resize / --window-size）需要；旧辅助程序不报告此项。
+            result['window_resize_permission'] = info['accessibility_permission'] is True
         result['record_available'] = result['sck'] and result['h264_encoder'] and result['screen_capture_permission']
         result['frames_available'] = result['h264_decoder']
         if not result['screen_capture_permission']:

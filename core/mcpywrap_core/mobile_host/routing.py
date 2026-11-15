@@ -23,6 +23,8 @@ def route(ctx):
         raise click.UsageError('此宿主仅支持作品内的单游戏实例')
     if params.pop('player_names', None):
         raise click.UsageError('此宿主使用 App 自身的玩家身份，暂不支持 --player-name')
+    if params.pop('window_size', None):
+        raise click.UsageError('此宿主的游戏画面由 App 决定，不支持 --window-size')
     if operation == 'status':
         if bool(params.get('session')) == bool(params.get('list_sessions')):
             raise click.UsageError('指定 --session 或 --list 中的一项')

@@ -26,7 +26,7 @@ def capabilities():
     media = inspect_media()
     extra = (['record'] if media['record_available'] else []) + (['record-frames'] if media['frames_available'] else [])
     result = {'protocol_version': PROTOCOL, 'version': __version__,
-            'capabilities': ACTIONS + ['mcs-auth', 'player-name'] + extra if windows else ['project', 'package', 'remote-client'] + extra,
+            'capabilities': ACTIONS + ['mcs-auth', 'player-name', 'window-size'] + extra if windows else ['project', 'package', 'remote-client'] + extra,
             'media': media,
             'desktop': desktop_state(),
             'mcs_auth': inspect_bridge() if windows else {'component_available': False},
@@ -186,7 +186,8 @@ class GameService:
         return overrides
 
     def create(self, data):
-        fields(data, ('request_id', 'host', 'port', 'mcs_auth', 'engine_version', 'background', 'player_name'))
+        fields(data, ('request_id', 'host', 'port', 'mcs_auth', 'engine_version', 'background', 'player_name',
+                      'window_size'))
         request_id = identifier(data.get('request_id'))
         if type(data.get('mcs_auth', False)) is not bool:
             raise RemoteError('mcs_auth 必须是布尔值', 'invalid_request')
@@ -199,6 +200,15 @@ class GameService:
                 raise RemoteError('player_name 是离线开发身份，不与 mcs_auth 同用', 'invalid_request')
             try:
                 player = player_identity(data['player_name'])
+            except ValueError as error:
+                raise RemoteError(str(error), 'invalid_request') from None
+        window_size = data.get('window_size')
+        if window_size is not None:
+            from ..runtime.game_window import validate_size
+            try:
+                if not isinstance(window_size, list) or len(window_size) != 2:
+                    raise ValueError('window_size 必须是 [宽, 高]')
+                window_size = list(validate_size(*window_size))
             except ValueError as error:
                 raise RemoteError(str(error), 'invalid_request') from None
         target = ServerTarget(data.get('host'), data.get('port', 19132), 'mcs' if data.get('mcs_auth') else 'none')
@@ -229,7 +239,7 @@ class GameService:
                 raise RemoteError('服务正在停止', 'service_stopping', 503)
             result = sessions.start(self.root, auth_context=auth, session_id=request_id,
                                     origin='remote', request_id=request_id,
-                                    background=data.get('background', True),
+                                    background=data.get('background', True), window_size=window_size,
                                     network={'target': asdict(target), 'engine': asdict(engine),
                                              **({'player': player} if player else {})})
             if self.closing.is_set():
@@ -298,6 +308,22 @@ class GameService:
             return self.context(operate(self.root, session, action, data, self.action_cancel))
         finally:
             self.desktop_session = None
+            self.desktop_lock.release()
+
+    def window(self, session, data=None):
+        """查询或调整会话窗口尺寸；与截图、键鼠共用桌面锁，避免截图期间尺寸变化。"""
+        self.record(session)
+        from ..runtime import game_window
+        if data is None:
+            return self.context(game_window.info(self.root, session))
+        fields(data, ('width', 'height'))
+        if self.closing.is_set():
+            raise RemoteError('服务正在停止', 'service_stopping', 503)
+        if not self.desktop_lock.acquire(blocking=False):
+            raise RemoteError('桌面正在执行另一个操作', 'busy', 409)
+        try:
+            return self.context(game_window.resize(self.root, session, data.get('width'), data.get('height')))
+        finally:
             self.desktop_lock.release()
 
     def unified_input(self, session, data):

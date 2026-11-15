@@ -291,6 +291,9 @@ class GameWindow:
             (self.user, 'GetWindowThreadProcessId', W.DWORD, [W.HWND, C.POINTER(W.DWORD)]),
             (self.user, 'IsWindowVisible', W.BOOL, [W.HWND]),
             (self.user, 'IsIconic', W.BOOL, [W.HWND]),
+            (self.user, 'IsZoomed', W.BOOL, [W.HWND]),
+            (self.user, 'GetWindowLongW', C.c_long, [W.HWND, C.c_int]),
+            (self.user, 'SetWindowPos', W.BOOL, [W.HWND, W.HWND, C.c_int, C.c_int, C.c_int, C.c_int, W.UINT]),
             (self.user, 'ShowWindow', W.BOOL, [W.HWND, C.c_int]),
             (self.user, 'SetForegroundWindow', W.BOOL, [W.HWND]),
             (self.user, 'AttachThreadInput', W.BOOL, [W.DWORD, W.DWORD, W.BOOL]),
@@ -687,6 +690,47 @@ class GameWindow:
             sender.close()
         self.check_foreground()
         return {'action': action, 'sent': True, 'released': True, 'effect_verified': False}
+
+    def window_state(self):
+        """客户区像素尺寸与窗口状态；只读，不激活窗口。线程为每显示器 DPI 感知，尺寸为物理像素。"""
+        self.validate_process()
+        rect = W.RECT()
+        if not self.user.GetClientRect(self.hwnd, C.byref(rect)):
+            raise ValueError('无法获取游戏客户区')
+        # 没有标题栏（WS_CAPTION）的游戏窗口为全屏或无边框全屏，其尺寸由显示器决定。
+        style = self.user.GetWindowLongW(self.hwnd, -16) & 0xFFFFFFFF
+        return {'width': rect.right, 'height': rect.bottom, 'scale': 1,
+                'minimized': bool(self.user.IsIconic(self.hwnd)), 'maximized': bool(self.user.IsZoomed(self.hwnd)),
+                'fullscreen': not style & 0x00C00000}
+
+    def resize_client(self, width, height, timeout=3):
+        """经 SetWindowPos 把客户区设为指定像素；保持位置与 Z 序，不激活窗口，并核对实际尺寸。"""
+        from ..engines.host import EngineError
+        state = self.window_state()
+        if state['fullscreen']:
+            raise EngineError('游戏窗口处于全屏，不能调整尺寸。', 'window_fullscreen', '先在游戏中退出全屏。')
+        if state['minimized'] or state['maximized']:
+            raise EngineError('游戏窗口已最小化或最大化，不能调整尺寸。', 'window_state_conflict',
+                              '先把游戏窗口还原为普通窗口。')
+        outer, inner = W.RECT(), W.RECT()
+        if not self.user.GetWindowRect(self.hwnd, C.byref(outer)) or not self.user.GetClientRect(self.hwnd, C.byref(inner)):
+            raise ValueError('无法获取游戏窗口边框')
+        # 边框与标题栏在同一 DPI 下保持不变：目标外框 = 目标客户区 + 当前边框。
+        frame_width = outer.right - outer.left - inner.right
+        frame_height = outer.bottom - outer.top - inner.bottom
+        flags = 0x0002 | 0x0004 | 0x0010 | 0x0200  # NOMOVE | NOZORDER | NOACTIVATE | NOOWNERZORDER
+        if not self.user.SetWindowPos(self.hwnd, None, 0, 0, width + frame_width, height + frame_height, flags):
+            raise EngineError('系统拒绝调整游戏窗口尺寸（错误 %d）。' % C.get_last_error(), 'window_failed')
+        deadline = time.monotonic() + timeout
+        while True:
+            current = self.window_state()
+            if (current['width'], current['height']) == (width, height):
+                return current
+            if time.monotonic() >= deadline:
+                raise EngineError('游戏窗口未采用请求的尺寸，当前客户区为 %dx%d。' % (current['width'], current['height']),
+                                  'window_size_rejected', '尺寸可能超出显示器或低于游戏允许的最小值。',
+                                  width=current['width'], height=current['height'])
+            time.sleep(0.05)
 
     def details(self):
         title = C.create_unicode_buffer(1024)

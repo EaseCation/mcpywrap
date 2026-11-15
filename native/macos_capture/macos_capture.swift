@@ -3,6 +3,7 @@
 // 区别只在于用 --pid 定位游戏窗口；source_time_100ns 为 mach 主机时钟（CLOCK_UPTIME_RAW）的 100ns 计数。
 // 录制时游戏窗口保持在后台即可采集，不激活窗口、不移动光标、不发送任何输入。
 // --input 是独立的前台设备输入模式：激活游戏后经 HID 事件流发送键鼠事件，与 Windows SendInput 后端语义一致。
+// --window 读取或设置游戏窗口客户区像素尺寸；设置经辅助功能 API，不激活窗口。
 import AVFoundation
 import AppKit
 import ApplicationServices
@@ -49,7 +50,9 @@ func capabilities() {
     emit(["protocol": protocolVersion, "sck": sck, "h264_encoder": hasH264Encoder(),
           // AVFoundation 始终提供 H.264 软件解码；硬件可用性只作诊断。
           "h264_decoder": true, "h264_hardware_decoder": VTIsHardwareDecodeSupported(kCMVideoCodecType_H264),
-          "screen_capture_permission": CGPreflightScreenCaptureAccess()])
+          "screen_capture_permission": CGPreflightScreenCaptureAccess(),
+          // 调整游戏窗口尺寸经辅助功能 API，与设备输入共用“辅助功能”授权。
+          "accessibility_permission": AXIsProcessTrusted()])
 }
 
 /// 采集线程保留最近几帧及其源时间；写盘循环按输出时间轴挑选 PTS 最接近的一帧。
@@ -116,9 +119,41 @@ func signature(_ buffer: CVPixelBuffer) -> UInt64 {
     return hash
 }
 
+func axFrame(_ element: AXUIElement) -> CGRect? {
+    var positionRef: CFTypeRef?, sizeRef: CFTypeRef?
+    var position = CGPoint.zero, size = CGSize.zero
+    guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionRef) == .success,
+          AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRef) == .success,
+          AXValueGetValue(positionRef as! AXValue, .cgPoint, &position),
+          AXValueGetValue(sizeRef as! AXValue, .cgSize, &size) else { return nil }
+    return CGRect(origin: position, size: size)
+}
+
+/// 应用的 AX 窗口中与屏幕窗口外框一致的那个；两者同为左上角原点的全局点数。
+func axWindow(pid: pid_t, matching frame: CGRect) -> AXUIElement? {
+    var listRef: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXWindowsAttribute as CFString, &listRef) == .success,
+          let windows = listRef as? [AXUIElement] else { return nil }
+    return windows.first { element in
+        guard let rect = axFrame(element) else { return false }
+        return abs(rect.minX - frame.minX) < 1 && abs(rect.minY - frame.minY) < 1 &&
+            abs(rect.width - frame.width) < 1 && abs(rect.height - frame.height) < 1
+    }
+}
+
 /// 普通窗口的标题栏高度（点）；全屏窗口没有标题栏。与 Windows 客户区一致，录制和指针坐标都不含标题栏。
-func titleInset(_ frame: CGRect) -> CGFloat {
+/// 标题栏高度随应用链接的 SDK 而不同（macOS 26 SDK 为 32 点，较旧 SDK 构建的游戏仍为 28 点），不能按本程序的
+/// 外观推算；有辅助功能授权时按游戏窗口关闭按钮测量（按钮在标题栏内垂直居中），否则退回标准样式计算。
+func titleInset(_ frame: CGRect, pid: pid_t) -> CGFloat {
     if NSScreen.screens.contains(where: { $0.frame.size == frame.size }) { return 0 }
+    if AXIsProcessTrusted(), let window = axWindow(pid: pid, matching: frame) {
+        var buttonRef: CFTypeRef?
+        if AXUIElementCopyAttributeValue(window, kAXCloseButtonAttribute as CFString, &buttonRef) == .success,
+           let button = buttonRef, let rect = axFrame(button as! AXUIElement) {
+            let measured = (2 * (rect.minY - frame.minY) + rect.height).rounded()
+            if measured >= 16 && measured <= 48 { return measured }
+        }
+    }
     let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable]
     return frame.height - NSWindow.contentRect(forFrameRect: NSRect(origin: .zero, size: frame.size), styleMask: style).height
 }
@@ -162,7 +197,7 @@ func record() async {
     let filter = SCContentFilter(desktopIndependentWindow: window)
     var scale = NSScreen.screens.first(where: { $0.frame.intersects(window.frame) })?.backingScaleFactor ?? 2
     if #available(macOS 14.0, *) { scale = CGFloat(filter.pointPixelScale) }
-    let inset = titleInset(window.frame)
+    let inset = titleInset(window.frame, pid: pid)
     let clientWidth = Int(window.frame.width * scale), clientHeight = Int((window.frame.height - inset) * scale)
     let width = (clientWidth + 1) & ~1, height = (clientHeight + 1) & ~1
     if width * height > maxPixels { fail("recording_resolution_limit") }
@@ -321,7 +356,7 @@ final class DeviceInput {
             guard (info[kCGWindowOwnerPID as String] as? pid_t) == pid, (info[kCGWindowLayer as String] as? Int) == 0,
                   let id = info[kCGWindowNumber as String] as? CGWindowID,
                   let bounds = info[kCGWindowBounds as String] as? NSDictionary,
-                  let rect = CGRect(dictionaryRepresentation: bounds), rect.width >= 200, rect.height >= 200 else { return nil }
+                  let rect = CGRect(dictionaryRepresentation: bounds), rect.width >= 100, rect.height >= 100 else { return nil }
             return (id, rect)
         }.max(by: { $0.1.width * $0.1.height < $1.1.width * $1.1.height })
     }
@@ -329,7 +364,7 @@ final class DeviceInput {
     /// 客户区：全局坐标（点，左上角原点）与像素尺寸。
     func client() -> (CGRect, CGFloat)? {
         guard let (_, frame) = window() else { return nil }
-        let inset = titleInset(frame)
+        let inset = titleInset(frame, pid: pid)
         let flipped = CGRect(x: frame.minX, y: NSScreen.screens.first!.frame.height - frame.maxY, width: frame.width, height: frame.height)
         let scale = NSScreen.screens.first(where: { $0.frame.intersects(flipped) })?.backingScaleFactor ?? 2
         return (CGRect(x: frame.minX, y: frame.minY + inset, width: frame.width, height: frame.height - inset), scale)
@@ -466,6 +501,73 @@ final class DeviceInput {
     }
 }
 
+/// 窗口尺寸：读取经 CGWindowList（无需授权），设置经辅助功能 API 的 kAXSizeAttribute（需要“辅助功能”授权）。
+/// 尺寸为不含标题栏的客户区像素，与截图、录制和指针坐标一致；只改尺寸，保持窗口位置，不激活窗口。
+func windowCommand() {
+    let args = CommandLine.arguments
+    guard let pid = pid_t(argument("--pid")) else { fail("invalid --pid") }
+    let input = DeviceInput()
+    input.pid = pid
+    let trusted = AXIsProcessTrusted()
+    func reply(_ fields: [String: Any]) { emit(fields.merging(["protocol": protocolVersion]) { $1 }) }
+    func current() -> [String: Any]? {
+        guard let (_, frame) = input.window(), let (rect, scale) = input.client() else { return nil }
+        return ["width": Int((rect.width * scale).rounded()), "height": Int((rect.height * scale).rounded()),
+                "scale": scale, "fullscreen": titleInset(frame, pid: pid) == 0, "minimized": false,
+                "resize_permission": trusted, "points": ["width": frame.width, "height": frame.height]]
+    }
+    guard let state = current() else {
+        // 最小化、隐藏或尚未创建的窗口不在屏幕窗口列表中。
+        reply(["ok": false, "code": "window_unavailable", "error": "game window not found or minimized"]); return
+    }
+    guard args.contains("--width") else { reply(state.merging(["ok": true]) { $1 }); return }
+    guard let width = Int(argument("--width")), let height = Int(argument("--height")), width > 0, height > 0 else {
+        reply(["ok": false, "code": "invalid_size", "error": "invalid size"]); return
+    }
+    if state["fullscreen"] as? Bool == true {
+        reply(["ok": false, "code": "window_fullscreen", "error": "game window is fullscreen",
+               "hint": "先在游戏中退出全屏。"]); return
+    }
+    guard trusted else {
+        reply(["ok": false, "code": "permission_missing", "error": "Accessibility permission is required to resize the game window"]); return
+    }
+    let scale = state["scale"] as! CGFloat
+    guard CGFloat(width).truncatingRemainder(dividingBy: scale) == 0, CGFloat(height).truncatingRemainder(dividingBy: scale) == 0 else {
+        reply(["ok": false, "code": "invalid_size", "error": "size must be a multiple of the display scale", "scale": scale]); return
+    }
+    guard let (_, frame) = input.window() else {
+        reply(["ok": false, "code": "window_unavailable", "error": "game window lost"]); return
+    }
+    guard let target = axWindow(pid: pid, matching: frame) else {
+        reply(["ok": false, "code": "window_unavailable", "error": "accessibility window does not match the game window"]); return
+    }
+    var fullscreenRef: CFTypeRef?
+    if AXUIElementCopyAttributeValue(target, "AXFullScreen" as CFString, &fullscreenRef) == .success,
+       (fullscreenRef as? Bool) == true {
+        reply(["ok": false, "code": "window_fullscreen", "error": "game window is fullscreen", "hint": "先在游戏中退出全屏。"]); return
+    }
+    var size = CGSize(width: CGFloat(width) / scale, height: CGFloat(height) / scale + titleInset(frame, pid: pid))
+    guard let value = AXValueCreate(.cgSize, &size) else { fail("AXValueCreate failed") }
+    let status = AXUIElementSetAttributeValue(target, kAXSizeAttribute as CFString, value)
+    guard status == .success else {
+        reply(["ok": false, "code": "window_failed", "error": "AX resize failed: \(status.rawValue)"]); return
+    }
+    // 窗口服务器异步更新外框；等待列表反映新尺寸后再核对客户区像素。
+    let deadline = Date().addingTimeInterval(3)
+    var latest = current()
+    while Date() < deadline {
+        if let now = latest, now["width"] as? Int == width, now["height"] as? Int == height {
+            reply(now.merging(["ok": true]) { $1 }); return
+        }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        latest = current()
+    }
+    let actual = latest ?? [:]
+    reply(actual.merging(["ok": false, "code": "window_size_rejected",
+                          "error": "game window kept \(actual["width"] ?? "?")x\(actual["height"] ?? "?")",
+                          "hint": "尺寸可能超出屏幕可用区域或低于游戏允许的最小值。"]) { $1 })
+}
+
 @main
 enum MacCapture {
     static func main() async {
@@ -474,11 +576,12 @@ enum MacCapture {
         if args.contains("--capabilities") { capabilities(); return }
         if args.contains("--extract") { extract(); return }
         if args.contains("--input") { DeviceInput().run(); return }
+        if args.contains("--window") { windowCommand(); return }
         if args.contains("--record") {
             guard #available(macOS 13.0, *) else { fail("ScreenCaptureKit requires macOS 13") }
             await record()
             return
         }
-        fail("usage: mcpy-macos-capture --capabilities | --record --pid P --fps N --duration S --output F --mapping F --stop-file F | --extract --input F --output D --frames a,b")
+        fail("usage: mcpy-macos-capture --capabilities | --window --pid P [--width W --height H] | --record --pid P --fps N --duration S --output F --mapping F --stop-file F | --extract --input F --output D --frames a,b")
     }
 }

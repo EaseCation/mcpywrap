@@ -49,6 +49,11 @@ def inspect_session(project, session):
         'reload': reloads,
         'screenshot': {'state': ('available' if live else 'unavailable') if screenshot_supported else 'unsupported',
                        'reason': None if screenshot_supported else UPGRADE_HINT},
+        'window': {'state': ('available' if live else 'unavailable')
+                   if data.get('backend', 'windows') in ('windows', 'macos-arm64') else 'unsupported',
+                   'reason': None if live else '会话没有运行中的游戏窗口',
+                   'launch_request': data.get('window'),
+                   'note': '尺寸为客户区像素；macOS 调整需要“辅助功能”授权，录制中拒绝调整'},
         'verification': 'entrypoints_only',
         'hint': 'available 表示允许调用，不证明游戏已就绪、API 存在或效果生效；JSON UI 重载后须按 Mod 逻辑重新注册创建界面及绑定回调。',
     }
